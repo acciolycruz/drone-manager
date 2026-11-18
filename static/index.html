@@ -1,0 +1,2434 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DJI · Drone Manager</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<style>
+/* ========== DESIGN SYSTEM: DJI COCKPIT & TELEMETRY ========== */
+:root {
+  --bg: #0b0e13;
+  --bg-elev: #11161d;
+  --card: #151b24;
+  --card-hover: #1b2330;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --fg: #f1f5f9;
+  --mut: #8b9bb0;
+  --acc: #1890ff;
+  --acc-hover: #40a9ff;
+  --acc-cyan: #00d2ff;
+  --acc-glow: rgba(24, 144, 255, 0.18);
+  --sb: #07090d;
+  --danger: #ef4444;
+  --warn: #f59e0b;
+  --ok: #10b981;
+  --radius: 8px;
+}
+body.light {
+  --bg: #f3f5f8;
+  --bg-elev: #ffffff;
+  --card: #ffffff;
+  --card-hover: #edf2f7;
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --fg: #0f172a;
+  --mut: #64748b;
+  --acc: #0066cc;
+  --acc-hover: #0052a3;
+  --acc-cyan: #0284c7;
+  --acc-glow: rgba(0, 102, 204, 0.12);
+  --sb: #0b0f17;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+.hide { display: none !important; }
+
+/* Scrollbars discretas estilo cockpit */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.22); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+
+/* Controles, Inputs e Botões */
+button, input, textarea, select {
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  color: var(--fg);
+  transition: all 0.15s ease;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 2px var(--acc-glow);
+}
+input::placeholder, textarea::placeholder { color: var(--mut); opacity: 0.75; }
+button {
+  cursor: pointer;
+  font-weight: 500;
+  background: var(--card);
+  border-color: var(--border-strong);
+}
+button:hover {
+  background: var(--card-hover);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+button.on {
+  background: var(--acc);
+  color: #fff;
+  border-color: var(--acc);
+  box-shadow: 0 2px 10px rgba(24, 144, 255, 0.3);
+}
+a { color: var(--acc-cyan); text-decoration: none; font-weight: 500; }
+a:hover { text-decoration: underline; color: var(--acc-hover); }
+
+/* Barra Lateral (DJI Cockpit) */
+#side {
+  flex: none;
+  width: 248px;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sb);
+  color: #cbd5e1;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  overflow-y: auto;
+  overflow-x: hidden;
+  user-select: none;
+}
+#content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg);
+}
+
+/* Cabeçalho da marca na barra lateral */
+#banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+#banner svg { width: 38px; height: 38px; flex: none; }
+#banner h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+#banner p {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  opacity: 0.9;
+}
+
+/* Menu de navegação lateral */
+#side header {
+  position: static;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 12px 12px 16px;
+  background: none;
+}
+#side .sbsearch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 2px 4px 2px 10px;
+  background: #11161f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#side .sbsearch:focus-within {
+  border-color: var(--acc);
+  background: #141b26;
+  box-shadow: 0 0 0 2px var(--acc-glow);
+}
+#side .sbsearch input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #e2e8f0;
+  padding: 6px 2px;
+  font-size: 12.5px;
+}
+#side .sbsearch input:focus {
+  border: 0;
+  box-shadow: none;
+}
+#side .sbsearch input::placeholder { color: #64748b; }
+#side .sbsearch button {
+  flex: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+#side .sbsearch button:hover { color: #fff; background: var(--acc); border-color: var(--acc); }
+
+#side .nav {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
+  padding: 9px 12px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+#side .nav:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1f5f9;
+}
+#side .nav.on {
+  background: linear-gradient(90deg, rgba(24, 144, 255, 0.18) 0%, rgba(24, 144, 255, 0.04) 100%);
+  color: #fff;
+  font-weight: 600;
+  border-color: rgba(24, 144, 255, 0.25);
+  box-shadow: inset 3px 0 0 #1890ff;
+}
+#side .nav.on svg { color: #38bdf8; }
+#side .nav svg { flex: none; opacity: 0.9; }
+#side header .sp { flex: 1; }
+#side header a {
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 4px;
+  text-decoration: none;
+}
+#side header a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+#side #scan {
+  width: 100%;
+  background: linear-gradient(135deg, #1890ff 0%, #0066cc 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(24, 144, 255, 0.28);
+}
+#side #scan:hover {
+  background: linear-gradient(135deg, #40a9ff 0%, #1890ff 100%);
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.4);
+}
+#side #scan:disabled { opacity: 0.65; cursor: wait; }
+#side #themetog {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 6px 10px;
+  margin-top: 2px;
+}
+#side #themetog:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+
+/* Área Principal */
+main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 22px;
+}
+main > section { flex: none; }
+main > section#mapa { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+main.full { padding: 0; }
+
+/* Barra de entendimento da busca natural */
+#nlbar {
+  flex: none;
+  padding: 8px 18px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Mapa Geral e Overlays estilo HUD DJI */
+#mapwrap { position: relative; flex: 1; min-height: 320px; }
+#map { position: absolute; inset: 0; height: auto; border-radius: 0; background: #080b10; }
+#fmap { height: 340px; border-radius: var(--radius); background: #080b10; }
+.maphint {
+  position: absolute;
+  left: 14px;
+  bottom: 24px;
+  z-index: 650;
+  background: rgba(11, 14, 19, 0.85);
+  backdrop-filter: blur(8px);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.ph-dot {
+  background: #1890ff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
+}
+.home-dot {
+  background: #f59e0b;
+  color: #0b0e13;
+  font: 800 11px/18px system-ui, sans-serif;
+  text-align: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+.marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
+  background-color: rgba(24, 144, 255, 0.28) !important;
+}
+.marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+  background-color: #1890ff !important;
+  color: #fff !important;
+  font-weight: 700;
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Customização escura dos controles e popups do Leaflet */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #141a23 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55) !important;
+  border-radius: 8px !important;
+}
+.leaflet-control-layers {
+  background: rgba(17, 22, 29, 0.92) !important;
+  backdrop-filter: blur(8px);
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+.leaflet-bar a {
+  background-color: rgba(17, 22, 29, 0.92) !important;
+  color: #f1f5f9 !important;
+  border-bottom-color: rgba(255, 255, 255, 0.12) !important;
+}
+.leaflet-bar a:hover { background-color: #1f2937 !important; color: #38bdf8 !important; }
+
+/* Cartões de Telemetria (DJI HUD Cards) */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.card {
+  background: var(--card);
+  padding: 11px 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-top: 2px solid rgba(24, 144, 255, 0.45);
+  color: var(--mut);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.card b {
+  display: block;
+  margin-top: 3px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--fg);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.card small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: 3px;
+  color: var(--mut);
+}
+
+/* Barras de ferramentas e filtros */
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 10px 0;
+}
+#ffilters, #midia > .row:first-child {
+  background: var(--card);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+/* Tabelas de Dados (Voos, Baterias, Locais, Pastas) */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--mut);
+  letter-spacing: 0.06em;
+  text-align: left;
+}
+td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 13.5px;
+}
+tr:last-child td { border-bottom: 0; }
+tr.r { cursor: pointer; transition: background 0.1s ease; }
+tr.r:hover td { background: rgba(24, 144, 255, 0.08); }
+#ftab th { cursor: pointer; user-select: none; white-space: nowrap; }
+#ftab th:hover { color: var(--fg); background: rgba(255, 255, 255, 0.05); }
+button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid var(--acc-cyan); outline-offset: 2px; }
+@media (max-width: 860px) {
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+#toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 3000;
+  background: rgba(17, 22, 29, 0.96);
+  border: 1px solid var(--acc-cyan);
+  color: var(--fg);
+  padding: 9px 15px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Galeria de Fotos e Vídeos */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 12px;
+}
+.it {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.it:hover {
+  transform: translateY(-2px);
+  border-color: rgba(24, 144, 255, 0.5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.it img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+  background: #080a0e;
+}
+.it .m {
+  padding: 7px 9px;
+  font-size: 12px;
+  color: var(--mut);
+  border-top: 1px solid var(--border);
+}
+.it input[type=checkbox] {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--acc);
+  cursor: pointer;
+  z-index: 2;
+}
+.it .bdg {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+.it .bdg span {
+  background: rgba(11, 14, 19, 0.85);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Barra de progresso (Manutenção de hélices) */
+.bar {
+  height: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #1890ff, #00d2ff);
+}
+
+/* Layout de duas colunas e Player de Voo 2D/3D */
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.two.one { grid-template-columns: 1fr; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+
+h3, h4 {
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+h4 {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mut);
+  margin: 18px 0 8px;
+}
+
+/* Player e Telemetria Sincronizada */
+#fplayer {
+  --ph: clamp(350px, 28vw, 540px);
+  align-items: start;
+  background: var(--card);
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+#fplayer .prow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  margin: 0 0 8px;
+  flex: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#fvbox { position: relative; }
+#fvbox video {
+  display: block;
+  width: 100%;
+  height: var(--ph);
+  background: #05070a;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  object-fit: contain;
+}
+#vcamhud {
+  position: absolute;
+  left: 10px;
+  bottom: 48px;
+  z-index: 10;
+  background: rgba(7, 9, 13, 0.82);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  color: #e2e8f0;
+  font: 600 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 3px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+}
+#fmapstack {
+  height: var(--ph) !important;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+#c3d { flex-wrap: nowrap; }
+#rd {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  color: var(--acc-cyan);
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+input[type=range] {
+  accent-color: var(--acc);
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+/* Painel Cockpit DJI: Joysticks RC, Horizonte Artificial (Pitch/Roll) e Telemetria Elétrica */
+#fcockpit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.hudbox {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.stk-wrap { text-align: center; font-size: 11px; color: var(--mut); }
+.stk {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #141c27 0%, #0b0e13 100%);
+  border: 1.5px solid rgba(56, 189, 248, 0.35);
+  position: relative;
+  margin: 0 auto 4px;
+}
+.stk::before, .stk::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.1);
+}
+.stk::before { left: 50%; top: 6px; bottom: 6px; width: 1px; }
+.stk::after { top: 50%; left: 6px; right: 6px; height: 1px; }
+.stk i {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #00d2ff;
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px #00d2ff;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transition: left 0.08s linear, top 0.08s linear;
+}
+
+/* Eventos de voo (pílulas clicáveis) */
+#fev button {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 99px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  font-variant-numeric: tabular-nums;
+}
+#fev button:hover {
+  border-color: var(--acc);
+  color: var(--acc-cyan);
+}
+
+/* Tela cheia do Replay 2D/3D */
+#f3dmsg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+  background: rgba(8, 11, 16, 0.88);
+  color: #fff;
+  border-radius: 8px;
+  z-index: 5;
+}
+#fmapbox:fullscreen {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+}
+#fmapbox:fullscreen #fmapstack { height: auto !important; flex: 1; min-height: 0; }
+#fmapbox:fullscreen #fvbox {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  width: min(390px, 38%);
+  z-index: 1200;
+  background: #05070a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.75);
+}
+#fmapbox:fullscreen #fvbox video { height: auto !important; max-height: 240px; border-radius: 8px; border: 0; }
+#fmapbox:fullscreen #fvsel { padding: 0 6px 6px; margin: 0; }
+#fmapbox:fullscreen #fsync { display: none; }
+@media (max-width: 800px) { #fplayer { --ph: max(56vw, 300px); } }
+
+#panel {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Modal de Foto / Vídeo / Panorama 360° */
+#modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 11, 0.92);
+  backdrop-filter: blur(6px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+}
+#mview {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#mboxes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: 8px;
+}
+#modal img, #modal video {
+  max-width: 92vw;
+  max-height: 74vh;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+#pano360 {
+  width: min(88vw, 1080px);
+  height: min(72vh, 640px);
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+}
+
+/* Responsividade da barra lateral em telas menores */
+@media (max-width: 1000px) {
+  #side { width: 68px; }
+  #side .lb, #side #banner div, #side .sbsearch, #side header a, #side #themetog span { display: none; }
+  #side #banner { justify-content: center; padding: 16px 0 12px; }
+  #side .nav { justify-content: center; padding: 11px 0; }
+  #side #scan { font-size: 0; padding: 9px; }
+  #side #scan::before { content: '⟳'; font-size: 18px; }
+  #side #scan:disabled::before { content: '…'; }
+}
+</style>
+</head>
+<body>
+<div id="banner">
+  <svg viewBox="0 0 64 64" width="40" height="40" role="img" aria-label="DJI Drone Telemetry">
+    <defs>
+      <linearGradient id="djiG" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#00d2ff"/>
+        <stop offset="100%" stop-color="#1890ff"/>
+      </linearGradient>
+    </defs>
+    <rect x="2" y="2" width="60" height="60" rx="14" fill="#101722" stroke="url(#djiG)" stroke-width="2"/>
+    <g stroke="url(#djiG)" stroke-width="2.6" stroke-linecap="round">
+      <path d="M32 32L17 17M32 32L47 17M32 32L17 47M32 32L47 47"/>
+    </g>
+    <g fill="#0b0e13" stroke="#38bdf8" stroke-width="2">
+      <circle cx="17" cy="17" r="6.5"/><circle cx="47" cy="17" r="6.5"/>
+      <circle cx="17" cy="47" r="6.5"/><circle cx="47" cy="47" r="6.5"/>
+    </g>
+    <rect x="25" y="22" width="14" height="20" rx="4.5" fill="url(#djiG)"/>
+    <circle cx="32" cy="37" r="2.3" fill="#0b0e13"/>
+  </svg>
+  <div>
+    <h1>Drone Manager</h1>
+    <p>DJI Mini 3 · Telemetria &amp; SIG</p>
+  </div>
+</div>
+<header>
+  <button id="b-mapa" onclick="show('mapa')">Mapa</button>
+  <button id="b-plan" onclick="menuPlan()">Planejar missão pré-voo</button>
+  <button id="b-airq" onclick="menuAirQuery()">Consultar espaço aéreo</button>
+  <button id="b-voos" onclick="show('voos')">Voos</button>
+  <button id="b-fotos" onclick="show('fotos')">Fotos</button>
+  <button id="b-videos" onclick="show('videos')">Vídeos</button>
+  <button id="b-stats" onclick="show('stats')">Estatísticas</button>
+  <button id="b-locais" onclick="show('locais')">Locais</button>
+  <button id="b-config" onclick="show('config')">Configurações</button>
+  <input id="nlq" placeholder="Buscar voos, fotos, locais…" title="Ex.: voos acima de 80 m em 2025, fotos verticais, panoramas 360…" onkeydown="if(event.key==='Enter')nlRun()"><button onclick="nlHelp()" title="Exemplos de busca">?</button><span class="sp"></span>
+  <a href="/api/logbook.csv">⬇ Diário de voo (CSV)</a>
+  <input type="file" id="logup" accept=".txt" multiple class="hide" onchange="uploadLogs(this.files)">
+  <button id="uplog" onclick="$('#logup').click()" style="width:100%;margin-bottom:4px;font-size:12.5px" title="Enviar arquivos DJIFlightRecord_*.txt direto pelo navegador">⬆ Enviar logs (.txt)</button>
+  <button id="scan" onclick="scan()">Escanear pastas</button>
+  <button id="themetog" onclick="toggleTheme()" title="Alternar tema Escuro (DJI Cockpit) / Claro">◐ <span>Tema Claro / Escuro</span></button>
+</header>
+<div id="nlbar" class="hide"></div>
+<main>
+  <section id="mapa">
+    <div id="mapwrap">
+      <div id="map"></div>
+      <div id="mplan" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:680;width:min(380px,92vw);background:rgba(15,20,28,0.95);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
+        <div class="row" style="margin:0 0 8px;justify-content:space-between">
+          <b style="color:var(--acc-cyan)">🧭 Planejador de Missão Pré-Voo</b>
+          <button onclick="togglePlanner(false)" style="padding:2px 7px;font-size:12px">✕</button>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Clique no mapa para adicionar pontos (Waypoints) da rota planejada.</div>
+        <div class="row" style="margin:6px 0">
+          <input id="mp-name" placeholder="Nome da missão (ex.: Mapeamento Praia)" style="flex:1;min-width:140px;font-size:12.5px">
+        </div>
+        <div class="row" style="margin:6px 0;font-size:12px">
+          <label>Alt. (m) <input id="mp-alt" type="number" min="5" max="500" value="60" oninput="renderDraftMission()" style="width:68px;padding:4px 6px"></label>
+          <label>Vel. (m/s) <input id="mp-spd" type="number" min="1" max="16" value="8" oninput="renderDraftMission()" style="width:62px;padding:4px 6px"></label>
+        </div>
+        <div id="mp-stats" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums">
+          Adicione pelo menos 2 pontos no mapa.
+        </div>
+        <div class="row" style="margin:8px 0 0">
+          <button onclick="undoWaypoint()" style="font-size:12px;padding:5px 9px">↶ Desfazer</button>
+          <button onclick="clearDraftMission()" style="font-size:12px;padding:5px 9px">Limpar</button>
+          <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px">💾 Salvar Missão</button>
+        </div>
+      </div>
+      <div class="maphint">Botão direito no mapa: salvar local favorito</div>
+    </div>
+  </section>
+
+  <section id="voos" class="hide">
+    <div id="flist">
+      <div class="row" id="ffilters">
+        <input id="fq" placeholder="Buscar por nome, local ou anotação" oninput="loadFlights()" style="min-width:220px">
+        <label>De <input id="fd1" type="date" onchange="loadFlights()"></label>
+        <label>Até <input id="fd2" type="date" onchange="loadFlights()"></label>
+        <input id="fa" type="number" min="0" placeholder="Altura mín. (m)" oninput="loadFlights()" style="width:125px">
+        <input id="fdur" type="number" min="0" placeholder="Duração mín. (min)" oninput="loadFlights()" style="width:145px">
+        <select id="fb" onchange="loadFlights()"><option value="">Todas as baterias</option></select>
+        <select id="fdri" onchange="loadFlights()"><option value="">Todas as aeronaves</option></select>
+        <select id="fs" onchange="loadFlights()"><option value="">Todos os tipos</option><option value="log">Com log (DJI)</option><option value="srt">Trilha de vídeo (.SRT)</option><option value="photos">Reconstruídos (fotos)</option></select>
+        <label><input id="ffav" type="checkbox" onchange="loadFlights()"> ★ Favoritos</label>
+        <button onclick="clearFlightFilters()">Limpar filtros</button>
+        <button onclick="$('#logup').click()">⬆ Enviar logs (.txt)</button>
+        <button onclick="airCheckAll()">Verificar espaço aéreo</button>
+        <button onclick="rescanLogs()" title="Reimporta os arquivos .txt de log para extrair sticks RC, horizonte artificial, potência em Watts, vento em altitude e vibração">⟳ Atualizar telemetria dos logs</button>
+        <span id="fcount" style="color:var(--mut)"></span>
+      </div>
+      <table id="ftab"></table>
+    </div>
+    <div id="fdet" class="hide">
+      <div id="fhead"></div>
+      <div class="two" id="fplayer">
+        <div id="fvbox">
+          <div class="prow">
+            <span style="color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Vídeo do voo</span>
+            <span id="fvsel" class="row" style="margin:0;flex-wrap:nowrap"></span>
+            <button onclick="grabFrameCoord()" style="margin-left:auto;font-size:12px;padding:3px 9px" title="Extrai a coordenada GPS exata do frame atual do vídeo">📍 Coordenada do frame</button>
+            <button onclick="exportHudVideo()" style="font-size:12px;padding:3px 9px" title="Gera um clipe MP4 com telemetria DJI embutida via FFmpeg">🎬 Exportar clipe com HUD</button>
+          </div>
+          <video id="vid" controls playsinline></video>
+          <div id="vcamhud" class="hide"></div>
+        </div>
+        <div id="fmapbox">
+          <div class="prow"><button id="b2d" class="on" onclick="setView('2d')">2D</button><button id="b3d" onclick="setView('3d')">3D</button><span id="c3d" class="row hide" style="margin:0"><button onclick="cam3d('follow')" title="A câmera acompanha o drone">Seguir</button><button onclick="cam3d('free')" title="Visão geral do voo">Geral</button><button onclick="cam3d('top')" title="Vista de cima">Topo</button><button id="bcone" class="on" onclick="toggleCone()" title="Cone de visão da câmera">Cone</button><button id="bfot" class="on" onclick="toggleFotos()" title="Fotos no trajeto">Fotos</button></span><button id="bfs" onclick="toggleFs()" style="margin-left:auto" title="Tela cheia (Esc para sair)">⛶ Tela cheia</button></div>
+          <div id="fmapstack" style="position:relative;height:340px"><div id="fmap" style="height:100%"></div><div id="f3dwrap" class="hide" style="position:absolute;inset:0;z-index:1100;background:#000;border-radius:8px;overflow:hidden"><div id="f3d" style="width:100%;height:100%"></div><div id="f3dmsg" class="hide"></div><div id="s3d" style="position:absolute;left:10px;top:8px;z-index:4;background:#000a;color:#fff;font-size:12px;padding:2px 8px;border-radius:5px;pointer-events:none"></div></div></div>
+        </div>
+      </div>
+      <div class="row"><button id="play">▶ Replay</button><select id="rate" onchange="setRate(this.value)" title="Velocidade do replay"><option value="0.5">0,5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><input id="slider" type="range" min="0" max="0" value="0" style="flex:1"><span id="rd"></span><button onclick="grabFrameCoord()" title="Extrair coordenada geográfica do instante/frame exibido">📍 Extrair coordenada</button></div>
+      <div id="fcoordbar" class="row hide" style="background:var(--card);border:1px solid var(--acc);padding:8px 12px;border-radius:8px;margin:4px 0 8px"></div>
+      <div id="fsync" class="row" style="margin:0 0 8px;font-size:12px;color:var(--mut)">Sincronia do vídeo: <button onclick="adjV(-5)">−5 s</button><button onclick="adjV(-1)">−1 s</button><b id="sadj">0 s</b><button onclick="adjV(1)">+1 s</button><button onclick="adjV(5)">+5 s</button><button onclick="adjV(0,true)">Zerar</button><span title="Se no mapa o drone aparece adiantado em relação ao vídeo, use −. Se aparece atrasado, use +.">ⓘ</span></div>
+
+      <!-- Painel Cockpit DJI: Joysticks RC, Horizonte Artificial (Pitch/Roll/Yaw/VS) e Telemetria Elétrica ao vivo -->
+      <div id="fcockpit">
+        <div class="hudbox">
+          <div class="stk-wrap">
+            <div class="stk"><i id="stk-l"></i></div>
+            <div>Acel./Giro <b id="stk-lt" style="color:var(--fg)">0 / 0</b></div>
+          </div>
+          <div class="stk-wrap">
+            <div class="stk"><i id="stk-r"></i></div>
+            <div>Frente/Lado <b id="stk-rt" style="color:var(--fg)">0 / 0</b></div>
+          </div>
+          <div style="font-size:12px;color:var(--mut);min-width:85px">
+            <div>Sinal RC</div>
+            <b id="hud-rcsig" style="font-size:16px;color:var(--acc-cyan)">–</b>
+            <div style="margin-top:4px">Satélites</div>
+            <b id="hud-sats" style="font-size:15px;color:var(--fg)">–</b>
+          </div>
+        </div>
+        <div class="hudbox">
+          <svg id="hud-ah" viewBox="0 0 90 90" width="74" height="74" style="border-radius:50%;border:1.5px solid rgba(56,189,248,0.4);background:#0b1524;flex:none">
+            <clipPath id="ahClip"><circle cx="45" cy="45" r="43"/></clipPath>
+            <g clip-path="url(#ahClip)">
+              <g id="ah-inner" transform="translate(45,45)">
+                <rect x="-90" y="-90" width="180" height="90" fill="#0c4a6e"/>
+                <rect x="-90" y="0" width="180" height="90" fill="#451a03"/>
+                <line x1="-90" y1="0" x2="90" y2="0" stroke="#38bdf8" stroke-width="1.5"/>
+                <line x1="-18" y1="-15" x2="18" y2="-15" stroke="#fff8" stroke-width="1"/>
+                <line x1="-18" y1="15" x2="18" y2="15" stroke="#fff8" stroke-width="1"/>
+              </g>
+              <path d="M20 45 H37 L45 50 L53 45 H70" fill="none" stroke="#f59e0b" stroke-width="2.2" stroke-linecap="round"/>
+            </g>
+          </svg>
+          <div style="font-size:12px;color:var(--mut);line-height:1.55">
+            <div>Pitch / Roll: <b id="hud-pr" style="color:var(--fg)">0° / 0°</b></div>
+            <div>Proa (Yaw): <b id="hud-yaw" style="color:var(--acc-cyan)">0°</b> · Gimbal: <b id="hud-gp" style="color:var(--fg)">0°</b></div>
+            <div>Vel. Vertical (V.S.): <b id="hud-vs" style="color:var(--ok)">0,0 m/s</b></div>
+          </div>
+        </div>
+        <div class="hudbox">
+          <div style="font-size:12px;color:var(--mut);line-height:1.55;width:100%">
+            <div style="display:flex;justify-content:space-between"><span>Potência Elétrica:</span><b id="hud-watts" style="color:#f59e0b;font-size:15px">– W</b></div>
+            <div style="display:flex;justify-content:space-between"><span>Tensão / Corrente:</span><b id="hud-va" style="color:var(--fg)">– V · – A</b></div>
+            <div style="display:flex;justify-content:space-between"><span>Células:</span><b id="hud-cells" style="color:var(--acc-cyan)">–</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two">
+        <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)">
+          <div class="row" style="margin:0 0 6px;justify-content:space-between">
+            <h4 style="margin:0">Gráfico do Voo</h4>
+            <div>
+              <button id="bch-fl" class="on" onclick="setChartMode('fl')" style="padding:3px 8px;font-size:11.5px">Voo (Alt / Vel / Bat)</button>
+              <button id="bch-el" onclick="setChartMode('el')" style="padding:3px 8px;font-size:11.5px">Elétrica (Watts / Amp / Células)</button>
+            </div>
+          </div>
+          <canvas id="fchart" height="170"></canvas>
+        </div>
+        <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Eventos de Telemetria</h4><div id="fev" class="row"></div></div>
+      </div>
+      <h4>Anotações de Voo</h4><textarea id="fnotes" rows="3" style="width:100%" placeholder="Vento, obstáculos, permissões, observações do voo"></textarea>
+      <h4>Mídias deste voo</h4><div id="fmedia" class="grid"></div>
+    </div>
+  </section>
+
+  <section id="midia" class="hide">
+    <div class="row">
+      <input id="mq" placeholder="Buscar por tag, local ou arquivo" oninput="loadMedia()">
+      <select id="mor" onchange="loadMedia()" title="Filtrar por orientação ou formato">
+        <option value="">Todas as orientações</option>
+        <option value="portrait">📱 Verticais (9:16 · Modo Retrato)</option>
+        <option value="landscape">🖼 Horizontais (Paisagem)</option>
+        <option value="pano">🌐 Panoramas 360°</option>
+        <option value="4k">🎬 Resolução 4K+</option>
+      </select>
+      <input id="md" type="date" onchange="loadMedia()" title="A partir de">
+      <input id="mn" placeholder="Perto de: lat,lon,km" onchange="loadMedia()">
+      <label><input id="mf" type="checkbox" onchange="loadMedia()"> Favoritas</label>
+      <label><input id="mu" type="checkbox" onchange="loadMedia()"> Sem voo associado</label>
+      <button onclick="exportSel()">Exportar selecionadas (ZIP)</button>
+      <button id="bdet-batch" onclick="detectBatchMedia()">🤖 Detectar objetos (IA)</button>
+      <a href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px">📋 Relatório IA</a>
+      <span id="mcount" style="color:var(--mut)"></span>
+    </div>
+    <div id="mgrid" class="grid"></div>
+  </section>
+
+  <section id="stats" class="hide"></section>
+  <section id="locais" class="hide"></section>
+  <section id="config" class="hide"></section>
+</main>
+<div id="modal" class="hide" onclick="if(event.target.id=='modal')closeM()"></div>
+
+<script>
+/* Configuração global do Chart.js para estética DJI Cockpit */
+if(window.Chart){
+  Chart.defaults.color='#8b9bb0';
+  Chart.defaults.borderColor='rgba(148,163,184,0.1)';
+}
+function toggleTheme(){
+  const lt=document.body.classList.toggle('light');
+  try{localStorage.setItem('dji_theme',lt?'light':'dark')}catch(e){}
+  if(window.Chart){
+    Chart.defaults.color=lt?'#475569':'#8b9bb0';
+    Chart.defaults.borderColor=lt?'rgba(15,23,42,0.08)':'rgba(148,163,184,0.1)';
+  }
+}
+(function(){
+  try{if(localStorage.getItem('dji_theme')==='light'){document.body.classList.add('light');if(window.Chart){Chart.defaults.color='#475569';Chart.defaults.borderColor='rgba(15,23,42,0.08)'}}}catch(e){}
+})();
+
+const $=s=>document.querySelector(s);
+const api=async(u,o)=>{const r=await fetch('/api'+u,o);if(!r.ok)throw new Error(await r.text());return r.json()};
+const J=(m,b)=>({method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+const fmt={d:s=>s?new Date(s).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'',
+  t:s=>{s=Math.round(s);return Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s'},km:m=>(m/1000).toFixed(2)+' km'};
+const PANEL={mapa:'mapa',voos:'voos',fotos:'midia',videos:'midia',stats:'stats',locais:'locais',config:'config'};
+function show(t){
+  for(const k in PANEL){$('#b-'+k).classList.toggle('on',k==t)}$('main').classList.toggle('full',t=='mapa');
+  for(const p of new Set(Object.values(PANEL)))$('#'+p).classList.toggle('hide',p!=PANEL[t]);
+  ({mapa:loadMap,voos:()=>{closeFlight();loadFlights()},fotos:()=>loadMedia('photo'),videos:()=>loadMedia('video'),stats:async()=>{await loadStats();loadBatHealth();loadPanel()},locais:loadSpots,config:loadConfig})[t]();
+}
+async function scan(force=0){
+  const b=$('#scan');b.disabled=true;b.textContent='Escaneando… (pode demorar)';
+  try{const r=await api('/scan?force='+(force?1:0),{method:'POST'});
+    alert(`Logs processados: ${r.logs}\nMídias novas: ${r.media}\nVoos reconstruídos: ${r.reconstruidos}`+(r.errors.length?`\n\nAvisos:\n${r.errors.slice(0,8).join('\n')}`:''));}
+  catch(e){alert('Erro ao escanear: '+e.message)}
+  b.disabled=false;b.textContent='Escanear pastas';
+  const cur=Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'));show(cur||'mapa');
+}
+async function rescanLogs(){
+  if(!confirm('Reimportar todos os arquivos de log (.txt) para extrair os novos dados de telemetria (Joysticks RC, Horizonte Artificial, Potência em Watts, Vento em Altitude, Ponto Home e Vibração)?'))return;
+  await scan(1);
+}
+async function uploadLogs(files){
+  if(!files||!files.length)return;
+  const btn=$('#uplog');if(btn){btn.disabled=true;btn.textContent='Enviando logs…'}
+  let ok=0,errs=[];
+  for(const f of files){
+    try{
+      const r=await fetch('/api/logs/upload?name='+encodeURIComponent(f.name),{method:'POST',body:f});
+      const j=await r.json();
+      if(r.ok&&j.ok)ok++;
+      else errs.push(`${f.name}: ${j.detail||j.error||'erro'}`);
+    }catch(e){errs.push(`${f.name}: ${e.message}`)}
+  }
+  $('#logup').value='';
+  if(btn){btn.disabled=false;btn.textContent='⬆ Enviar logs (.txt)'}
+  toast(`✓ ${ok} log(s) importado(s)`+(errs.length?` · ${errs.length} aviso(s)`:''));
+  if(errs.length)alert(`Importados: ${ok}\n\nAvisos:\n${errs.join('\n')}`);
+  const cur=Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'));show(cur||'voos');
+}
+
+/* ---------- espaço aéreo (DECEA / GEOAISWEB) ---------- */
+let AIRQ_ON=false;
+const AIR_L=[['Aeródromos e helipontos','ICA:airport_heliport'],['CTR (zonas de controle)','ICA:CTR'],
+  ['ATZ e FIZ (zonas de tráfego de aeródromo)','ICA:ATZ,ICA:fiz'],['Áreas proibidas, restritas e perigosas','ICA:eac_p,ICA:eac_r,ICA:eac_d']];
+function airLayers(){const o={};
+  AIR_L.forEach(([n,l])=>{
+    const t=L.tileLayer.wms('https://geoaisweb.decea.mil.br/geoserver/ows?',{layers:l,format:'image/png',transparent:true,version:'1.1.1',opacity:0.7,attribution:'Espaço aéreo: DECEA/GEOAISWEB'});
+    t._air=l;o['✈ '+n]=t});
+  return o}
+function toggleAirQuery(on){
+  AIRQ_ON=!!on;
+  if(AIRQ_ON&&PLAN_ON)togglePlanner(false);
+  const b=$('#b-airq');if(b)b.classList.toggle('on',AIRQ_ON);
+  if(map)map.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
+  if(fm)fm.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
+  if(AIRQ_ON)toast('✈ Consulta DECEA ativa: clique em um ponto do mapa');
+}
+async function menuAirQuery(){
+  const inFlight=!$('#voos').classList.contains('hide')&&!$('#fdet').classList.contains('hide');
+  const inMap=!$('#mapa').classList.contains('hide');
+  if(!inMap&&!inFlight){
+    await show('mapa');
+    toggleAirQuery(true);
+  }else{
+    toggleAirQuery(!AIRQ_ON);
+  }
+}
+function airQuery(m){
+  m.on('click',async e=>{
+    if(!AIRQ_ON)return;
+    const act=[];m.eachLayer(l=>{if(l._air)act.push(l._air)});
+    const ls=(act.length?act:AIR_L.map(a=>a[1])).join(',');
+    const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+    let r;try{r=await api('/airspace/info?lat='+e.latlng.lat+'&lon='+e.latlng.lng+'&layers='+encodeURIComponent(ls))}catch(x){r={error:String(x)}}
+    const fs=r.features||[];
+    const body=r.error?'Não foi possível consultar o DECEA agora.':fs.length?
+      fs.map(f=>'<b>'+E(String(f.id||'').split('.')[0])+'</b><br>'+Object.entries(f.properties||{}).filter(([k,v])=>v!==null&&v!==''&&typeof v!='object').slice(0,8).map(([k,v])=>E(k)+': '+E(v)).join('<br>')).join('<hr>')
+      :'Nenhuma área das camadas consultadas neste ponto.';
+    L.popup({maxWidth:320}).setLatLng(e.latlng).setContent(body+'<hr><small>Referência visual, não é autorização de voo. Confirme no SARPAS/DECEA antes de voar.</small>').openOn(m)})}
+
+/* ---------- cálculo de Pegada de Fotos no Solo (Footprint) e GSD (Fotogrametria) ---------- */
+function havDist(a,b,c,d){
+  const R=Math.PI/180,x=Math.sin((c-a)*R/2)**2+Math.cos(a*R)*Math.cos(c*R)*Math.sin((d-b)*R/2)**2;
+  return 12742000*Math.asin(Math.min(1,Math.sqrt(Math.max(0,x))));
+}
+function calcFootprint(p,tr,fst){
+  if(p.lat==null||p.lon==null||Math.abs(p.lat)+Math.abs(p.lon)<0.001)return null;
+  const mt=p.meta||{};
+  let alt=mt.rel_alt!=null?+mt.rel_alt:null,yaw=mt.gyaw!=null?+mt.gyaw:null,gp=mt.gpitch!=null?+mt.gpitch:null;
+  if((alt==null||yaw==null)&&tr&&tr.length&&fst){
+    const t=(new Date(p.taken)-new Date(fst))/1000;
+    let i=tr.findIndex(x=>x[0]>=t);if(i<0)i=tr.length-1;
+    const tp=tr[i];
+    if(tp){
+      if(alt==null&&tp[3]>2)alt=tp[3];
+      if(yaw==null&&typeof tp[7]=='number')yaw=tp[7];
+      if(gp==null&&typeof tp[8]=='number')gp=tp[8];
+    }
+  }
+  if(!alt||alt<3)alt=60;
+  if(yaw==null)yaw=0;
+  if(gp==null)gp=-75;
+  const w=p.w||4000,h=p.h||3000,f35=mt.focal35||24;
+  const hfov=2*Math.atan(18/f35),vfov=2*Math.atan((18*(h/w))/f35);
+  /* Calcula cobertura no solo (m) e GSD (cm/pixel) */
+  const nadirDist=alt/Math.max(0.25,Math.sin(Math.min(Math.PI/2,Math.max(0.25,Math.abs(gp)*Math.PI/180))));
+  const gw=Math.min(600,2*nadirDist*Math.tan(hfov/2)),gh=Math.min(600,2*nadirDist*Math.tan(vfov/2));
+  const gsd=(gw*100)/w;
+  const fwd=(gp>-75)?Math.min(250,alt/Math.tan(Math.max(0.25,Math.abs(gp)*Math.PI/180))):0;
+  const Y=yaw*Math.PI/180,cosY=Math.cos(Y),sinY=Math.sin(Y);
+  const mLat=111320,mLon=111320*Math.cos(p.lat*Math.PI/180);
+  const corners=[[-gw/2,fwd+gh/2],[gw/2,fwd+gh/2],[gw/2,fwd-gh/2],[-gw/2,fwd-gh/2]].map(([rx,ry])=>{
+    const east=rx*cosY+ry*sinY,north=-rx*sinY+ry*cosY;
+    return [p.lat+north/mLat,p.lon+east/mLon];
+  });
+  return {corners,gsd:gsd.toFixed(2),gw:Math.round(gw),gh:Math.round(gh),alt:Math.round(alt),radius:Math.hypot(gw,gh)/2};
+}
+
+/* ---------- mapas-base compartilhados ---------- */
+function makeBases(){return {
+  'Mapa':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}),
+  'Satélite':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxNativeZoom:19,maxZoom:20}),
+  'Relevo':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap, SRTM | © OpenTopoMap',maxNativeZoom:17,maxZoom:20}),
+  'Claro':L.layerGroup([L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri, HERE, DeLorme, © OpenStreetMap',maxNativeZoom:16,maxZoom:20}),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:20})]),
+  'Escuro':L.layerGroup([L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri, HERE, DeLorme, © OpenStreetMap',maxNativeZoom:16,maxZoom:20}),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:20})])}}
+function savedBase(B){let c='Satélite';try{c=localStorage.getItem('basemap')||'Satélite'}catch(e){}return B[c]?c:'Satélite'}
+function setBase(m,n){if(!m||!m._bases||m._cur===n)return;m.removeLayer(m._bases[m._cur]);m._cur=n;m._bases[n].addTo(m)}
+function saveBase(n){try{localStorage.setItem('basemap',n)}catch(e){}setBase(map,n);setBase(fm,n)}
+function wireBases(m,B){const c=savedBase(B);m._bases=B;m._cur=c;B[c].addTo(m);m.on('baselayerchange',e=>{m._cur=e.name;saveBase(e.name)})}
+const PHI=L.divIcon({className:'ph-dot',iconSize:[16,16]});
+const HOMEI=L.divIcon({className:'home-dot',html:'H',iconSize:[22,22]});
+
+/* ---------- mapa geral e planejador de missões pré-voo ---------- */
+let map,L_={},PLAN_ON=false,PLAN_WPS=[];
+function togglePlanner(on){
+  PLAN_ON=!!on;
+  if(PLAN_ON&&AIRQ_ON)toggleAirQuery(false);
+  const p=$('#mplan');if(p)p.classList.toggle('hide',!PLAN_ON);
+  const b=$('#b-plan');if(b)b.classList.toggle('on',PLAN_ON);
+  if(map)map.getContainer().style.cursor=PLAN_ON?'crosshair':(AIRQ_ON?'crosshair':'');
+  renderDraftMission();
+}
+async function menuPlan(){
+  if($('#mapa').classList.contains('hide')){
+    await show('mapa');
+    togglePlanner(true);
+  }else{
+    togglePlanner(!PLAN_ON);
+  }
+}
+function renderDraftMission(){
+  if(!L_.draft)return;
+  L_.draft.clearLayers();
+  const box=$('#mp-stats');
+  if(!PLAN_WPS.length){if(box)box.textContent='Adicione pelo menos 2 pontos no mapa.';return}
+  const alt=+(($('#mp-alt')&&$('#mp-alt').value)||60),spd=Math.max(1,+(($('#mp-spd')&&$('#mp-spd').value)||8));
+  let dist=0,vlos=0;
+  const h0=PLAN_WPS[0];
+  PLAN_WPS.forEach((w,i)=>{
+    vlos=Math.max(vlos,havDist(h0[0],h0[1],w[0],w[1]));
+    if(i>0)dist+=havDist(PLAN_WPS[i-1][0],PLAN_WPS[i-1][1],w[0],w[1]);
+    L.circleMarker([w[0],w[1]],{radius:i===0?7:5,color:'#fff',weight:2,fillColor:i===0?'#f59e0b':'#00d2ff',fillOpacity:1})
+      .addTo(L_.draft).bindTooltip(i===0?'H (WP1)':`WP${i+1}`,{permanent:true,direction:'top',offset:[0,-6]});
+  });
+  if(PLAN_WPS.length>=2){
+    L.polyline(PLAN_WPS,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.draft);
+  }
+  const dur=Math.round(dist/spd+PLAN_WPS.length*3+(alt*2)/2.5);
+  const bat=Math.min(100,Math.max(3,Math.round((dur/(25*60))*100)));
+  if(box){
+    box.innerHTML=`Pontos: <b>${PLAN_WPS.length}</b> · Distância: <b>${fmt.km(dist)}</b> · VLOS máx.: <b style="color:${vlos>500?'#f59e0b':'#10b981'}">${Math.round(vlos)} m</b><br>`+
+      `Tempo est.: <b>${fmt.t(dur)}</b> · Bateria est. (Mini 3): <b style="color:${bat>80?'#ef4444':bat>60?'#f59e0b':'#10b981'}">${bat}%</b>`;
+  }
+}
+function undoWaypoint(){PLAN_WPS.pop();renderDraftMission()}
+function clearDraftMission(){PLAN_WPS=[];renderDraftMission()}
+async function saveDraftMission(){
+  if(PLAN_WPS.length<2)return alert('Clique no mapa para adicionar pelo menos 2 waypoints.');
+  const name=($('#mp-name').value||'').trim()||'Missão planejada';
+  const alt=+(($('#mp-alt').value)||60),speed=+(($('#mp-spd').value)||8);
+  const m=await api('/missions',J('POST',{name,waypoints:PLAN_WPS,alt,speed}));
+  toast('✓ Missão pré-voo salva!');
+  PLAN_WPS=[];$('#mp-name').value='';togglePlanner(false);
+  try{await api('/missions/'+m.id+'/airspace-check',{method:'POST'});toast('✈ Espaço aéreo da missão verificado no DECEA')}catch(e){}
+  loadMap();
+}
+async function viewMissionOnMap(mid){
+  const ms=await api('/missions'),m=ms.find(x=>x.id===mid);
+  if(!m||!m.waypoints.length)return;
+  show('mapa');
+  setTimeout(()=>map.fitBounds(L.latLngBounds(m.waypoints.map(w=>[w[0],w[1]])).pad(0.25)),150);
+}
+async function loadMap(){
+  if(!map){
+    map=L.map('map').setView([-22.9,-43.2],10);
+    const bases=makeBases();wireBases(map,bases);
+    L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),
+        fotos:L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}).addTo(map),
+        footprints:L.layerGroup(),spots:L.layerGroup().addTo(map)};
+    const cfg=await api('/config'),ov={'Voos realizados':L_.voos,'🧭 Missões planejadas':L_.missoes,'Fotos':L_.fotos,'📐 Pegada das fotos (Footprint / GSD)':L_.footprints,'Locais favoritos':L_.spots};
+    if(cfg.airspace)ov['Espaço aéreo']=L.tileLayer(cfg.airspace,{opacity:.6});Object.assign(ov,airLayers());
+    L.control.layers(bases,ov).addTo(map);airQuery(map);
+    map.on('click',e=>{
+      if(!PLAN_ON)return;
+      PLAN_WPS.push([+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)]);
+      renderDraftMission();
+    });
+    map.on('contextmenu',async e=>{
+      const n=prompt('Nome do local favorito:');if(!n)return;
+      const notes=prompt('Anotações (vento, obstáculos, permissões):')||'';
+      await api('/spots',J('POST',{name:n,lat:e.latlng.lat,lon:e.latlng.lng,notes}));loadMap();
+    });
+  }
+  map.invalidateSize();[L_.voos,L_.missoes,L_.fotos,L_.footprints,L_.spots].forEach(l=>l&&l.clearLayers());
+  const [tr,ph,sp,ms]=await Promise.all([api('/tracks'),api('/media?kind=photo&geo=1'),api('/spots'),api('/missions')]);
+  const all=[];
+  tr.forEach((f,i)=>all.push(L.polyline(f.pts,{color:`hsl(${(i*47)%360},82%,56%)`,weight:3,dashArray:f.source!='log'?'6 6':null}).addTo(L_.voos)
+    .bindPopup(`<b>${f.fav?'★ ':''}${f.name?esc(f.name):fmt.d(f.start)}</b><br>${f.name?fmt.d(f.start)+' · ':''}${esc(f.place||'')}<br>${fmt.km(f.distance)}, máx. ${Math.round(f.max_alt)} m<br><a href="#" onclick="openFlight(${f.id});return false">Abrir voo</a>`)));
+  (ms||[]).forEach(m=>{
+    const pts=m.waypoints.map(w=>[w[0],w[1]]);
+    if(pts.length>=2){
+      all.push(L.polyline(pts,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.missoes)
+        .bindPopup(`<b>🧭 Missão: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · Bateria est. <b>${m.est_battery_pct}%</b><br>Alt. ${m.alt} m · VLOS máx. ${Math.round(m.max_vlos)} m<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
+    }
+  });
+  ph.forEach((p,idx)=>{
+    const fp=calcFootprint(p,null,null);
+    let ovl='';
+    if(fp&&idx>0&&ph[idx-1].flight_id===p.flight_id){
+      const d=havDist(p.lat,p.lon,ph[idx-1].lat,ph[idx-1].lon),pct=Math.max(0,Math.min(98,Math.round((1-d/Math.max(10,fp.gw))*100)));
+      if(pct>0)ovl=` · Sobreposição est.: <b>${pct}%</b>`;
+    }
+    const fpInfo=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · Área: <b>${fp.gw}×${fp.gh} m</b>${ovl}</div>`:'';
+    L.marker([p.lat,p.lon],{icon:PHI}).addTo(L_.fotos).bindPopup(`<div style="text-align:center"><img src="/api/media/${p.id}/thumb" style="width:300px;max-width:100%;cursor:zoom-in;border-radius:6px" onclick="openMedia(${p.id})"><div style="margin:4px 0">${fmt.d(p.taken)}${p.place?' · '+esc(p.place):''}</div>${fpInfo}<a href="#" onclick="openMedia(${p.id});return false">Abrir em tamanho grande</a>${p.flight_id?' · <a href="#" onclick="openFlight('+p.flight_id+');return false">Ver voo</a>':''}</div>`,{maxWidth:320});
+    if(fp)L.polygon(fp.corners,{color:'#00d2ff',weight:1.5,fillColor:'#1890ff',fillOpacity:0.18}).addTo(L_.footprints)
+      .bindPopup(`<b>📐 Pegada da Foto #${p.id}</b><br>GSD estimado: <b>${fp.gsd} cm/pixel</b><br>Cobertura no solo: <b>${fp.gw} × ${fp.gh} m</b> (alt. ~${fp.alt} m)${ovl}<br><a href="#" onclick="openMedia(${p.id});return false">Ver foto</a>`);
+  });
+  sp.forEach(s=>L.marker([s.lat,s.lon]).addTo(L_.spots).bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.notes||'')}`));
+  if(all.length)map.fitBounds(L.featureGroup(all).getBounds());
+}
+
+/* ---------- voos ---------- */
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let FS={k:'start',o:'desc'};
+function sortF(k){FS.o=(FS.k==k&&FS.o=='desc')?'asc':'desc';FS.k=k;loadFlights()}
+async function favF(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));loadFlights()}
+async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));toast('✓ Nome do voo salvo')}
+async function favDetail(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));const b=$('#favbtn');b.textContent=v?'★':'☆';b.style.color=v?'#f59e0b':'var(--fg)';b.setAttribute('onclick','favDetail('+id+','+(v?0:1)+')');toast(v?'★ Adicionado aos favoritos':'☆ Removido dos favoritos')}
+function clearFlightFilters(){['fq','fd1','fd2','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});$('#ffav').checked=false;loadFlights()}
+async function loadFlights(){
+  const sel=$('#fb'),dsel=$('#fdri');
+  if(sel.options.length<2){
+    try{
+      const ff=await api('/flight-filters');
+      ff.batteries.forEach(b=>sel.add(new Option(b,b)));
+      (ff.drones||[]).forEach(d=>dsel.add(new Option(d,d.split(' (')[0])));
+    }catch(e){}
+  }
+  const p=new URLSearchParams({q:$('#fq').value,min_alt:$('#fa').value||0,min_dur:$('#fdur').value||0,date_from:$('#fd1').value,date_to:$('#fd2').value,
+    battery:sel.value,drone:dsel?dsel.value:'',source:$('#fs').value,fav:$('#ffav').checked?1:0,sort:FS.k,order:FS.o});
+  const fl=(await api('/flights?'+p)).filter(NLF);
+  const ar=k=>FS.k==k?(FS.o=='desc'?' ▼':' ▲'):'';
+  const th=(k,t)=>`<th onclick="sortF('${k}')">${t}${ar(k)}`;
+  const filtered=[...p.entries()].some(([k,v])=>!['sort','order'].includes(k)&&v!==''&&v!=='0');
+  const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">📷 fotos</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">🎬 .SRT</span>':'';
+  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start','Data')+th('name','Nome')+th('place','Local')+th('duration','Duração')+th('distance','Distância')+th('max_alt','Altura máx.')+th('max_speed','Vel. máx.')+'<th>Bateria<th>Esp. aéreo</tr>'+
+    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${Math.round(f.max_alt)} m<td>${(f.max_speed*3.6).toFixed(0)} km/h<td>${esc(f.battery_sn||'')}<td>${airChip(f)}</tr>`).join('')
+    ||`<tr><td colspan=10>${filtered?'Nenhum voo encontrado com esses filtros.':'Nenhum voo ainda. Coloque os logs em data/logs e clique em Escanear pastas.'}</tr>`);
+  $('#fcount').textContent=fl.length+(fl.length==1?' voo':' voos');
+}
+let fm,fg,mk,homeMk,homeLine,ch,CH_MODE='fl',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
+const cursor={id:'cursor',afterDraw(c){const i=window.CI;if(i==null||!c.scales.x)return;
+  const x=c.scales.x.getPixelForValue(i),a=c.chartArea,g=c.ctx;g.save();g.strokeStyle='#38bdf8';g.lineWidth=1.5;
+  g.beginPath();g.moveTo(x,a.top);g.lineTo(x,a.bottom);g.stroke();g.restore()}};
+function closeFlight(){clearInterval(tm);tm=null;if(V3)V3.useDefaultRenderLoop=false;const v=$('#vid');v&&v.pause();$('#fdet').classList.add('hide');$('#flist').classList.remove('hide')}
+
+function updateCockpitHud(i){
+  const p=T[i];if(!p)return;
+  /* 1. Joysticks RC (p[12] = [thr, rud, ele, ail]) e Sinal RC (p[13]) */
+  const stk=Array.isArray(p[12])?p[12]:[0,0,0,0];
+  const [thr,rud,ele,ail]=stk.map(v=>v||0);
+  const sl=$('#stk-l'),sr=$('#stk-r');
+  if(sl){sl.style.left=(50+rud*0.38)+'%';sl.style.top=(50-thr*0.38)+'%'}
+  if(sr){sr.style.left=(50+ail*0.38)+'%';sr.style.top=(50-ele*0.38)+'%'}
+  $('#stk-lt').textContent=`${thr}% / ${rud}%`;
+  $('#stk-rt').textContent=`${ele}% / ${ail}%`;
+  $('#hud-rcsig').textContent=p[13]!=null?p[13]+'%':'–';
+  $('#hud-sats').textContent=p[6]!=null?p[6]:'–';
+  /* 2. Horizonte Artificial (Pitch p[9], Roll p[10]), Proa (Yaw p[7]), Gimbal (p[8]) e Vel. Vertical (p[11] ou delta alt) */
+  const pt=typeof p[9]=='number'?p[9]:0,rl=typeof p[10]=='number'?p[10]:0;
+  const yw=typeof p[7]=='number'?((p[7]%360+360)%360):0,gp=typeof p[8]=='number'?p[8]:0;
+  const vs=typeof p[11]=='number'?p[11]:(i>0?p[3]-T[i-1][3]:0);
+  const ah=$('#ah-inner');
+  if(ah)ah.setAttribute('transform',`translate(45,45) rotate(${-rl}) translate(0,${Math.max(-30,Math.min(30,pt*1.2))})`);
+  $('#hud-pr').textContent=`${pt.toFixed(0)}° / ${rl.toFixed(0)}°`;
+  $('#hud-yaw').textContent=`${yw.toFixed(0)}°`;
+  $('#hud-gp').textContent=`${gp.toFixed(0)}°`;
+  const vsEl=$('#hud-vs');
+  if(vsEl){vsEl.textContent=(vs>0?'+':'')+vs.toFixed(1)+' m/s';vsEl.style.color=Math.abs(vs)>3?'#f59e0b':'#10b981'}
+  /* 3. Telemetria Elétrica ao vivo (p[14] = [V, A, W, c1, c2...]) */
+  const pwr=Array.isArray(p[14])?p[14]:null;
+  $('#hud-watts').textContent=pwr&&pwr[2]!=null?pwr[2].toFixed(1)+' W':'– W';
+  $('#hud-va').textContent=pwr&&pwr[0]!=null?`${pwr[0].toFixed(2)} V · ${(pwr[1]||0).toFixed(1)} A`:'– V · – A';
+  const cells=pwr?pwr.slice(3).filter(c=>c!=null):[];
+  $('#hud-cells').textContent=cells.length?cells.map((c,k)=>`C${k+1}: ${c.toFixed(2)}V`).join(' · '):'–';
+}
+
+function seek(i){
+  const p=T[i];if(!p)return;window.TNOW=p[0];const ll=[p[1],p[2]];mk.setLatLng(ll);if(!fm.getBounds().contains(ll))fm.panTo(ll);
+  if(homeLine&&FHOME)homeLine.setLatLngs([[FHOME.lat,FHOME.lon],ll]);
+  const hdist=FHOME?Math.round(havDist(FHOME.lat,FHOME.lon,p[1],p[2])):0;
+  $('#slider').value=i;window.CI=i;ch&&ch.draw();
+  $('#rd').textContent=`${fmt.t(p[0])} · Alt ${p[3]} m · ${(p[4]*3.6).toFixed(0)} km/h · Dist H ${hdist} m · Bat ${p[5]??'–'}%`;
+  updateCockpitHud(i);
+}
+function seekT(t){let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;seek(i);window.TNOW=t}
+function vOff(v){ /* início do vídeo em segundos de voo; encaixa no evento "Início de gravação" do log */
+  let off=(new Date(v.taken)-new Date(FST))/1000,b=null;
+  FEV.filter(e=>e.label.startsWith('Início de gravação')&&e.t>0).forEach(e=>{
+    if(Math.abs(e.t-off)<=30&&(b==null||Math.abs(e.t-off)<Math.abs(b-off)))b=e.t});
+  return b==null?off:b}
+async function loadV(i,play,t){
+  CV=i;const v=FV[i],el=$('#vid');$('#sadj').textContent=((v.sync_adj||0)>0?'+':'')+(v.sync_adj||0)+' s';
+  document.querySelectorAll('.vb').forEach((b,k)=>b.classList.toggle('on',k==i));
+  scrubUntil=performance.now()+500;
+  if(t===undefined)seekT(Math.max(0,v.off));
+  el.onloadedmetadata=()=>{el.currentTime=t===undefined?0:Math.max(0,Math.min(t-v.off,el.duration-0.05));if(play)el.play().catch(()=>{})};
+  el.src='/api/media/'+v.id+'/file';el.load();
+  /* Carrega trilha .SRT do vídeo para mostrar parâmetros da câmera em tempo real */
+  if(!VSRT[v.id]){try{VSRT[v.id]=await api('/media/'+v.id+'/srt')}catch(e){VSRT[v.id]=[]}}
+  updateVideoCamHud(0);
+}
+function updateVideoCamHud(sec){
+  const box=$('#vcamhud'),v=FV[CV];
+  if(!box||!v||!VSRT[v.id]||!VSRT[v.id].length){if(box)box.classList.add('hide');return}
+  const pts=VSRT[v.id],s=Math.floor(sec),p=pts.find(x=>x.t>=s)||pts[pts.length-1];
+  if(!p||(!p.iso&&!p.shutter&&p.alt==null)){box.classList.add('hide');return}
+  const parts=[];
+  if(p.iso)parts.push('ISO '+p.iso);
+  if(p.shutter)parts.push('Shutter '+p.shutter);
+  if(p.fnum)parts.push('f/'+p.fnum);
+  if(p.ev!=null)parts.push('EV '+(p.ev>0?'+':'')+p.ev);
+  if(p.focal)parts.push(p.focal+'mm');
+  if(p.alt!=null)parts.push('Alt SRT '+p.alt.toFixed(1)+'m');
+  box.textContent=parts.join(' · ');
+  box.classList.toggle('hide',!parts.length);
+}
+function syncV(i){
+  if(!FV.length)return;const t=T[i][0];let k=0;FV.forEach((v,j)=>{if(v.off<=t)k=j});
+  if(k!==CV){loadV(k,!$('#vid').paused,t);return}
+  const el=$('#vid'),x=t-FV[CV].off,d=el.duration;scrubUntil=performance.now()+300;
+  el.currentTime=Math.max(0,isFinite(d)?Math.min(x,d-0.05):x);
+  updateVideoCamHud(el.currentTime);
+}
+function goT(t){seekT(t);syncV(+$('#slider').value)}
+(function(){const el=$('#vid');
+  el.onplay=()=>{$('#play').textContent='⏸ Pausar'};
+  el.onpause=()=>{if(!tm)$('#play').textContent='▶ Replay'};
+  el.ontimeupdate=()=>{
+    updateVideoCamHud(el.currentTime);
+    if(performance.now()<scrubUntil||!FV.length||!T.length)return;
+    seekT(el.currentTime+FV[CV].off)};
+  el.onended=()=>{if(CV+1<FV.length)loadV(CV+1,true)};
+  $('#play').onclick=()=>{const sl=$('#slider');
+    if(FV.length){
+      if(!el.paused){el.pause();return}
+      const x=T[+sl.value][0]-FV[CV].off;
+      el.currentTime=(x<0||(isFinite(el.duration)&&x>=el.duration-0.1))?0:x;
+      el.play().catch(()=>{});return}
+    if(tm){clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';return}
+    if(+sl.value>=+sl.max)seek(0);
+    $('#play').textContent='⏸ Pausar';
+    tm=setInterval(()=>{const end=T[T.length-1][0],t=(window.TNOW||0)+0.1*RATE;if(t>=end){seekT(end);clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';return}seekT(t)},100)};
+})();
+
+function renderFlightChart(){
+  ch&&ch.destroy();
+  const labels=T.map(p=>fmt.t(p[0]));
+  let datasets=[];
+  if(CH_MODE==='el'){
+    datasets=[
+      {label:'Potência (W)',data:T.map(p=>Array.isArray(p[14])?p[14][2]:null),borderColor:'#f59e0b',backgroundColor:'#f59e0b',borderWidth:2,pointRadius:0},
+      {label:'Corrente (A)',data:T.map(p=>Array.isArray(p[14])?p[14][1]:null),borderColor:'#00d2ff',backgroundColor:'#00d2ff',borderWidth:2,pointRadius:0},
+      {label:'Tensão Total (V)',data:T.map(p=>Array.isArray(p[14])?p[14][0]:null),borderColor:'#10b981',backgroundColor:'#10b981',borderWidth:2,pointRadius:0},
+      {label:'Célula 1 (V)',data:T.map(p=>Array.isArray(p[14])&&p[14][3]?p[14][3]:null),borderColor:'#a855f7',backgroundColor:'#a855f7',borderWidth:1.5,pointRadius:0},
+      {label:'Célula 2 (V)',data:T.map(p=>Array.isArray(p[14])&&p[14][4]?p[14][4]:null),borderColor:'#ec4899',backgroundColor:'#ec4899',borderWidth:1.5,pointRadius:0}
+    ];
+  }else{
+    datasets=[
+      {label:'Altura (m)',data:T.map(p=>p[3]),borderColor:'#00d2ff',backgroundColor:'#00d2ff',borderWidth:2,pointRadius:0},
+      {label:'Velocidade (km/h)',data:T.map(p=>p[4]*3.6),borderColor:'#f59e0b',backgroundColor:'#f59e0b',borderWidth:2,pointRadius:0},
+      {label:'Bateria (%)',data:T.map(p=>p[5]),borderColor:'#10b981',backgroundColor:'#10b981',borderWidth:2,pointRadius:0}
+    ];
+  }
+  ch=new Chart($('#fchart'),{type:'line',data:{labels,datasets},options:{animation:false,scales:{x:{ticks:{maxTicksLimit:8}}}},plugins:[cursor]});
+}
+function setChartMode(m){
+  CH_MODE=m;
+  $('#bch-fl').classList.toggle('on',m==='fl');
+  $('#bch-el').classList.toggle('on',m==='el');
+  renderFlightChart();
+}
+
+async function openFlight(id){
+  window.CURF=id;show('voos');const f=await api('/flights/'+id);T=f.track;FST=f.start_local;FEV=f.events;
+  const mt=f.meta||{};FHOME=mt.home||(T.length?{lat:T[0][1],lon:T[0][2],max_dist:0}:null);
+  clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';
+  $('#flist').classList.add('hide');$('#fdet').classList.remove('hide');
+  const w=f.weather,we=mt.wind_est,dr=mt.drone||{},mc=mt.mech||{};
+  const hmax=FHOME&&FHOME.max_dist!=null?Math.round(FHOME.max_dist):0;
+  const vlosBadge=hmax>500?' <span style="color:#f59e0b;font-size:12px">🟡 >500m</span>':' <span style="color:#10b981;font-size:12px">🟢 VLOS</span>';
+  const mechWarn=[];
+  if(mc.vib_s>0)mechWarn.push(`Vibração anormal nas hélices (${mc.vib_s} s)`);
+  if(mc.force_s>0)mechWarn.push(`Força de propulsão insuficiente (${mc.force_s} s)`);
+  if(mc.comp_s>0)mechWarn.push(`Interferência na bússola (${mc.comp_s} s)`);
+  if(mc.gimb_s>0)mechWarn.push(`Gimbal travado (${mc.gimb_s} s)`);
+  const mechBanner=mechWarn.length?`<div style="background:rgba(239,68,68,0.14);border:1px solid #ef4444;color:#fca5a5;padding:8px 12px;border-radius:8px;margin:8px 0"><b>⚠ Alerta Mecânico / Sensores:</b> ${mechWarn.join(' · ')} — inspecione as hélices e motores.</div>`:'';
+  const drLabel=(dr.type||dr.name)?`${esc(dr.type||'DJI Mini 3')}${dr.name?' ('+esc(dr.name)+')':''}${dr.sn?' · SN '+esc(dr.sn):''}`:'';
+  $('#fhead').innerHTML=`<div class="row" style="margin-top:0"><button onclick="closeFlight()">← Voltar</button> <button id="favbtn" onclick="favDetail(${id},${f.fav?0:1})" title="Favoritar este voo" style="font-size:16px;color:${f.fav?'#f59e0b':'var(--fg)'}">${f.fav?'★':'☆'}</button> <input id="fname" value="${esc(f.name)}" placeholder="Dê um nome a este voo (ex.: Praia da Barra, pôr do sol)" onchange="renameF(${id},this.value)" style="width:min(440px,90%);font-size:15px;font-weight:600"> <span style="color:var(--mut)">${fmt.d(f.start_local)} ${f.place?'· '+esc(f.place):''} ${drLabel?'· 🛸 '+drLabel:''}</span>${f.source=='photos'?' <span style="color:var(--mut)">(reconstruído das fotos)</span>':f.source=='srt'?' <span style="color:var(--acc-cyan)">(reconstruído de trilha .SRT)</span>':''}</div>
+   ${mechBanner}
+   <div class=cards>
+    <div class=card>Duração<b>${fmt.t(f.duration)}</b></div><div class=card>Distância<b>${fmt.km(f.distance)}</b></div>
+    <div class=card>Dist. máx. Home<b>${hmax} m${vlosBadge}</b>${FHOME&&FHOME.rth_alt?`<small>RTH: ${FHOME.rth_alt} m</small>`:''}</div>
+    <div class=card>Altura máx.<b>${Math.round(f.max_alt)} m</b></div><div class=card>Vel. máx.<b>${(f.max_speed*3.6).toFixed(0)} km/h</b></div>
+    <div class=card>Bateria<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
+    <div class=card>Vento no ar (est.)<b style="font-size:15px">${we?`${we.spd} m/s (${we.card})`:'–'}</b>${we?`<small>Rajada est.: ${we.max} m/s (${we.deg}°)</small>`:'<small>Reimporte o log</small>'}</div>
+    <div class=card>Clima em solo<b style="font-size:14px">${w?`${w.temperature_2m} °C, vento ${w.wind_speed_10m} m/s (raj. ${w.wind_gusts_10m})`:'indisponível'}</b></div></div>
+   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report" target=_blank>🖨 Relatório em PDF</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">🤖 Detectar objetos (IA)</button> · <a href="/api/detections/report?flight_id=${id}" target=_blank>📋 Relatório IA</a></div><div id="fair" style="margin:6px 0"></div>`;
+  if(!fm){
+    fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
+    FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
+    FOTFP=L.layerGroup().addTo(fm);
+    const OV=airLayers();OV['📷 Fotos do voo']=FOTL;OV['📐 Pegada das fotos (GSD)']=FOTFP;
+    L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
+  }
+  fg&&fm.removeLayer(fg);
+  const line=L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4});
+  mk=L.circleMarker([T[0][1],T[0][2]],{radius:8,color:'#fff',weight:2,fillColor:'#1890ff',fillOpacity:1});
+  const layers=[line,mk];
+  if(FHOME){
+    homeMk=L.marker([FHOME.lat,FHOME.lon],{icon:HOMEI}).bindPopup(`<b>Ponto Home (H)</b><br>${FHOME.lat.toFixed(5)}, ${FHOME.lon.toFixed(5)}${FHOME.rth_alt?'<br>Altura RTH: '+FHOME.rth_alt+' m':''}`);
+    homeLine=L.polyline([[FHOME.lat,FHOME.lon],[T[0][1],T[0][2]]],{color:'#f59e0b',weight:1.8,dashArray:'5 5',opacity:0.85});
+    layers.push(homeLine,homeMk);
+  }
+  fg=L.featureGroup(layers).addTo(fm);
+  const ms=await api('/media?flight_id='+id);window.FMED=ms;fotos2d(ms);
+  FV=ms.filter(m=>m.kind=='video').map(v=>{const b=vOff(v),a=v.sync_adj||0;return{...v,base:b,off:b+a}}).sort((a,b)=>a.off-b.off);CV=0;
+  $('#fplayer').classList.toggle('one',!FV.length);$('#fvbox').classList.toggle('hide',!FV.length);
+  fm.invalidateSize();fm.fitBounds(line.getBounds());
+  window.CI=0;renderFlightChart();
+  const sl=$('#slider');sl.max=T.length-1;sl.value=0;sl.oninput=()=>{const i=+sl.value;seek(i);syncV(i)};
+  seek(0);
+  $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${e.t})">${fmt.t(e.t)} ${esc(e.label)}</button>`).join('');
+  const n=$('#fnotes');n.value=f.notes||'';n.onchange=async()=>{await api('/flights/'+id,J('PATCH',{notes:n.value}));toast('✓ Anotação salva')};
+  $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||'<span style="color:var(--mut)">Nenhuma mídia associada a este voo.</span>';
+  const vid=$('#vid');vid.pause();vid.removeAttribute('src');$('#vcamhud').classList.add('hide');
+  const cb=$('#fcoordbar');if(cb){cb.classList.add('hide');cb.innerHTML=''}
+  $('#fvsel').innerHTML=FV.length>1?FV.map((v,i)=>`<button class="vb${i==0?' on':''}" onclick="loadV(${i},false)">${fmt.d(v.taken).slice(-5)}</button>`).join(''):'';
+  if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderAir(f);
+}
+
+/* ---------- Extração de Coordenada Geográfica do Frame Exibido (e link para Google Maps) ---------- */
+let framePin=null;
+function copyCoord(txt,btn){
+  navigator.clipboard.writeText(txt).then(()=>{const o=btn.textContent;btn.textContent='✓ Copiado!';setTimeout(()=>btn.textContent=o,1500)}).catch(()=>prompt('Coordenada:',txt));
+}
+async function saveCoordSpot(lat,lon,lbl){
+  const n=prompt('Nome para salvar este ponto nos Locais Favoritos:',lbl||'Ponto do vídeo');
+  if(!n)return;
+  await api('/spots',J('POST',{name:n,lat,lon,notes:'Extraído durante replay de voo/vídeo'}));
+  toast('⭐ Local salvo em "Locais"!');
+}
+function grabFrameCoord(){
+  const vid=$('#vid');
+  if(vid&&!vid.paused)vid.pause();
+  if(tm){clearInterval(tm);tm=null;$('#play').textContent='▶ Replay'}
+  let lat=null,lon=null,alt=null,yaw=null,gp=null,src='trajeto do voo',tLabel='';
+  const v=FV[CV];
+  /* 1. Se houver vídeo ativo com trilha .SRT e coordenadas válidas naquele segundo, prioriza o .SRT do frame */
+  if(v&&vid&&VSRT[v.id]&&VSRT[v.id].length){
+    const vt=vid.currentTime||0,pts=VSRT[v.id];
+    const sp=pts.find(x=>x.t>=Math.floor(vt))||pts[pts.length-1];
+    if(sp&&sp.lat!=null&&sp.lon!=null&&Math.abs(sp.lat)+Math.abs(sp.lon)>0.001){
+      lat=sp.lat;lon=sp.lon;alt=sp.alt;src='legenda .SRT do vídeo';tLabel=`Vídeo ${fmt.t(vt)}`;
+    }
+  }
+  /* 2. Interpola na trilha de telemetria do voo no instante exato */
+  if(T&&T.length){
+    const t=tnow();
+    let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;
+    const p=T[i];
+    if(i>0&&T[i][0]>T[i-1][0]){
+      const a=T[i-1],b=T[i],f=Math.min(1,Math.max(0,(t-a[0])/(b[0]-a[0])));
+      if(lat==null){lat=a[1]+(b[1]-a[1])*f;lon=a[2]+(b[2]-a[2])*f}
+      if(alt==null)alt=a[3]+(b[3]-a[3])*f;
+    }else if(p){
+      if(lat==null){lat=p[1];lon=p[2]}
+      if(alt==null)alt=p[3];
+    }
+    if(p){yaw=p[7];gp=p[8]}
+    if(!tLabel)tLabel=`Voo ${fmt.t(t)}`;
+  }
+  if(lat==null||lon==null)return alert('Não há coordenadas GPS registradas para este frame.');
+  const cStr=`${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  const gmapUrl=`https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+  /* Calcula também a coordenada estimada do centro da imagem no solo (alvo da câmera) se houver direção e inclinação */
+  let tgtHtml='';
+  if(typeof yaw=='number'&&typeof gp=='number'&&gp<-8&&alt>3){
+    const dist=Math.min(400,alt/Math.tan(Math.abs(gp)*Math.PI/180)),Y=yaw*Math.PI/180;
+    const tLat=lat+(dist*Math.cos(Y))/111320,tLon=lon+(dist*Math.sin(Y))/(111320*Math.cos(lat*Math.PI/180));
+    const tUrl=`https://www.google.com/maps?q=${tLat.toFixed(6)},${tLon.toFixed(6)}`;
+    tgtHtml=` · <span style="color:var(--mut)">Alvo da câmera (~${Math.round(dist)}m à frente): <b style="color:var(--fg)">${tLat.toFixed(6)}, ${tLon.toFixed(6)}</b></span> <a href="${tUrl}" target="_blank" rel="noopener" style="background:var(--bg-elev);border:1px solid var(--acc-cyan);color:var(--acc-cyan);padding:4px 10px;border-radius:6px;text-decoration:none;font-size:12px">🎯 Abrir alvo no Google Maps ↗</a>`;
+  }
+  const bar=$('#fcoordbar');
+  bar.innerHTML=`<span>📍 <b>Frame (${tLabel}):</b> <code style="color:var(--acc-cyan);font-size:13.5px;font-weight:700">${cStr}</code>${alt!=null?` · Alt. <b>${(+alt).toFixed(1)} m</b>`:''} <small style="color:var(--mut)">(${src})</small></span>`+
+    `<a href="${gmapUrl}" target="_blank" rel="noopener" style="background:var(--acc);color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-weight:600;font-size:12.5px;box-shadow:0 2px 8px rgba(24,144,255,0.35)">🗺 Abrir no Google Maps ↗</a>`+
+    `<button onclick="copyCoord('${cStr}',this)" style="padding:4px 9px;font-size:12px">📋 Copiar</button>`+
+    `<button onclick="saveCoordSpot(${lat.toFixed(6)},${lon.toFixed(6)},'Frame ${tLabel}')" style="padding:4px 9px;font-size:12px">⭐ Salvar em Locais</button>`+
+    tgtHtml+
+    `<button onclick="$('#fcoordbar').classList.add('hide')" style="margin-left:auto;padding:3px 8px;font-size:12px" title="Fechar">✕</button>`;
+  bar.classList.remove('hide');
+  if(fm){
+    if(framePin)fm.removeLayer(framePin);
+    framePin=L.marker([lat,lon]).addTo(fm).bindPopup(`<b>📍 Frame capturado (${tLabel})</b><br>${cStr}<br><a href="${gmapUrl}" target="_blank" rel="noopener">🗺 Abrir no Google Maps ↗</a>`).openPopup();
+  }
+}
+async function grabModalCoord(mid){
+  const m=curM;if(!m)return;
+  const vid=$('#mvid');if(vid&&!vid.paused)vid.pause();
+  const vt=vid?vid.currentTime||0:0;
+  let lat=null,lon=null,alt=null,src='metadados da mídia';
+  if(m.kind==='video'){
+    if(!VSRT[mid]){try{VSRT[mid]=await api('/media/'+mid+'/srt')}catch(e){VSRT[mid]=[]}}
+    const pts=VSRT[mid]||[];
+    const sp=pts.find(x=>x.t>=Math.floor(vt))||pts[pts.length-1];
+    if(sp&&sp.lat!=null&&sp.lon!=null&&Math.abs(sp.lat)+Math.abs(sp.lon)>0.001){
+      lat=sp.lat;lon=sp.lon;alt=sp.alt;src='legenda .SRT no frame '+fmt.t(vt);
+    }else if(m.flight_id){
+      try{
+        const f=await api('/flights/'+m.flight_id),tr=f.track||[];
+        let off=(new Date(m.taken)-new Date(f.start_local))/1000;
+        (f.events||[]).filter(e=>e.label.startsWith('Início de gravação')&&e.t>0).forEach(e=>{if(Math.abs(e.t-off)<=30)off=e.t});
+        off+=(m.sync_adj||0);
+        const t=vt+off;
+        let i=tr.findIndex(p=>p[0]>=t);if(i<0)i=tr.length-1;
+        if(tr[i]){lat=tr[i][1];lon=tr[i][2];alt=tr[i][3];src='telemetria do voo no frame '+fmt.t(vt)}
+      }catch(e){}
+    }
+  }
+  if((lat==null||lon==null)&&m.lat!=null&&m.lon!=null){lat=m.lat;lon=m.lon;alt=m.alt}
+  const box=$('#mcoord');if(!box)return;
+  if(lat==null||lon==null){box.innerHTML='<span style="color:#f59e0b">Este arquivo não possui coordenadas GPS registradas.</span>';box.classList.remove('hide');return}
+  const cStr=`${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  const gmapUrl=`https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+  box.innerHTML=`<span>📍 <b>Coordenada:</b> <code style="color:var(--acc-cyan);font-weight:700">${cStr}</code>${alt!=null?` · Alt. ${(+alt).toFixed(1)} m`:''} <small style="color:var(--mut)">(${src})</small></span> `+
+    `<a href="${gmapUrl}" target="_blank" rel="noopener" style="background:var(--acc);color:#fff;padding:5px 12px;border-radius:6px;text-decoration:none;font-weight:600;font-size:12.5px">🗺 Abrir no Google Maps ↗</a> `+
+    `<button onclick="copyCoord('${cStr}',this)" style="padding:4px 9px;font-size:12px">📋 Copiar</button>`;
+  box.classList.remove('hide');
+}
+
+/* ---------- Exportador de Vídeo com HUD de Telemetria via FFmpeg ---------- */
+function exportHudVideo(mid){
+  const v=mid?{id:mid}:FV[CV];
+  if(!v)return alert('Nenhum vídeo selecionado neste voo.');
+  const el=$('#vid'),curS=el&&!mid?Math.floor(el.currentTime||0):0;
+  const st=prompt('Segundo inicial do vídeo para exportar o clipe com HUD:',String(curS));
+  if(st===null)return;
+  const dur=prompt('Duração do clipe em segundos (3 a 180 s):','15');
+  if(dur===null)return;
+  window.open(`/api/media/${v.id}/hud-video?start_s=${encodeURIComponent(st)}&dur_s=${encodeURIComponent(dur)}`,'_blank');
+}
+
+/* ---------- replay 3D (CesiumJS) ---------- */
+let V3=null,SAMP3=null,P3=[],G3=[],YW3=[],GP3=[],ATT3=false,CUR3=null,DR3=null,TR3=null,PRE3=null,B3=0,CONE3=[],FOT3=[],FSON=false;
+window.VM='2d';
+const CES_VER='1.145';
+const DRONE_ICO='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="48" height="48"><path d="M32 32L12 12M32 32L52 12M32 32L12 52M32 32L52 52" stroke="#102a43" stroke-width="3" stroke-linecap="round" fill="none"/><g fill="#fff" stroke="#102a43" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="52" cy="12" r="9"/><circle cx="12" cy="52" r="9"/><circle cx="52" cy="52" r="9"/></g><rect x="22" y="20" width="20" height="24" rx="7" fill="#1890ff" stroke="#102a43" stroke-width="2"/><circle cx="32" cy="48" r="4" fill="#00d2ff"/></svg>');
+function loadCesium(){
+  if(window.Cesium)return Promise.resolve();
+  const add=base=>new Promise((ok,err)=>{
+    window.CESIUM_BASE_URL=base;
+    const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';document.head.appendChild(l);
+    const s=document.createElement('script');s.src=base+'Cesium.js';s.onload=ok;s.onerror=()=>err(new Error('não foi possível baixar o CesiumJS'));document.head.appendChild(s)});
+  return add('https://cesium.com/downloads/cesiumjs/releases/'+CES_VER+'/Build/Cesium/')
+    .catch(()=>add('https://cdn.jsdelivr.net/npm/cesium@'+CES_VER+'.0/Build/Cesium/'))}
+function tnow(){const v=$('#vid');
+  if(FV.length&&FV[CV]&&v&&!v.paused&&performance.now()>scrubUntil)return v.currentTime+FV[CV].off;
+  return window.TNOW||0}
+/* ----- tela cheia (mapa 2D e 3D): leva junto os botões, a barra de replay e o vídeo ----- */
+function toggleFs(){const b=$('#fmapbox');
+  if(document.fullscreenElement||document.webkitFullscreenElement)(document.exitFullscreen||document.webkitExitFullscreen).call(document);
+  else(b.requestFullscreen||b.webkitRequestFullscreen).call(b)}
+function onFs(){
+  const el=document.fullscreenElement||document.webkitFullscreenElement,on=el===$('#fmapbox');
+  if(on===FSON)return;FSON=on;
+  const box=$('#fmapbox'),vb=$('#fvbox'),bar=$('#play').parentElement,v=$('#vid'),was=v&&!v.paused;
+  if(on){$('#fmapstack').appendChild(vb);box.appendChild(bar)}
+  else{$('#fplayer').insertBefore(vb,box);$('#fplayer').after(bar)}
+  $('#bfs').textContent=on?'✕ Sair da tela cheia':'⛶ Tela cheia';
+  if(was)v.play().catch(()=>{});
+  setTimeout(()=>{fm.invalidateSize();if(V3)V3.resize()},150)}
+document.addEventListener('fullscreenchange',onFs);document.addEventListener('webkitfullscreenchange',onFs);
+function toggleCone(){const b=$('#bcone'),on=!b.classList.contains('on');b.classList.toggle('on',on);CONE3.forEach(e=>e.show=on)}
+function toggleFotos(){const b=$('#bfot'),on=!b.classList.contains('on');b.classList.toggle('on',on);FOT3.forEach(e=>e.show=on)}
+async function setView(m){
+  window.VM=m;const is3=m=='3d';
+  $('#b2d').classList.toggle('on',!is3);$('#b3d').classList.toggle('on',is3);
+  $('#f3dwrap').classList.toggle('hide',!is3);$('#c3d').classList.toggle('hide',!is3);
+  if(V3)V3.useDefaultRenderLoop=is3;
+  if(is3)await build3d();else{fm.invalidateSize()}}
+/* posição, direção e inclinação da câmera em um instante t do voo (interpolados) */
+function posAt3(t){
+  let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;
+  if(i<=0)return{p:P3[0],g:G3[0],yaw:YW3[0],gp:GP3[0]};
+  const a=T[i-1][0],b=T[i][0],f=b>a?Math.min(1,Math.max(0,(t-a)/(b-a))):1,d=((YW3[i]-YW3[i-1]+540)%360)-180;
+  return{p:Cesium.Cartesian3.lerp(P3[i-1],P3[i],f,new Cesium.Cartesian3()),g:G3[i-1]+(G3[i]-G3[i-1])*f,
+    yaw:YW3[i-1]+d*f,gp:GP3[i-1]+(GP3[i]-GP3[i-1])*f}}
+/* "nariz" do drone e cone de visão da câmera (campo de visão aproximado de 66 x 50 graus) */
+function frame3(p,yaw,gp){
+  const m=Cesium.Transforms.eastNorthUpToFixedFrame(p),Y=Cesium.Math.toRadians(yaw),Q=Cesium.Math.toRadians(gp);
+  const W=(x,y,z)=>Cesium.Matrix4.multiplyByPoint(m,new Cesium.Cartesian3(x,y,z),new Cesium.Cartesian3());
+  const f=[Math.cos(Q)*Math.sin(Y),Math.cos(Q)*Math.cos(Y),Math.sin(Q)],r=[Math.cos(Y),-Math.sin(Y),0];
+  const u=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]],L=70,th=0.649,tv=0.466;
+  const c=[[-1,1],[1,1],[1,-1],[-1,-1]].map(([h,v])=>W(L*(f[0]+h*th*r[0]+v*tv*u[0]),L*(f[1]+h*th*r[1]+v*tv*u[1]),L*(f[2]+h*th*r[2]+v*tv*u[2])));
+  return{nose:[p,W(14*Math.sin(Y),14*Math.cos(Y),0)],edges:[p,c[0],p,c[1],p,c[2],p,c[3]],rect:[c[0],c[1],c[2],c[3],c[0]]}}
+async function build3d(){
+  const my=++B3,msg=t=>{const e=$('#f3dmsg');e.innerHTML=t||'';e.classList.toggle('hide',!t)};
+  if(!T.length)return;
+  try{
+    const cfg=await api('/config');
+    if(!cfg.cesium){msg('<div><b>Falta a chave gratuita do Cesium</b><br>Coloque-a no start.sh (CESIUM_TOKEN) e reinicie o app.</div>');return}
+    msg('Carregando o 3D…');
+    await loadCesium();
+    Cesium.Ion.defaultAccessToken=cfg.cesium;
+    if(!SAMP3)SAMP3=await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
+    if(!V3){
+      V3=new Cesium.Viewer('f3d',{terrain:Cesium.Terrain.fromWorldTerrain(),baseLayerPicker:false,geocoder:false,homeButton:false,
+        sceneModePicker:false,navigationHelpButton:false,animation:false,timeline:false,infoBox:false,selectionIndicator:false,
+        fullscreenButton:false,shouldAnimate:false});
+      V3.scene.globe.depthTestAgainstTerrain=true;
+      V3.screenSpaceEventHandler.setInputAction(mv=>{            /* clique numa foto do 3D abre a foto grande */
+        const pk=V3.scene.pick(mv.position),id=pk&&pk.id?String(pk.id.id||''):'';
+        if(id.startsWith('foto-')){const mid=+id.slice(5),go=()=>openMedia(mid);
+          if(document.fullscreenElement)Promise.resolve(document.exitFullscreen()).then(()=>setTimeout(go,250));else go()}
+      },Cesium.ScreenSpaceEventType.LEFT_CLICK)}
+    V3.useDefaultRenderLoop=true;V3.resize();
+    const cartos=T.map(p=>Cesium.Cartographic.fromDegrees(p[2],p[1]));
+    await Cesium.sampleTerrainMostDetailed(SAMP3,cartos);          /* altitude do terreno sob cada ponto */
+    if(my!==B3)return;                                            /* outro voo foi aberto enquanto carregava */
+    const g0=cartos[0].height||0;
+    G3=cartos.map(c=>c.height||0);
+    /* Compensação linear de deriva barométrica caso o pouso ocorra próximo da decolagem (< 30 m) com erro residual */
+    const endIdx=T.length-1,endDist=havDist(T[0][1],T[0][2],T[endIdx][1],T[endIdx][2]);
+    const drift=(endDist<30&&Math.abs(T[endIdx][3])<15)?T[endIdx][3]:0;
+    P3=cartos.map((c,i)=>{
+      const frac=endIdx>0?i/endIdx:0,altCorr=(T[i][3]||0)-drift*frac;
+      return Cesium.Cartesian3.fromRadians(c.longitude,c.latitude,Math.max(G3[i]+1,g0+altCorr));
+    });
+    let ly=0,lg=-20;
+    YW3=T.map(p=>(ly=typeof p[7]=='number'?p[7]:ly));GP3=T.map(p=>(lg=typeof p[8]=='number'?p[8]:lg));
+    ATT3=T.some(p=>typeof p[7]=='number');                         /* só há direção/câmera em logs reimportados */
+    V3.trackedEntity=undefined;V3.entities.removeAll();CUR3=null;CONE3=[];FOT3=[];
+    const red=Cesium.Color.fromCssColorString('#00d2ff'),cy=Cesium.Color.fromCssColorString('#38bdf8'),org=Cesium.Color.fromCssColorString('#ff9800');
+    TR3=V3.entities.add({polyline:{positions:P3,width:4,material:red}});
+    V3.entities.add({wall:{positions:P3,minimumHeights:G3,material:red.withAlpha(0.18)}});
+    DR3=V3.entities.add({position:new Cesium.CallbackProperty(()=>CUR3?CUR3.p:P3[0],false),
+      billboard:{image:DRONE_ICO,width:44,height:44,disableDepthTestDistance:Number.POSITIVE_INFINITY}});
+    V3.entities.add({polyline:{positions:new Cesium.CallbackProperty(()=>CUR3?[CUR3.p,CUR3.q]:[P3[0],P3[0]],false),width:2,material:Cesium.Color.WHITE.withAlpha(0.8)}});
+    V3.entities.add({position:new Cesium.CallbackProperty(()=>CUR3?CUR3.q:P3[0],false),
+      point:{pixelSize:7,color:Cesium.Color.WHITE,outlineColor:red,outlineWidth:2}});
+    if(ATT3){
+      const pl=(key,w,col)=>V3.entities.add({polyline:{positions:new Cesium.CallbackProperty(()=>CUR3&&CUR3[key]?CUR3[key]:[P3[0],P3[0]],false),width:w,material:col}});
+      pl('nose',5,org);                                           /* para onde o drone está virado */
+      CONE3=[pl('edges',1.5,cy.withAlpha(0.9)),pl('rect',2,cy)]}  /* cone de visão da câmera */
+    const fev=FEV.filter(e=>e.label=='Foto').map(e=>e.t),end=T[T.length-1][0];
+    (window.FMED||[]).filter(m=>m.kind=='photo').forEach(m=>{       /* fotos no ponto do trajeto em que foram tiradas */
+      let t=(new Date(m.taken)-new Date(FST))/1000,b=null;
+      fev.forEach(x=>{if(Math.abs(x-t)<=5&&(b==null||Math.abs(x-t)<Math.abs(b-t)))b=x});
+      if(b!=null)t=b;
+      if(t<0||t>end)return;
+      FOT3.push(V3.entities.add({id:'foto-'+m.id,position:posAt3(t).p,
+        point:{pixelSize:9,color:Cesium.Color.fromCssColorString('#ffb300'),outlineColor:Cesium.Color.WHITE,outlineWidth:2,disableDepthTestDistance:Number.POSITIVE_INFINITY},
+        billboard:{image:'/api/media/'+m.id+'/thumb',width:56,height:42,verticalOrigin:Cesium.VerticalOrigin.BOTTOM,
+          pixelOffset:new Cesium.Cartesian2(0,-10),disableDepthTestDistance:Number.POSITIVE_INFINITY}}))});
+    CONE3.forEach(e=>e.show=$('#bcone').classList.contains('on'));
+    FOT3.forEach(e=>e.show=$('#bfot').classList.contains('on'));
+    if(PRE3)PRE3();
+    PRE3=V3.scene.preUpdate.addEventListener(()=>{
+      const a=posAt3(tnow()),c=Cesium.Cartographic.fromCartesian(a.p);
+      CUR3=Object.assign({p:a.p,q:Cesium.Cartesian3.fromRadians(c.longitude,c.latitude,a.g)},ATT3?frame3(a.p,a.yaw,a.gp):{});
+      const now=performance.now();
+      if(now-(window.S3T||0)>250){window.S3T=now;
+        $('#s3d').textContent=Math.round(c.height-a.g)+' m sobre o terreno'+(ATT3?' · câmera '+Math.round(a.gp)+'°':' · reimporte os logs para ver direção e câmera')}});
+    msg('');cam3d('free');
+  }catch(e){
+    msg('<div><b>Não foi possível carregar o 3D.</b><br>Confira a chave do Cesium no start.sh e a internet.<br><small>'+String(e&&e.message||e).replace(/[<>&]/g,'')+'</small></div>')}}
+function cam3d(m){
+  if(!V3||!DR3||!TR3)return;
+  V3.trackedEntity=undefined;
+  if(m=='follow'){DR3.viewFrom=new Cesium.Cartesian3(0,-140,60);V3.trackedEntity=DR3}
+  else V3.flyTo(TR3,{duration:1.2,offset:new Cesium.HeadingPitchRange(0,m=='top'?-Cesium.Math.PI_OVER_TWO:-0.55,0)})}
+
+/* ---------- fotos e pegadas (Footprint/GSD) no mapa 2D do voo ---------- */
+let FOTL=null,FOTFP=null;
+function openM2(id){
+  if(document.fullscreenElement)Promise.resolve(document.exitFullscreen()).then(()=>setTimeout(()=>openMedia(id),250));
+  else openMedia(id)}
+function fotos2d(ms){
+  if(!FOTL)return;FOTL.clearLayers();if(FOTFP)FOTFP.clearLayers();
+  const phs=(ms||[]).filter(m=>m.kind=='photo');
+  phs.forEach((m,idx)=>{
+    let ll=null;
+    if(m.lat!=null&&m.lon!=null&&Math.abs(m.lat)+Math.abs(m.lon)>0.001)ll=[m.lat,m.lon];
+    else{const t=(new Date(m.taken)-new Date(FST))/1000,i=T.findIndex(p=>p[0]>=t);if(t<0||i<0)return;ll=[T[i][1],T[i][2]]}
+    const fp=calcFootprint({...m,lat:ll[0],lon:ll[1]},T,FST);
+    let ovl='';
+    if(fp&&idx>0&&phs[idx-1].lat&&ll){
+      const d=havDist(ll[0],ll[1],phs[idx-1].lat,phs[idx-1].lon),pct=Math.max(0,Math.min(98,Math.round((1-d/Math.max(10,fp.gw))*100)));
+      if(pct>0)ovl=` · Sobreposição: <b>${pct}%</b>`;
+    }
+    const fpHtml=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · ${fp.gw}×${fp.gh} m${ovl}</div>`:'';
+    L.marker(ll,{icon:PHI}).addTo(FOTL).bindPopup('<div style="text-align:center"><img src="/api/media/'+m.id+'/thumb" style="width:260px;max-width:100%;cursor:zoom-in;border-radius:6px" onclick="openM2('+m.id+')"><div style="margin:4px 0">'+fmt.d(m.taken)+'</div>'+fpHtml+'<a href="#" onclick="openM2('+m.id+');return false">Abrir em tamanho grande</a></div>',{maxWidth:290});
+    if(fp&&FOTFP)L.polygon(fp.corners,{color:'#00d2ff',weight:1.5,fillColor:'#1890ff',fillOpacity:0.2}).addTo(FOTFP)
+      .bindPopup(`<b>📐 Pegada da Foto #${m.id}</b><br>GSD: <b>${fp.gsd} cm/pixel</b><br>Cobertura: <b>${fp.gw} × ${fp.gh} m</b> (alt. ~${fp.alt} m)${ovl}`);
+  })}
+/* ---------- velocidade do replay ---------- */
+let RATE=1;
+function setRate(v){
+  RATE=+v||1;try{localStorage.setItem('rate',String(RATE))}catch(e){}
+  const el=$('#vid');if(el){el.defaultPlaybackRate=RATE;el.playbackRate=RATE}}
+(function(){
+  let r=1;try{r=+localStorage.getItem('rate')||1}catch(e){}
+  if(![0.5,1,2,4,8].includes(r))r=1;
+  RATE=r;const s=$('#rate');if(s)s.value=String(r);
+  const el=$('#vid');if(el){el.defaultPlaybackRate=r;el.playbackRate=r}})();
+
+/* ---------- fotos, vídeos, dados EXIF e visualizador 360° (Pannellum) ---------- */
+let kind='photo',sel=new Set();
+function mediaBadges(m){
+  const b=[];
+  if(m.orient==='portrait')b.push('<span>📱 9:16</span>');
+  else if(m.orient==='pano')b.push('<span>🌐 360°</span>');
+  if(m.is_4k)b.push('<span>4K</span>');
+  if(m.meta&&m.meta.has_srt)b.push('<span>SRT</span>');
+  const sm=m.detections&&m.detections.summary;
+  if(sm&&Object.keys(sm).length){
+    const top=Object.entries(sm).sort((a,x)=>x[1]-a[1]).slice(0,2).map(([k,v])=>`${k}×${v}`).join(', ');
+    b.push(`<span style="background:rgba(16,185,129,0.85);color:#04120c">🤖 ${esc(top)}</span>`);
+  }
+  return b.length?`<div class="bdg">${b.join('')}</div>`:'';
+}
+const mediaCard=m=>{
+  const mt=m.meta||{},ex=[];
+  if(mt.iso)ex.push('ISO '+mt.iso);
+  if(mt.shutter)ex.push(mt.shutter);
+  if(mt.fnum)ex.push('f/'+mt.fnum);
+  return `<div class=it><input type=checkbox onchange="tog(${m.id},this.checked)" ${sel.has(m.id)?'checked':''}>${mediaBadges(m)}
+  <img loading=lazy src="/api/media/${m.id}/thumb" onclick="openMedia(${m.id})" alt=""${m.offline?' style="opacity:.45" title="Disco ou pasta desconectada"':''}><div class=m>${m.fav?'★':'☆'} ${m.kind=='video'?'Vídeo':'Foto'} ${fmt.d(m.taken)}${m.w&&m.h?` · <small>${m.w}×${m.h}</small>`:''}${ex.length?`<br><span style="color:var(--acc-cyan)">${esc(ex.join(' · '))}</span>`:''}<br>${esc((m.tags||'').replaceAll(',',' · '))}</div></div>`;
+};
+function tog(id,on){on?sel.add(id):sel.delete(id)}
+function exportSel(){if(!sel.size)return alert('Marque as fotos que quer exportar.');location='/api/export/photos?ids='+[...sel]}
+async function loadMedia(k){
+  kind=typeof k=='string'?k:kind;
+  const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value});
+  let ms=[];try{ms=await api('/media?'+p)}catch(e){alert('Filtro inválido: '+e.message)}ms=ms.filter(NLM);
+  $('#mgrid').innerHTML=ms.map(mediaCard).join('')||'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.';
+  $('#mcount').textContent=ms.length+' itens';
+}
+let curM;
+function loadPannellum(){
+  if(window.pannellum)return Promise.resolve();
+  return new Promise((ok,err)=>{
+    const l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css';document.head.appendChild(l);
+    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js';s.onload=ok;s.onerror=err;document.head.appendChild(s);
+  });
+}
+async function openPano360(url){
+  const wrap=$('#mview');if(!wrap)return;
+  wrap.innerHTML='<div id="pano360"></div>';
+  try{
+    await loadPannellum();
+    window.pannellum.viewer('pano360',{type:'equirectangular',panorama:url,autoLoad:true,compass:true,showZoomCtrl:true});
+  }catch(e){alert('Não foi possível carregar o visualizador 360°.')}
+}
+let SHOW_BOXES=true;
+function drawDetBoxes(m){
+  const cv=$('#mboxes'),img=$('#mimg');
+  if(!cv||!img)return;
+  const ctx=cv.getContext('2d');
+  if(!SHOW_BOXES||!m.detections||!m.detections.items||!m.detections.items.length){ctx.clearRect(0,0,cv.width,cv.height);return}
+  const w=img.clientWidth,h=img.clientHeight;
+  if(!w||!h)return;
+  cv.width=w;cv.height=h;
+  ctx.clearRect(0,0,w,h);
+  const cols=['#00d2ff','#f59e0b','#10b981','#ec4899','#a855f7','#ef4444'];
+  const cmap={};let ci=0;
+  m.detections.items.forEach(d=>{
+    if(!d.box||d.box.length<4)return;
+    const c=cmap[d.cls]||(cmap[d.cls]=cols[ci++%cols.length]);
+    const x1=d.box[0]*w,y1=d.box[1]*h,bw=(d.box[2]-d.box[0])*w,bh=(d.box[3]-d.box[1])*h;
+    ctx.strokeStyle=c;ctx.lineWidth=2.2;ctx.strokeRect(x1,y1,bw,bh);
+    const txt=`${d.label||d.cls} ${Math.round((d.conf||0)*100)}%`;
+    ctx.font='600 12px system-ui,sans-serif';
+    const tw=ctx.measureText(txt).width+10;
+    const ty=y1>20?y1-20:y1+2;
+    ctx.fillStyle=c;ctx.fillRect(x1,ty,tw,18);
+    ctx.fillStyle='#05070b';ctx.fillText(txt,x1+5,ty+13);
+  });
+}
+function toggleDetBoxes(){SHOW_BOXES=!SHOW_BOXES;if(curM)drawDetBoxes(curM);const b=$('#btogbox');if(b)b.textContent=SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}
+function jumpVid(t){const v=$('#mvid');if(v){v.currentTime=+t||0;v.play()}}
+async function detectM(id){
+  const b=$('#bdet-one');if(b){b.disabled=true;b.textContent='⏳ Analisando (IA)...'}
+  try{
+    const m=await api('/media/'+id+'/detect',{method:'POST'});
+    toast('✓ Detecção concluída!');
+    await openMedia(id);
+    if(!$('#midia').classList.contains('hide'))loadMedia();
+    else if(!$('#fdet').classList.contains('hide')&&window.CURF)openFlight(window.CURF);
+  }catch(e){alert('Erro na detecção: '+e.message);if(b){b.disabled=false;b.textContent='🤖 Detectar objetos'}}
+}
+async function detectBatchMedia(){
+  const b=$('#bdet-batch'),ids=sel.size?[...sel]:null;
+  if(!ids&&!confirm('Analisar até 50 mídias ainda sem detecção com IA (YOLO)?'))return;
+  if(b){b.disabled=true;b.textContent='⏳ Analisando...'}
+  try{
+    const r=await api('/detect/batch',J('POST',{ids}));
+    toast(`🤖 ${r.processed} mídias analisadas · ${r.total_objects} objetos encontrados`);
+    loadMedia();
+  }catch(e){alert('Erro na detecção em lote: '+e.message)}
+  finally{if(b){b.disabled=false;b.textContent='🤖 Detectar objetos (IA)'}}
+}
+async function detectFlightMedia(fid){
+  const b=$('#fdet-ia');if(b){b.disabled=true;b.textContent='⏳ Analisando mídias do voo...'}
+  try{
+    const r=await api('/detect/batch',J('POST',{flight_id:fid}));
+    toast(`🤖 ${r.processed} mídias analisadas · ${r.total_objects} objetos`);
+    openFlight(fid);
+  }catch(e){alert('Erro na detecção: '+e.message);if(b){b.disabled=false;b.textContent='🤖 Detectar objetos (IA)'}}
+}
+function detSummaryHtml(m){
+  const det=m.detections;if(!det||!det.items)return '';
+  if(!det.items.length)return '<div style="color:var(--mut);font-size:12px">🤖 Nenhum objeto reconhecido nesta mídia.</div>';
+  if(m.kind==='photo'){
+    const chips=Object.entries(det.summary||{}).map(([k,v])=>`<span style="background:rgba(0,210,255,0.14);border:1px solid rgba(0,210,255,0.35);padding:2px 8px;border-radius:12px;font-size:12px">${esc(k)}: <b>${v}</b></span>`).join(' ');
+    return `<div class="row" style="margin:0;gap:6px"><span style="color:var(--acc-cyan);font-size:12px">🤖 Detectado:</span>${chips}</div>`;
+  }
+  const byCls={};
+  det.items.forEach(d=>{const k=d.label||d.cls;if(!byCls[k])byCls[k]=[];if(!byCls[k].some(x=>Math.abs(x.t-d.t)<2))byCls[k].push(d)});
+  const chips=Object.entries(byCls).map(([k,arr])=>{
+    const ts=arr.slice(0,5).map(x=>`<a href="#" onclick="jumpVid(${x.t});return false" style="color:var(--acc-cyan)">${fmt.t(x.t)}</a>`).join(', ');
+    return `<span style="background:rgba(0,210,255,0.12);border:1px solid rgba(0,210,255,0.3);padding:3px 9px;border-radius:12px;font-size:12px"><b>${esc(k)}</b> (${ts}${arr.length>5?'…':''})</span>`;
+  }).join(' ');
+  return `<div class="row" style="margin:0;gap:6px;max-width:92vw"><span style="color:var(--acc-cyan);font-size:12px">🤖 Avistamentos no vídeo:</span>${chips}</div>`;
+}
+async function openMedia(id){
+  const m=curM=await api('/media/'+id),mt=m.meta||{};
+  const ex=[];
+  if(m.w&&m.h)ex.push(`${m.w}×${m.h}${m.orient==='portrait'?' (Vertical 9:16)':m.orient==='pano'?' (Panorama 360°)':''}`);
+  if(mt.model)ex.push(mt.model);
+  if(mt.iso)ex.push('ISO '+mt.iso);
+  if(mt.shutter)ex.push('Obturador '+mt.shutter);
+  if(mt.fnum)ex.push('f/'+mt.fnum);
+  if(mt.ev!=null)ex.push('EV '+(mt.ev>0?'+':'')+mt.ev);
+  if(mt.focal35)ex.push(mt.focal35+' mm');
+  if(mt.rel_alt!=null)ex.push('Alt. rel. '+mt.rel_alt+' m');
+  const fp=m.kind==='photo'?calcFootprint(m,null,null):null;
+  if(fp)ex.push(`GSD est. ${fp.gsd} cm/px (${fp.gw}×${fp.gh} m)`);
+  const hasDets=m.detections&&m.detections.items&&m.detections.items.length>0;
+  $('#modal').innerHTML=`<div id="mview">${m.kind=='video'?`<video id="mvid" controls autoplay src="/api/media/${id}/file"></video>`:`<img id="mimg" onload="drawDetBoxes(curM)" src="/api/media/${id}/file"><canvas id="mboxes"></canvas>`}</div>
+   <div style="color:#94a3b8;font-size:12.5px;text-align:center;max-width:90vw">${esc(ex.join('  ·  '))||''}</div>
+   ${detSummaryHtml(m)}
+   <div id="mcoord" class="row hide" style="background:var(--card);border:1px solid var(--acc);padding:7px 12px;border-radius:8px;margin:2px 0"></div>
+   <div class=row><button onclick="favM()">${m.fav?'★ Desfavoritar':'☆ Favoritar'}</button><button onclick="tagsM()">Editar tags</button>
+    <button id="bdet-one" onclick="detectM(${id})">${m.detections?'🤖 Reanalisar (IA)':'🤖 Detectar objetos'}</button>
+    ${m.kind=='photo'&&hasDets?`<button id="btogbox" onclick="toggleDetBoxes()">${SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}</button>`:''}
+    <button onclick="grabModalCoord(${id})">📍 Extrair coordenada${m.kind=='video'?' deste frame':''}</button>
+    ${m.kind=='photo'?`<button onclick="openPano360('/api/media/${id}/file')">🌐 Ver em 360°</button>`:`<button onclick="exportHudVideo(${id})">🎬 Exportar clipe com HUD (MP4)</button>`}
+    ${m.flight_id?`<button onclick="closeM();openFlight(${m.flight_id})">Ver voo</button>`:''}<button onclick="closeM()">Fechar</button></div><div class=row id="mlink" style="color:#ccc;margin:0">Voo: <select id="mflight"></select><button onclick="linkM()">Aplicar</button></div>
+    <div style="color:#ccc">${esc(m.tags||'sem tags')}</div>`;
+  $('#modal').classList.remove('hide');fillFlightSel(m);
+  if(m.orient==='pano')openPano360(`/api/media/${id}/file`);
+}
+function closeM(){$('#modal').classList.add('hide');$('#modal').innerHTML=''}
+async function favM(){await api('/media/'+curM.id,J('PATCH',{fav:curM.fav?0:1}));openMedia(curM.id)}
+async function tagsM(){const t=prompt('Tags separadas por vírgula (funcionam como álbuns):',curM.tags||'');
+  if(t!==null){await api('/media/'+curM.id,J('PATCH',{tags:t}));openMedia(curM.id)}}
+
+/* ---------- ligar mídia a um voo e ajustar a sincronia do vídeo ---------- */
+let FLS=null;
+async function fillFlightSel(m){
+  const sel=$('#mflight');if(!sel)return;
+  if(!FLS){try{FLS=await api('/flights')}catch(e){FLS=[]}}
+  const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+  sel.innerHTML='<option value="-1">Automático (o app decide)</option><option value="0">Nenhum voo</option>'+
+    FLS.map(f=>`<option value="${f.id}">${fmt.d(f.start_local)} · ${E(f.name||f.place||'')}${f.source=='photos'?' (reconstruído)':''}</option>`).join('');
+  sel.value=m.manual?String(m.flight_id||0):'-1';
+}
+async function linkM(){
+  const v=+$('#mflight').value;
+  await api('/media/'+curM.id,J('PATCH',{flight_id:v}));
+  closeM();
+  if(!$('#fdet').classList.contains('hide')&&window.CURF)openFlight(window.CURF);
+  else if(!$('#midia').classList.contains('hide'))loadMedia();
+}
+async function adjV(d,reset){
+  const v=FV[CV];if(!v)return;
+  v.sync_adj=reset?0:Math.max(-120,Math.min(120,(v.sync_adj||0)+d));
+  v.off=v.base+v.sync_adj;
+  await api('/media/'+v.id,J('PATCH',{sync_adj:v.sync_adj}));
+  $('#sadj').textContent=(v.sync_adj>0?'+':'')+v.sync_adj+' s';
+  syncV(+$('#slider').value);
+}
+/* ---------- saúde das baterias e potência elétrica ---------- */
+function batCards(f){
+  let b=null;try{b=f.bat?JSON.parse(f.bat):null}catch(e){}
+  if(!b)return '';
+  const c=(t,v,s)=>`<div class=card>${t}<b style="font-size:15px">${v}</b>${s?`<small>${s}</small>`:''}</div>`,n=(x,u,d)=>x==null?'–':(+x).toFixed(d||0)+u;
+  return c('Carga usada',b.start==null?'–':b.start+'% → '+b.end+'%',b.wh!=null?b.wh+' Wh consumidos':'')+
+    c('Potência / Corrente',b.wavg!=null?b.wavg+' W méd.':'–',b.wmax!=null?`Pico: ${b.wmax} W · ${b.amax||0} A`+(b.wh_km?` · ${b.wh_km} Wh/km`:''):'')+
+    c('Tensão mín.',b.vmin==null?'–':(b.vmin/1000).toFixed(2)+' V')+
+    c('Desvio entre células',b.est?'estimado (sem medição)':n(b.dev,' mV'))+
+    c('Temp. da bateria',b.tmax==null?'–':n(b.tmin,'',0)+'–'+n(b.tmax,' °C',0))+c('Capacidade',n(b.full,' mAh'))}
+let BHC=[];
+async function loadBatHealth(){
+  BHC.forEach(c=>c.destroy());BHC=[];
+  let bs=[];try{bs=await api('/battery-health')}catch(e){return}
+  const old=$('#bathealth');if(old)old.remove();
+  const tr=bs.map(b=>{
+    const fl=b.flights,caps=fl.filter(f=>f.full!=null).map(f=>f.full),last=caps.length?caps[caps.length-1]:null,
+      drop=caps.length?(1-last/Math.max(...caps))*100:null,
+      devs=fl.filter(f=>f.dev!=null).map(f=>f.dev),maxdev=devs.length?Math.max(...devs):null,
+      tms=fl.filter(f=>f.tmax!=null).map(f=>f.tmax),tm=tms.length?Math.max(...tms):null,
+      used=fl.filter(f=>f.start!=null&&f.end!=null).map(f=>f.start-f.end),avg=used.length?used.reduce((a,x)=>a+x,0)/used.length:null,
+      hours=fl.reduce((a,f)=>a+f.min,0)/60,why=[];let lvl=0;
+    if(drop!=null&&drop>=10){why.push('capacidade caiu '+drop.toFixed(0)+'%');lvl=drop>=20?2:1}
+    if(maxdev!=null&&maxdev>50){why.push('desvio entre células '+maxdev.toFixed(0)+' mV');lvl=Math.max(lvl,maxdev>100?2:1)}
+    if(tm!=null&&tm>50){why.push('temperatura '+tm.toFixed(0)+' °C');lvl=Math.max(lvl,1)}
+    const nodata=caps.length==0&&devs.length==0&&tm==null;
+    const chip=nodata?'<span style="color:var(--mut)">sem dados (reimporte os logs)</span>':(lvl==2?'🔴 Atenção: ':lvl==1?'🟡 Observar: ':'🟢 Boa')+why.join('; ');
+    return `<tr><td>${b.sn}<td>${fl.length}<td>${hours.toFixed(1)}<td>${last!=null?Math.round(last)+' mAh':'–'}<td>${drop!=null?drop.toFixed(1)+'%':'–'}<td>${maxdev!=null?maxdev.toFixed(0)+' mV':'–'}<td>${tm!=null?tm.toFixed(0)+' °C':'–'}<td>${avg!=null?avg.toFixed(0)+'%':'–'}<td>${chip}</tr>`});
+  const sec=document.createElement('div');sec.id='bathealth';
+  sec.innerHTML=`<h4>Saúde das baterias</h4>
+   <p style="color:var(--mut);font-size:12px">Calculada a partir dos logs reimportados. Os limites de aviso (queda de capacidade de 10% e 20%, desvio entre células acima de 50 e 100 mV, temperatura acima de 50 °C) são referências minhas, e não valores oficiais da DJI. Desvio entre células só aparece quando o log traz medição real.</p>
+   <table><tr><th>Bateria<th>Voos<th>Horas<th>Capacidade atual<th>Queda<th>Desvio máx.<th>Temp. máx.<th>Uso médio por voo<th>Situação</tr>${tr.join('')||'<tr><td colspan=9>Sem dados de bateria.</tr>'}</table>
+   <div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Capacidade total (mAh) ao longo do tempo</h4><canvas id=bhc1 height=150></canvas></div>
+   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Desvio máximo entre células (mV)</h4><canvas id=bhc2 height=150></canvas></div></div>`;
+  $('#stats').appendChild(sec);
+  const cols=['#1890ff','#10b981','#f59e0b','#ef4444','#a855f7','#00d2ff'];
+  const ds=key=>bs.map((b,i)=>({label:b.sn,data:b.flights.filter(f=>f[key]!=null).map(f=>({x:new Date(f.start).getTime(),y:f[key]})),
+    showLine:true,borderColor:cols[i%6],backgroundColor:cols[i%6],pointRadius:3,tension:0.2}));
+  const opt=u=>({scales:{x:{type:'linear',ticks:{maxTicksLimit:6,callback:v=>new Date(v).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'})}},y:{title:{display:true,text:u}}}});
+  BHC.push(new Chart($('#bhc1'),{type:'scatter',data:{datasets:ds('full')},options:opt('mAh')}));
+  BHC.push(new Chart($('#bhc2'),{type:'scatter',data:{datasets:ds('dev')},options:opt('mV')}));
+}
+/* ---------- verificação de espaço aéreo por voo ---------- */
+function airChip(f){
+  let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
+  if(!a)return '<span style="color:var(--mut)" title="Não verificado">—</span>';
+  const s=a.sev>=3?'🔴':a.sev>=2?'🟡':'🟢';
+  const t=a.hits.length?a.hits.map(h=>h.label+(h.name?' '+h.name:'')).join('; '):(a.near&&a.near[0]?'aeródromo mais próximo: '+a.near[0].name+' a '+a.near[0].km+' km':'sem áreas nas camadas consultadas');
+  return '<span title="'+t.replace(/[&<>"]/g,'')+'">'+s+'</span>'}
+function renderAir(f){
+  const el=$('#fair');if(!el)return;
+  let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
+  const btn=`<button onclick="airCheck(${f.id})">${a?'Verificar de novo':'Verificar espaço aéreo'}</button>`;
+  if(!a){el.innerHTML='<strong>Espaço aéreo:</strong> ainda não verificado. '+btn;return}
+  const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+  const head=a.sev>=3?'🔴 O trajeto passou dentro de zona com restrição ou controle':a.sev>=2?'🟡 Atenção':'🟢 Nenhuma área restrita ou controlada no trajeto';
+  const hits=a.hits.map(h=>'<li><strong>'+E(h.label)+'</strong>'+(h.name?': '+E(h.name):'')+' · do minuto '+fmt.t(h.first_t)+' ao '+fmt.t(h.last_t)+' do voo'+
+    (h.props&&Object.keys(h.props).length?'<br><small style="color:var(--mut)">'+Object.entries(h.props).map(([k,v])=>E(k)+': '+E(v)).join(' · ')+'</small>':'')+'</li>').join('');
+  const near=(a.near||[]).map(n=>'<li>Aeródromo ou heliponto '+(E(n.name)||'sem nome')+': '+n.km+' km do ponto mais próximo do trajeto</li>').join('');
+  el.innerHTML='<div style="background:var(--card);border:1px solid var(--border);padding:10px 14px;border-radius:8px"><strong style="font-size:14px">'+head+'</strong> '+btn+
+    '<ul style="margin:6px 0 0 18px">'+hits+near+'</ul>'+
+    (a.errors&&a.errors.length?'<small style="color:var(--mut)">'+a.errors.length+' camada(s) não responderam; o resultado pode estar incompleto.</small><br>':'')+
+    '<small style="color:var(--mut)">Verificado em '+E(a.checked.replace('T',' '))+'. Considera só a posição no mapa, e não a altura das zonas. Referência visual, não é autorização de voo: confirme no SARPAS/DECEA.</small></div>'}
+async function airCheck(id){
+  const el=$('#fair');el.textContent='Consultando o DECEA… (pode levar alguns segundos)';
+  try{await api('/flights/'+id+'/airspace-check',{method:'POST'});renderAir(await api('/flights/'+id))}
+  catch(e){el.innerHTML='Não foi possível consultar o DECEA agora. <button onclick="airCheck('+id+')">Tentar de novo</button>'}}
+async function airCheckAll(){
+  const fl=(await api('/flights')).filter(f=>f.source!='photos'&&!f.air);
+  if(!fl.length){alert('Todos os voos já foram verificados.');return}
+  if(!confirm('Verificar '+fl.length+' voos no DECEA? Pode levar alguns minutos.'))return;
+  let ok=0,bad=0;
+  for(const [i,f] of fl.entries()){
+    $('#fcount').textContent='Verificando '+(i+1)+' de '+fl.length+'…';
+    try{await api('/flights/'+f.id+'/airspace-check',{method:'POST'});ok++}catch(e){bad++}}
+  alert('Verificação concluída: '+ok+' voo(s)'+(bad?', '+bad+' sem resposta do DECEA':'')+'.');loadFlights()}
+
+/* ---------- busca em linguagem natural (sem IA) ---------- */
+const NZ=s=>String(s==null?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const GT='(?:acima de|mais de|maior que|maior do que|superior a|pelo menos|no minimo|minimo de|a partir de|>=|>)';
+const LT='(?:abaixo de|menos de|menor que|menor do que|inferior a|no maximo|maximo de|ate|<=|<)';
+const MESES=['janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const MESES_PT=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const STOP=new Set(['de','da','do','das','dos','em','na','no','nas','nos','a','o','as','os','com','que','e','ou','para','por','ao','aos','pelo','pela',
+  'um','uma','meu','meus','minha','minhas','todos','todas','mostre','mostrar','ver','buscar','busca','procurar','quais','onde','quando','tive','fiz',
+  'foram','foi','tem','tiveram','sao','ja','ate','entre','perto','proximo','proximos','proxima','sobre','dentro','alto','altos','modo']);
+let NLF=()=>true,NLM=()=>true;
+function nlParse(q){
+  let s=' '+NZ(q).replace(/[,;]+/g,' ').replace(/\s+/g,' ')+' ';
+  const sp={target:'voos',alt:[null,null],dur:[null,null],dist:[null,null],spd:[null,null],batEnd:[null,null],batUsedMin:null,batSn:'',
+    air:0,source:'',orient:'',vib:false,vlos:false,fav:false,unlinked:false,dfn:null,words:[],chips:[],ignored:[]};
+  const cut=re=>{const m=s.match(re);if(m)s=s.replace(re,' ');return m};
+  const cmp=(prefix,unit)=>{
+    const re=new RegExp(prefix+'\\s*(?:('+GT+')|('+LT+'))?\\s*(\\d+(?:[.,]\\d+)?)\\s*'+unit+'(?![a-z/])'),out=[];let m;
+    while((m=s.match(re))){s=s.replace(re,' ');out.push({lt:!!m[2],n:parseFloat(m[3].replace(',','.'))})}
+    return out};
+  const lim=(arr,key,mul)=>arr.forEach(o=>{const v=o.n*(mul||1);
+    if(o.lt)sp[key][1]=sp[key][1]==null?v:Math.min(sp[key][1],v);else sp[key][0]=sp[key][0]==null?v:Math.max(sp[key][0],v)});
+  /* orientação, panoramas 360 e 4K */
+  if(cut(/\b(vertica(?:l|is)|retrato|9:16)\b/))sp.orient='portrait';
+  else if(cut(/\b(horizonta(?:l|is)|paisagem)\b/))sp.orient='landscape';
+  else if(cut(/\b(360|panoramas?|panoramic[oa]s?|esferic[oa]s?)\b/)){sp.orient='pano';if(!/\bvideos?\b/.test(s))sp.target='fotos'}
+  else if(cut(/\b(4k|ultra hd)\b/))sp.orient='4k';
+  /* alertas mecânicos / VLOS */
+  if(cut(/\b(vibrac(?:ao|oes)|helices?)\b/))sp.vib=true;
+  if(cut(/\b(vlos|fora de vlos|afastamento)\b/))sp.vlos=true;
+  /* o que está sendo procurado */
+  if(cut(/\bsem voo( associado)?\b/))sp.unlinked=true;
+  if(/\b(fotos?|imagens?)\b/.test(s))sp.target='fotos';else if(/\bvideos?\b/.test(s))sp.target='videos';
+  s=s.replace(/\b(fotos?|imagens?|videos?|voos?)\b/g,' ');
+  if(cut(/\bfavorit[oa]s?\b/g))sp.fav=true;
+  if(cut(/\breconstruid[oa]s?\b/))sp.source='photos';
+  if(cut(/\bsrt\b/))sp.source='srt';
+  /* números com unidade: do mais específico para o mais geral */
+  lim(cmp('','(?:km/h|kmh|km por hora)'),'spd');
+  lim(cmp('(?:distancia\\s*(?:total\\s*)?)?','(?:km|quilometros?)'),'dist');
+  lim(cmp('(?:duracao\\s*)?','(?:min|mins|minutos?)'),'dur',60);
+  lim(cmp('(?:duracao\\s*)?','(?:h|horas?)'),'dur',3600);
+  /* bateria */
+  if(cut(/\bbateria baixa\b/))sp.batEnd[1]=20;
+  cmp('bateria(?: final)?(?: com| de)?\\s*','%').forEach(o=>{if(o.lt)sp.batEnd[1]=o.n;else sp.batEnd[0]=o.n});
+  cmp('usou\\s*','%(?: da bateria)?').forEach(o=>{sp.batUsedMin=o.n});
+  const bs=cut(/\bbateria\s+((?=[a-z0-9]*\d)[a-z0-9]{6,})\b/);if(bs)sp.batSn=bs[1];
+  /* altura */
+  lim(cmp('(?:altura|altitude)(?: maxima)?\\s*','(?:m|metros?|mts?)?'),'alt');
+  lim(cmp('','(?:m|metros?|mts?)'),'alt');
+  /* espaço aéreo */
+  const ar=cut(/\b(?:espaco aereo|aerodromos?|aeroportos?|heliportos?|ctr)\b(?:\s*(?:com\s*)?(alerta|vermelho|restrit[oa]s?|proibid[oa]s?))?/);
+  if(ar)sp.air=ar[1]?3:2;
+  /* datas */
+  const now=new Date(),d0=new Date(now.getFullYear(),now.getMonth(),now.getDate()),DAY=864e5;let m;
+  const rng=(a,b,label)=>{sp.dfn=d=>d>=a&&d<b;sp.chips.push(label)};
+  if(cut(/\bhoje\b/))rng(d0,new Date(+d0+DAY),'hoje');
+  else if(cut(/\bontem\b/))rng(new Date(+d0-DAY),d0,'ontem');
+  else if(cut(/\b(?:esta|essa|nesta) semana\b/)){const k=(d0.getDay()+6)%7,a=new Date(+d0-k*DAY);rng(a,new Date(+a+7*DAY),'esta semana')}
+  else if(cut(/\bsemana passada\b/)){const k=(d0.getDay()+6)%7,a=new Date(+d0-(k+7)*DAY);rng(a,new Date(+a+7*DAY),'semana passada')}
+  else if(cut(/\b(?:este|esse|neste) mes\b/))rng(new Date(now.getFullYear(),now.getMonth(),1),new Date(now.getFullYear(),now.getMonth()+1,1),'este mês');
+  else if(cut(/\bmes passado\b/))rng(new Date(now.getFullYear(),now.getMonth()-1,1),new Date(now.getFullYear(),now.getMonth(),1),'mês passado');
+  else if(cut(/\b(?:este|esse|neste) ano\b/))rng(new Date(now.getFullYear(),0,1),new Date(now.getFullYear()+1,0,1),'este ano');
+  else if(cut(/\bano passado\b/))rng(new Date(now.getFullYear()-1,0,1),new Date(now.getFullYear(),0,1),'ano passado');
+  else if((m=cut(/\bultim[oa]s?\s*(\d+)?\s*(dias?|semanas?|meses|mes|anos?)\b/))){
+    const n=+(m[1]||1),u=m[2][0],a=u=='d'?new Date(+d0-n*DAY):u=='s'?new Date(+d0-n*7*DAY):u=='m'?new Date(now.getFullYear(),now.getMonth()-n,now.getDate()):new Date(now.getFullYear()-n,now.getMonth(),now.getDate());
+    rng(a,new Date(+d0+DAY),'últimos '+n+' '+({d:'dias',s:'semanas',m:'meses',a:'anos'})[u])}
+  else if((m=cut(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/))){const a=new Date(+m[3],+m[2]-1,+m[1]);rng(a,new Date(+a+DAY),m[0].trim())}
+  else if((m=cut(/\b(\d{1,2})\/(\d{4})\b/))){const a=new Date(+m[2],+m[1]-1,1);rng(a,new Date(+m[2],+m[1],1),m[0].trim())}
+  else{
+    let mo=null,yr=null;
+    const mm=cut(new RegExp('\\b('+MESES.join('|')+')(?:\\s*(?:de|/)?\\s*(20\\d\\d))?\\b'));
+    if(mm){mo=MESES.indexOf(mm[1]);if(mm[2])yr=+mm[2]}
+    if(yr==null){const y=cut(/\b(20\d\d)\b/);if(y)yr=+y[1]}
+    if(mo!=null||yr!=null){
+      sp.dfn=d=>(mo==null||d.getMonth()==mo)&&(yr==null||d.getFullYear()==yr);
+      sp.chips.push((mo!=null?MESES_PT[mo]:'')+(yr!=null?(mo!=null?' de ':'ano ')+yr:''))}}
+  /* o que sobrou vira palavras a procurar em nome, local, anotações e tags */
+  const OBJ_MAP={pessoas:'ia:pessoa',pessoa:'ia:pessoa',carros:'ia:carro',carro:'ia:carro',barcos:'ia:barco',barco:'ia:barco',navios:'ia:barco',motos:'ia:moto',moto:'ia:moto',caminhoes:'ia:caminhao',caminhao:'ia:caminhao',onibus:'ia:onibus',bicicletas:'ia:bicicleta',bicicleta:'ia:bicicleta',avioes:'ia:aviao',aviao:'ia:aviao',passaros:'ia:passaro',passaro:'ia:passaro',cachorros:'ia:cachorro',cachorro:'ia:cachorro',gatos:'ia:gato',gato:'ia:gato',cavalos:'ia:cavalo',cavalo:'ia:cavalo'};
+  sp.words=s.split(/\s+/).map(w=>w.replace(/[^a-z0-9_:]/g,'')).filter(w=>w.length>1&&!STOP.has(w)).map(w=>OBJ_MAP[w]||w);
+  /* resumo do que foi entendido */
+  const c=[({voos:'voos',fotos:'fotos',videos:'vídeos'})[sp.target]],rg=(a,t,f)=>{if(a[0]!=null)c.push(t+' ≥ '+f(a[0]));if(a[1]!=null)c.push(t+' ≤ '+f(a[1]))};
+  c.push(...sp.chips);
+  if(sp.fav)c.push('favoritos');if(sp.unlinked)c.push('sem voo associado');if(sp.source)c.push(sp.source=='srt'?'trilha .SRT':'reconstruídos');
+  if(sp.orient)c.push(({portrait:'verticais (9:16)',landscape:'horizontais',pano:'panoramas 360°','4k':'resolução 4K+'})[sp.orient]);
+  if(sp.vib)c.push('alerta de vibração');if(sp.vlos)c.push('distância > 500 m (VLOS)');
+  rg(sp.alt,'altura',x=>x+' m');rg(sp.dur,'duração',x=>(x/60).toFixed(x%60?1:0)+' min');rg(sp.dist,'distância',x=>x+' km');rg(sp.spd,'velocidade',x=>x+' km/h');
+  rg(sp.batEnd,'bateria final',x=>x+'%');
+  if(sp.batUsedMin!=null)c.push('bateria usada ≥ '+sp.batUsedMin+'%');if(sp.batSn)c.push('bateria '+sp.batSn.toUpperCase());
+  if(sp.air)c.push(sp.air>=3?'espaço aéreo: alerta':'espaço aéreo: atenção ou alerta');
+  if(sp.words.length)c.push('texto: '+sp.words.join(' '));
+  sp.summary=c;
+  return sp}
+function nlFlight(sp){
+  const inr=(v,a)=>(a[0]==null||v>=a[0]-1e-9)&&(a[1]==null||v<=a[1]+1e-9);
+  return f=>{
+    if(sp.dfn&&!sp.dfn(new Date(f.start_local)))return false;
+    if(sp.fav&&!f.fav)return false;
+    if(!inr(f.max_alt||0,sp.alt)||!inr((f.duration||0),sp.dur)||!inr((f.distance||0)/1000,sp.dist)||!inr((f.max_speed||0)*3.6,sp.spd))return false;
+    let b=null;try{b=f.bat?JSON.parse(f.bat):null}catch(e){}
+    if((sp.batEnd[0]!=null||sp.batEnd[1]!=null)&&!(b&&b.end!=null&&inr(b.end,sp.batEnd)))return false;
+    if(sp.batUsedMin!=null&&!(b&&b.start!=null&&b.end!=null&&b.start-b.end>=sp.batUsedMin))return false;
+    if(sp.batSn&&!NZ(f.battery_sn).includes(sp.batSn))return false;
+    if(sp.air){let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}if(!(a&&a.sev>=sp.air))return false}
+    if(sp.vib&&!((f.meta&&f.meta.mech&&f.meta.mech.vib_s>0)))return false;
+    if(sp.vlos&&!((f.meta&&f.meta.home&&f.meta.home.max_dist>500)))return false;
+    if(sp.source&&(f.source||'log')!=sp.source)return false;
+    const t=NZ((f.name||'')+' '+(f.place||'')+' '+(f.notes||''));
+    return sp.words.every(w=>t.includes(w))}}
+function nlMedia(sp){
+  return m=>{
+    if(sp.dfn&&!sp.dfn(new Date(m.taken)))return false;
+    if(sp.fav&&!m.fav)return false;
+    if(sp.unlinked&&m.flight_id!=null)return false;
+    if(sp.orient){
+      if(sp.orient==='4k'&&!m.is_4k)return false;
+      if(sp.orient!=='4k'&&m.orient!==sp.orient)return false;
+    }
+    const t=NZ((m.tags||'')+' '+(m.path||'')+' '+(m.place||''));
+    return sp.words.every(w=>t.includes(w))}}
+function nlRun(){
+  const q=$('#nlq').value.trim();if(!q){nlClear();return}
+  const sp=nlParse(q),E=s=>String(s).replace(/[&<>"]/g,'');
+  NLF=sp.target=='voos'?nlFlight(sp):()=>true;NLM=sp.target!='voos'?nlMedia(sp):()=>true;
+  ['fq','fd1','fd2','fa','fdur','fb','fdri','fs','mq','mor','md','mn'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});
+  ['ffav','mf','mu'].forEach(i=>{const e=$('#'+i);if(e)e.checked=false});
+  const bar=$('#nlbar');
+  bar.innerHTML='<strong>Filtro DJI:</strong> '+sp.summary.map(c=>'<span style="background:var(--bg-elev);border:1px solid var(--acc);color:var(--acc-cyan);border-radius:12px;padding:1px 10px;margin:0 3px;font-size:12px">'+E(c)+'</span>').join('')+
+    (sp.ignored.length?' <small style="color:var(--mut)">(ignorado: '+E(sp.ignored[0])+')</small>':'')+
+    ' <button onclick="nlClear()" style="margin-left:8px;padding:3px 9px;font-size:12px">✕ Limpar busca</button>';
+  bar.classList.remove('hide');
+  show(sp.target=='voos'?'voos':sp.target=='videos'?'videos':'fotos')}
+function nlClear(){
+  NLF=()=>true;NLM=()=>true;$('#nlq').value='';$('#nlbar').classList.add('hide');
+  show(Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'))||'voos')}
+function nlHelp(){alert('Exemplos de busca (sem IA, por padrões):\n\n• voos acima de 80 m em 2025\n• voos com mais de 10 min em março\n• voos na Barra com bateria baixa\n• voos com alerta de vibração\n• voos fora de vlos\n• voos perto de aeroporto\n• fotos verticais na Barra\n• panoramas 360\n• vídeos 4k favoritos\n• fotos sem voo\n\nO que não for reconhecido vira palavra procurada no nome, local, anotações e tags.')}
+/* ---------- painel geral (aba Estatísticas) ---------- */
+let PD={p:'all',fl:[],tr:[]},PDC=[],PM=null;
+const MS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function loadScript(u){return new Promise((ok,err)=>{
+  const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>err(new Error('script'));document.head.appendChild(s)})}
+function goDay(d){
+  if(typeof NLF!='undefined')NLF=()=>true;
+  const nb=$('#nlbar');if(nb)nb.classList.add('hide');
+  ['fq','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});const c=$('#ffav');if(c)c.checked=false;
+  $('#fd1').value=d;$('#fd2').value=d;show('voos')}
+function calHtml(fl){
+  const byDay={};fl.forEach(f=>{const d=f.start_local.slice(0,10);(byDay[d]=byDay[d]||{n:0,min:0}).n++;byDay[d].min+=f.duration/60});
+  const years=[...new Set(fl.map(f=>+f.start_local.slice(0,4)))].sort((a,b)=>b-a),C=11,S=13;
+  return years.map(y=>{
+    const jan1=new Date(y,0,1),off=(jan1.getDay()+6)%7,nd=((y%4==0&&y%100!=0)||y%400==0)?366:365,cells=[];
+    for(let i=0;i<nd;i++){
+      const d=new Date(y,0,1+i),k=y+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
+        col=Math.floor((i+off)/7),row=(i+off)%7,v=byDay[k],op=!v?1:v.n==1?0.45:v.n==2?0.7:1;
+      cells.push('<rect x="'+(col*S+24)+'" y="'+(row*S+16)+'" width="'+C+'" height="'+C+'" rx="2" style="fill:'+(v?'var(--acc)':'var(--bg-elev)')+';stroke:rgba(255,255,255,0.04);fill-opacity:'+op+(v?';cursor:pointer':'')+'"'+
+        (v?' onclick="goDay(\''+k+'\')"':'')+'><title>'+d.toLocaleDateString('pt-BR')+(v?': '+v.n+(v.n==1?' voo':' voos')+', '+Math.round(v.min)+' min':'')+'</title></rect>')}
+    const months=[...Array(12)].map((_,m)=>{const i=Math.round((new Date(y,m,1)-jan1)/864e5),col=Math.floor((i+off)/7);
+      return '<text x="'+(col*S+24)+'" y="10" font-size="10" fill="currentColor" opacity=".7">'+MS[m]+'</text>'}).join('');
+    const dias=['Seg','','Qua','','Sex','','Dom'].map((t,i)=>t?'<text x="0" y="'+(i*S+26)+'" font-size="9" fill="currentColor" opacity=".7">'+t+'</text>':'').join('');
+    return '<div style="margin-bottom:8px;background:var(--card);padding:10px 12px;border-radius:var(--radius);border:1px solid var(--border)"><b>'+y+'</b><svg width="'+(Math.ceil((nd+off)/7)*S+30)+'" height="'+(7*S+20)+'" style="display:block;color:var(--fg);margin-top:4px">'+months+dias+cells.join('')+'</svg></div>'}).join('')}
+async function loadPanel(){
+  const root=$('#stats');if(!root)return;
+  let fl=[],tr=[];try{fl=await api('/flights');tr=await api('/tracks')}catch(e){return}
+  PD.fl=fl.filter(f=>f.source!='photos'&&f.start_local&&f.duration!=null);PD.tr=tr;
+  const old=$('#panel');if(old)old.remove();
+  const sec=document.createElement('div');sec.id='panel';
+  sec.innerHTML='<div class=row><h3 style="margin:0">Painel de Telemetria</h3><label>Período <select id="pp" onchange="PD.p=this.value;renderPanel()"></select></label><span id="pcount" style="color:var(--mut)"></span></div><div id="pbody"></div>';
+  root.prepend(sec);
+  const years=[...new Set(PD.fl.map(f=>f.start_local.slice(0,4)))].sort().reverse(),sel=$('#pp');
+  sel.innerHTML='<option value="all">Todo o período</option>'+years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  if(PD.p!='all'&&!years.includes(PD.p))PD.p='all';
+  sel.value=PD.p;renderPanel()}
+async function renderPanel(){
+  PDC.forEach(c=>c.destroy());PDC=[];if(PM){PM.remove();PM=null}
+  const fl=PD.fl.filter(f=>PD.p=='all'||f.start_local.startsWith(PD.p)),B=$('#pbody'),E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+  $('#pcount').textContent=fl.length+(fl.length==1?' voo':' voos');
+  if(!fl.length){B.innerHTML='<p style="color:var(--mut)">Nenhum voo no período.</p>';return}
+  const hrs=fl.reduce((a,f)=>a+f.duration,0)/3600,km=fl.reduce((a,f)=>a+f.distance,0)/1000,days=new Set(fl.map(f=>f.start_local.slice(0,10))).size;
+  const pl={};fl.forEach(f=>{if(f.place)pl[f.place]=(pl[f.place]||0)+1});
+  const topP=Object.entries(pl).sort((a,b)=>b[1]-a[1])[0],best=k=>fl.reduce((a,f)=>(f[k]||0)>(a[k]||0)?f:a,fl[0]);
+  const hl=(t,f,v)=>'<div class=card style="cursor:pointer" onclick="openFlight('+f.id+')">'+t+'<b>'+v+'</b><small>'+fmt.d(f.start_local)+(f.place?' · '+E(f.place):'')+'</small></div>';
+  const a=best('max_alt'),d=best('duration'),s=best('distance'),v=best('max_speed');
+  B.innerHTML='<div class=cards>'+
+    '<div class=card>Voos<b>'+fl.length+'</b></div><div class=card>Horas de voo<b>'+hrs.toFixed(1)+' h</b></div>'+
+    '<div class=card>Distância<b>'+km.toFixed(1)+' km</b></div><div class=card>Dias com voo<b>'+days+'</b></div>'+
+    '<div class=card>Duração média<b>'+(hrs*60/fl.length).toFixed(1)+' min</b></div>'+
+    '<div class=card>Local mais voado<b style="font-size:15px">'+(topP?E(topP[0]):'–')+'</b><small>'+(topP?topP[1]+' voos':'')+'</small></div></div>'+
+    '<h4>Calendário de voos <small style="font-weight:400;text-transform:none;color:var(--mut)">(clique em um dia para ver os voos)</small></h4><div id="pcal" style="overflow-x:auto">'+calHtml(fl)+'</div>'+
+    '<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Horário de decolagem</h4><canvas id=ph1 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Dia da semana</h4><canvas id=ph2 height=140></canvas></div></div>'+
+    '<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Duração dos voos</h4><canvas id=ph3 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Horas por bateria</h4><canvas id=ph4 height=140></canvas></div></div>'+
+    '<h4>Voos em destaque</h4><div class=cards>'+hl('Maior altura',a,Math.round(a.max_alt)+' m')+hl('Voo mais longo',d,fmt.t(d.duration))+
+    hl('Maior distância',s,fmt.km(s.distance))+hl('Maior velocidade',v,(v.max_speed*3.6).toFixed(0)+' km/h')+'</div>'+
+    '<h4>Mapa de calor dos voos</h4><div id="pmap" style="height:380px;border-radius:8px;border:1px solid var(--border)"></div>';
+  const hours=Array(24).fill(0),wd=Array(7).fill(0),dur=[0,0,0,0,0],bat={};
+  fl.forEach(f=>{const t=new Date(f.start_local),m=f.duration/60,b=f.battery_sn||'sem bateria';
+    hours[t.getHours()]++;wd[(t.getDay()+6)%7]++;dur[m<5?0:m<10?1:m<15?2:m<20?3:4]++;bat[b]=(bat[b]||0)+f.duration/3600});
+  const bar=(id,labels,data)=>PDC.push(new Chart($('#'+id),{type:'bar',data:{labels:labels,datasets:[{data:data,backgroundColor:'#1890ff',borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}}));
+  bar('ph1',[...Array(24).keys()].map(h=>h+'h'),hours);
+  bar('ph2',['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'],wd);
+  bar('ph3',['até 5 min','5 a 10','10 a 15','15 a 20','mais de 20'],dur);
+  PDC.push(new Chart($('#ph4'),{type:'doughnut',data:{labels:Object.keys(bat),datasets:[{data:Object.values(bat).map(x=>+x.toFixed(2)),
+    backgroundColor:['#1890ff','#00d2ff','#10b981','#f59e0b','#a855f7','#ef4444','#64748b']}]},options:{plugins:{legend:{position:'right'}}}}));
+  /* mapa de calor: pontos dos trajetos do período + um marcador por decolagem */
+  const ids=new Set(fl.map(f=>f.id)),pts=[];
+  PD.tr.forEach(t=>{if(ids.has(t.id))t.pts.forEach(p=>pts.push([p[0],p[1],0.5]))});
+  const mp=PM=L.map('pmap'),bases=makeBases();wireBases(mp,bases);L.control.layers(bases,null,{position:'topright'}).addTo(mp);
+  const ll=fl.filter(f=>f.lat!=null&&f.lon!=null).map(f=>[f.lat,f.lon]);
+  if(ll.length)mp.fitBounds(L.latLngBounds(ll).pad(0.4),{maxZoom:15});else mp.setView([-22.9,-43.2],10);
+  try{if(!L.heatLayer)await loadScript('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js')}catch(e){}
+  if(PM!==mp)return;
+  if(L.heatLayer&&pts.length)L.heatLayer(pts,{radius:12,blur:16,maxZoom:17,gradient:{0.3:'#00d2ff',0.6:'#f59e0b',1:'#ef4444'}}).addTo(mp);
+  else pts.forEach(p=>L.circleMarker([p[0],p[1]],{radius:3,stroke:false,fillColor:'#00d2ff',fillOpacity:0.35}).addTo(mp));
+  fl.forEach(f=>{if(f.lat!=null&&f.lon!=null)L.circleMarker([f.lat,f.lon],{radius:5,color:'#fff',weight:1.5,fillColor:'#1890ff',fillOpacity:1}).addTo(mp)
+    .bindPopup('<b>'+(f.fav?'★ ':'')+(f.name?E(f.name):fmt.d(f.start_local))+'</b><br>'+(f.name?fmt.d(f.start_local)+' · ':'')+E(f.place||'')+
+      '<br><a href="#" onclick="openFlight('+f.id+');return false">Abrir voo</a>')});
+  mp.invalidateSize()}
+/* ---------- menu lateral ---------- */
+const NAVICON={
+  mapa:'<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
+  plan:'<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19h5.5a3.5 3.5 0 0 0 0-7h-4a3.5 3.5 0 0 1 0-7H15.5"/>',
+  airq:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  voos:'<path d="M3 11 21 3l-8 18-2-8-8-2z"/>',
+  fotos:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>',
+  videos:'<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>',
+  stats:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  config:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  locais:'<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.4"/>'};
+function initSidebar(){
+  if($('#side'))return;
+  const body=document.body,ban=$('#banner'),hd=document.querySelector('header'),nb=$('#nlbar'),mn=document.querySelector('main');
+  if(!hd||!mn)return;
+  const side=document.createElement('aside'),cont=document.createElement('div');side.id='side';cont.id='content';
+  body.insertBefore(side,body.firstChild);body.insertBefore(cont,side.nextSibling);
+  if(ban)side.appendChild(ban);
+  side.appendChild(hd);
+  if(nb)cont.appendChild(nb);
+  cont.appendChild(mn);
+  Object.keys(NAVICON).forEach(k=>{
+    const b=$('#b-'+k);if(!b)return;
+    const t=b.textContent;b.classList.add('nav');
+    b.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+NAVICON[k]+'</svg><span class="lb">'+t+'</span>';
+    b.title=t});
+  const q=$('#nlq'),help=hd.querySelector('button[onclick="nlHelp()"]');
+  if(q){const w=document.createElement('div');w.className='sbsearch';
+    w.innerHTML='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
+    hd.insertBefore(w,hd.firstChild);w.appendChild(q);if(help)w.appendChild(help)}}
+/* ---------- configurações: pastas de fotos e vídeos ---------- */
+let CFG={roots:[],edit:0};
+const msgErr=e=>{try{return JSON.parse(e.message).detail||e.message}catch(x){return e.message}};
+async function loadConfig(){
+  const el=$('#config');
+  let roots=[];try{roots=await api('/roots')}catch(e){el.innerHTML='<p>Não foi possível carregar as configurações.</p>';return}
+  CFG.roots=roots;
+  const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+  el.innerHTML='<h3 style="margin-top:0">Configurações</h3><h4>Pastas de fotos e vídeos do drone</h4>'+
+   '<p style="color:var(--mut);margin-top:0">O app lê todas as pastas ativas desta lista quando você clica em <b>Escanear pastas</b>. Remover uma pasta daqui <b>nunca apaga arquivos do disco</b>.</p>'+
+   '<table><tr><th>Ativa<th>Nome<th>Caminho<th>Situação<th>Arquivos no app<th>Etiqueta<th></tr>'+
+   (roots.map(r=>'<tr><td><input type=checkbox '+(r.enabled?'checked':'')+' onchange="rootToggle('+r.id+',this.checked)"><td>'+E(r.name)+'<td title="'+E(r.path)+'">'+E(r.win)+
+     '<td>'+(r.online?'🟢 disponível':'🔴 desconectada')+'<td>'+r.files+'<td>'+E(r.tag)+
+     '<td><button onclick="rootForm('+r.id+')">Editar</button> <button onclick="rootDel('+r.id+')">Remover</button></tr>').join('')||'<tr><td colspan=7>Nenhuma pasta cadastrada.</tr>')+'</table>'+
+   '<div class=row><button onclick="rootForm(0)">+ Adicionar pasta</button><button class="on" onclick="scan()">Escanear pastas agora</button><button onclick="rescanLogs()">⟳ Reimportar telemetria completa dos logs</button></div><div id="rootform"></div>'}
+async function rootToggle(id,on){
+  try{await api('/roots/'+id,J('PATCH',{enabled:on?1:0}))}catch(e){alert(msgErr(e))}
+  loadConfig()}
+function rootForm(id){
+  const r=id?CFG.roots.find(x=>x.id==id):{name:'',win:'',tag:'',recursive:1},E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
+  CFG.edit=id;
+  $('#rootform').innerHTML='<div style="background:var(--card);border:1px solid var(--border);padding:14px;border-radius:10px;margin-top:10px;max-width:780px">'+
+   '<h4 style="margin-top:0">'+(id?'Editar pasta':'Adicionar pasta')+'</h4>'+
+   '<div class=row><label>Nome <input id="rfn" value="'+E(r.name)+'" placeholder="Ex.: HD Seagate" style="width:220px"></label>'+
+   '<label>Etiqueta <input id="rft" value="'+E(r.tag)+'" placeholder="Ex.: Phantom 4 (opcional)" style="width:230px"></label></div>'+
+   '<div class=row><label style="flex:1;min-width:260px">Caminho <input id="rfp" value="'+E(r.win)+'" placeholder="E:\\DJI  ou  /mnt/e/DJI" style="width:100%"></label><button onclick="rootBrowse()">Procurar…</button></div>'+
+   '<div id="rootbr"></div>'+
+   '<div class=row><label><input id="rfr" type=checkbox '+(r.recursive?'checked':'')+'> Incluir subpastas</label>'+
+   (id?'<label><input id="rfm" type=checkbox> A pasta mudou de lugar (atualizar o caminho das mídias já indexadas)</label>':'')+'</div>'+
+   '<div class=row><button class=on onclick="rootSave()">Salvar</button><button onclick="$(\'#rootform\').innerHTML=\'\'">Cancelar</button></div></div>'}
+async function rootSave(){
+  const body={name:$('#rfn').value,path:$('#rfp').value,tag:$('#rft').value,recursive:$('#rfr').checked?1:0};
+  try{
+    if(CFG.edit){body.remap=($('#rfm')&&$('#rfm').checked)?1:0;await api('/roots/'+CFG.edit,J('PATCH',body))}
+    else await api('/roots',J('POST',body));
+    loadConfig()}
+  catch(e){alert(msgErr(e))}}
+async function rootDel(id){
+  const r=CFG.roots.find(x=>x.id==id);
+  if(!confirm('Remover "'+r.name+'" da lista?\n\nOs arquivos NÃO serão apagados do disco.'))return;
+  const forget=confirm('Também esquecer as '+r.files+' fotos e vídeos desta pasta que já estão no app?\n\nOK = esquecer (somem do app até você escanear de novo)\nCancelar = manter no app (ficam marcados como desconectados)')?1:0;
+  try{await api('/roots/'+id+'?forget='+forget,{method:'DELETE'})}catch(e){alert(msgErr(e))}
+  loadConfig()}
+async function rootBrowse(path){
+  const box=$('#rootbr');let r;
+  try{r=await api('/fs/list?path='+encodeURIComponent(path==null?$('#rfp').value:path))}
+  catch(e){try{r=await api('/fs/list?path=')}catch(x){box.textContent='Não foi possível listar as pastas.';return}}
+  box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='border:1px solid var(--border-strong);background:var(--bg-elev);border-radius:8px;padding:8px;margin:6px 0;max-height:260px;overflow:auto';
+  const head=document.createElement('div');head.className='row';head.style.margin='0 0 6px';
+  const t=document.createElement('b');t.textContent=r.path?r.win:'Discos do computador';head.appendChild(t);
+  const mkb=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.onclick=fn;head.appendChild(b)};
+  if(r.path){
+    mkb('Usar esta pasta',()=>{$('#rfp').value=r.win;if(!$('#rfn').value)$('#rfn').value=r.win.split('\\').filter(Boolean).pop()||r.win;box.innerHTML=''});
+    mkb('↑ Subir',()=>rootBrowse(r.parent||''))}
+  wrap.appendChild(head);
+  r.dirs.forEach(d=>{const x=document.createElement('div');x.style.cssText='padding:4px 8px;cursor:pointer;border-radius:4px';x.textContent='📁 '+d.name;x.onclick=()=>rootBrowse(d.path);wrap.appendChild(x)});
+  if(!r.dirs.length){const i=document.createElement('i');i.textContent='Nenhuma subpasta.';wrap.appendChild(i)}
+  box.appendChild(wrap)}
+/* ---------- estatísticas, frota de drones, diagnóstico mecânico, manutenção e biblioteca ---------- */
+let mch;
+async function loadStats(){
+  const s=await api('/stats'),L=s.library,pr=s.props,pct=Math.min(100,pr.hours/pr.limit*100);
+  const ma=s.mech_alerts||[];
+  const mechHtml=ma.length?`<div style="margin-top:10px;padding:10px;background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:6px"><b style="color:#fca5a5">⚠ Alertas mecânicos e de sensores detectados nos logs:</b><ul style="margin:6px 0 0 18px">${ma.map(a=>`<li><a href="#" onclick="openFlight(${a.id});return false">${a.start} (${esc(a.place)})</a>: ${[a.vib_s?`vibração nas hélices (${a.vib_s}s)`:'',a.force_s?`força insuficiente (${a.force_s}s)`:'',a.comp_s?`erro de bússola (${a.comp_s}s)`:'',a.gimb_s?`gimbal travado (${a.gimb_s}s)`:''].filter(Boolean).join(', ')}</li>`).join('')}</ul></div>`:'<div style="margin-top:8px;color:var(--ok);font-size:12.5px">🟢 Nenhuma vibração anormal de hélice ou falha mecânica registrada nos logs reimportados.</div>';
+  $('#stats').innerHTML=`<div class=cards>
+   <div class=card>Voos<b>${s.flights}</b></div><div class=card>Horas de voo<b>${s.hours.toFixed(1)} h</b></div>
+   <div class=card>Distância total<b>${s.km.toFixed(1)} km</b></div><div class=card>Altura máx.<b>${Math.round(s.max_alt)} m</b></div>
+   <div class=card>Fotos<b>${s.photos}</b></div><div class=card>Vídeos<b>${s.videos}</b></div></div>
+   <div class=two><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Voos por mês</h4><canvas id=mc height=150></canvas></div>
+   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Locais mais voados</h4><table>${s.places.map(p=>`<tr><td>${esc(p[0])}<td>${p[1]} voos</tr>`).join('')||'<tr><td>–</tr>'}</table></div></div>
+   <h4>Manutenção &amp; Diagnóstico de Hélices</h4>
+   <div style="background:var(--card);padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border)">
+     <div>Hélices: <b>${pr.hours.toFixed(1)} h</b> de ${pr.limit} h</div><div class=bar><i style="width:${pct}%"></i></div>
+     <button onclick="resetProps()">Troquei as hélices</button>
+     ${mechHtml}
+   </div>
+   <h4>Frota / Aeronaves</h4>
+   <table><tr><th>Modelo<th>Nome<th>Número de Série<th>Voos<th>Horas<th>Distância</tr>
+   ${(s.drones||[]).map(d=>`<tr><td><b>${esc(d.type)}</b><td>${esc(d.name||'—')}<td>${esc(d.sn)}<td>${d.flights}<td>${d.hours.toFixed(1)} h<td>${d.km.toFixed(1)} km</tr>`).join('')||'<tr><td colspan=6>–</tr>'}</table>
+   <h4>Baterias</h4><table><tr><th>Número de série<th>Voos (ciclos aprox.)<th>Horas</tr>
+   ${s.batteries.map(b=>`<tr><td>${esc(b.sn)}<td>${b.flights}<td>${b.hours.toFixed(1)}</tr>`).join('')}</table>
+   <h4>Biblioteca</h4>
+   <div style="background:var(--card);padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border)">
+     <div>${L.unlinked} mídias sem voo associado${L.not_backed!==null?` · ${L.not_backed} sem backup`:' · defina BACKUP_DIR para checar backups'}</div>
+     <div style="margin-top:6px">${L.duplicates.length?`${L.duplicates.length} grupos de arquivos duplicados:<ul>${L.duplicates.slice(0,15).map(g=>`<li>${g.map(esc).join('<br>')}`).join('')}</ul>`:'Nenhum arquivo duplicado.'}</div>
+   </div>`;
+  mch&&mch.destroy();
+  mch=new Chart($('#mc'),{type:'bar',data:{labels:s.by_month.map(x=>x[0]),datasets:[{label:'Voos',data:s.by_month.map(x=>x[1]),backgroundColor:'#1890ff',borderRadius:4}]},options:{plugins:{legend:{display:false}}}});
+}
+async function resetProps(){if(confirm('Zerar o contador de horas das hélices?')){await api('/props/reset',{method:'POST'});loadStats()}}
+
+/* ---------- locais favoritos e missões pré-voo ---------- */
+async function checkMissionAir(id){
+  toast('Consultando DECEA para a missão…');
+  try{await api('/missions/'+id+'/airspace-check',{method:'POST'});toast('✓ Espaço aéreo verificado!');loadSpots()}
+  catch(e){alert('Não foi possível consultar o DECEA agora: '+e.message)}
+}
+async function delMission(id){
+  if(!confirm('Remover esta missão planejada?'))return;
+  await api('/missions/'+id,{method:'DELETE'});toast('Missão removida');loadSpots();
+}
+async function loadSpots(){
+  const [sp,ms]=await Promise.all([api('/spots'),api('/missions')]);
+  const mRows=(ms||[]).map(m=>{
+    const a=m.air;
+    const chip=!a?'<span style="color:var(--mut)">não verificado</span>':(a.sev>=3?'🔴 Restrição/Controle':a.sev>=2?'🟡 Atenção (<9km aeródromo)':'🟢 Livre');
+    return `<tr><td><b>${esc(m.name)}</b><td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b><td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button> <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
+  }).join('');
+  $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">Missões Pré-Voo Planejadas</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">+ Planejar nova missão no Mapa</button></div>`+
+   (ms.length?`<table><tr><th>Missão<th>Waypoints<th>Distância<th>VLOS máx.<th>Duração est.<th>Bateria est.<th>Espaço Aéreo (DECEA)<th>Ações</tr>${mRows}</table>`:'<p style="color:var(--mut)">Nenhuma missão pré-voo salva. Clique em <b>+ Planejar nova missão no Mapa</b> para desenhar uma rota e checar bateria e espaço aéreo antes de voar.</p>')+
+   `<h3 style="margin-top:24px">Locais Favoritos</h3>`+
+   (sp.length?`<table><tr><th>Local<th>Anotações<th>Coordenadas<th></tr>${sp.map(s=>`<tr><td>${esc(s.name)}<td>${esc(s.notes||'')}<td>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}<td><button onclick="delSpot(${s.id})">Remover</button></tr>`).join('')}</table>`
+    :'<p style="color:var(--mut)">Nenhum local salvo. No Mapa, clique com o botão direito onde quer marcar.</p>');
+}
+async function delSpot(id){await api('/spots/'+id,{method:'DELETE'});loadSpots()}
+
+window.addEventListener('resize',()=>{map&&map.invalidateSize();fm&&fm.invalidateSize()});
+function toast(msg){
+  let el=$('#toast');
+  if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el)}
+  el.textContent=msg;el.classList.remove('hide');
+  clearTimeout(window._tt);window._tt=setTimeout(()=>el.classList.add('hide'),2400);
+}
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(!$('#modal').classList.contains('hide'))closeM();
+    else if($('#fcoordbar')&&!$('#fcoordbar').classList.contains('hide'))$('#fcoordbar').classList.add('hide');
+  }
+  const tag=(e.target&&e.target.tagName)||'';
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag))return;
+  if(!$('#fdet').classList.contains('hide')&&$('#modal').classList.contains('hide')){
+    if(e.code==='Space'){e.preventDefault();$('#play').click()}
+    else if(e.key==='ArrowLeft'&&T.length){e.preventDefault();goT(Math.max(0,(window.TNOW||0)-5))}
+    else if(e.key==='ArrowRight'&&T.length){e.preventDefault();goT(Math.min(T[T.length-1][0],(window.TNOW||0)+5))}
+  }
+});
+initSidebar();
+show('mapa');
+</script>
+</body>
+</html>
