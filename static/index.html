@@ -2304,7 +2304,24 @@ async function loadConfig(){
    (roots.map(r=>'<tr><td><input type=checkbox '+(r.enabled?'checked':'')+' onchange="rootToggle('+r.id+',this.checked)"><td>'+E(r.name)+'<td title="'+E(r.path)+'">'+E(r.win)+
      '<td>'+(r.online?'🟢 disponível':'🔴 desconectada')+'<td>'+r.files+'<td>'+E(r.tag)+
      '<td><button onclick="rootForm('+r.id+')">Editar</button> <button onclick="rootDel('+r.id+')">Remover</button></tr>').join('')||'<tr><td colspan=7>Nenhuma pasta cadastrada.</tr>')+'</table>'+
-   '<div class=row><button onclick="rootForm(0)">+ Adicionar pasta</button><button class="on" onclick="scan()">Escanear pastas agora</button><button onclick="rescanLogs()">⟳ Reimportar telemetria completa dos logs</button></div><div id="rootform"></div>'}
+   '<div class=row><button onclick="rootForm(0)">+ Adicionar pasta</button><button class="on" onclick="scan()">Escanear pastas agora</button><button onclick="rescanLogs()">⟳ Reimportar telemetria completa dos logs</button></div><div id="rootform"></div>'+
+   '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
+   '<h4>Backup do Sistema</h4>'+
+   '<p style="color:var(--mut);margin-top:0">Copia logs de voo, banco de dados (últimas 10 versões) e código para o HD externo configurado no <code>backup.sh</code>.</p>'+
+   '<div class=row><button id="btn-backup" class="on" onclick="runBackup()">💾 Fazer Backup Agora</button></div>'+
+   '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>'}
+async function runBackup(){
+  const btn=$('#btn-backup'),out=$('#backup-out');
+  btn.disabled=true;btn.textContent='⏳ Fazendo backup...';
+  out.classList.remove('hide');out.style.color='var(--mut)';out.textContent='Executando backup no HD externo...';
+  try{
+    const r=await api('/backup',{method:'POST'});
+    out.style.color='var(--ok)';out.textContent=r.output||'Backup concluído.';
+  }catch(e){
+    out.style.color='#fca5a5';out.textContent='Erro: '+msgErr(e);
+  }finally{
+    btn.disabled=false;btn.textContent='💾 Fazer Backup Agora';
+  }}
 async function rootToggle(id,on){
   try{await api('/roots/'+id,J('PATCH',{enabled:on?1:0}))}catch(e){alert(msgErr(e))}
   loadConfig()}

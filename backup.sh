@@ -1,8 +1,16 @@
 #!/bin/bash
 # Backup do Drone Manager: logs de voo, banco de dados, configurações (sem segredos) e código
-DEST="/mnt/e/Backup_DroneManager"
+DEST="${BACKUP_DIR:-/mnt/e/Backup_DroneManager}"
 SRC="$HOME/drone-manager"
-mkdir -p "$DEST/logs" "$DEST/banco" "$DEST/app" || { echo "ERRO: o HD não está ligado ou o caminho está errado: $DEST"; read -p "Pressione Enter para fechar"; exit 1; }
+NO_PAUSE=0
+if [ "${1:-}" = "--no-pause" ]; then
+  NO_PAUSE=1
+fi
+if ! mkdir -p "$DEST/logs" "$DEST/banco" "$DEST/app" 2>/dev/null; then
+  echo "ERRO: o HD externo não está conectado ou o caminho está inacessível: $DEST"
+  [ "$NO_PAUSE" -eq 0 ] && read -p "Pressione Enter para fechar"
+  exit 1
+fi
 cp -ru "$SRC/data/logs/." "$DEST/logs/"
 python3 - "$SRC/data/drone.db" "$DEST/banco/drone-$(date +%F).db" <<'PY'
 import sqlite3, sys
@@ -14,4 +22,5 @@ cp -ru "$SRC/app.py" "$SRC/static" "$SRC/requirements.txt" "$SRC/README.md" "$SR
 echo "Logs: $(ls "$SRC/data/logs" | wc -l) na origem, $(ls "$DEST/logs" | wc -l) no backup"
 echo "Banco: $(ls "$DEST/banco" | wc -l) cópia(s) guardada(s)"
 echo "Backup concluído em: $DEST"
-read -p "Pressione Enter para fechar"
+[ "$NO_PAUSE" -eq 0 ] && read -p "Pressione Enter para fechar"
+exit 0

@@ -1841,4 +1841,22 @@ def fs_list(path: str = ""):
     top = str(d) == "/" or re.fullmatch(r"/mnt/[a-z]", str(d))
     return {"path": str(d), "win": to_win(str(d)), "parent": "" if top else str(d.parent), "dirs": dirs}
 
+@app.post("/api/backup")
+def run_backup():
+    """Executa o script backup.sh em modo não interativo (--no-pause) e retorna o log."""
+    script = BASE / "backup.sh"
+    if not script.is_file():
+        raise HTTPException(404, "Script backup.sh não encontrado")
+    try:
+        res = subprocess.run(
+            ["bash", str(script), "--no-pause"],
+            capture_output=True, text=True, timeout=120, check=False
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "Tempo limite excedido ao executar o backup")
+    out = ((res.stdout or "") + ("\n" + res.stderr if res.stderr else "")).strip()
+    if res.returncode != 0:
+        raise HTTPException(500, out or "Falha ao executar o backup")
+    return {"ok": True, "output": out}
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
