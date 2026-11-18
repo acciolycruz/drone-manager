@@ -1,5 +1,4 @@
 # Launcher inteligente do Drone Manager (Windows 11 + WSL2)
-$ErrorActionPreference = 'SilentlyContinue'
 $port = 8000
 $url = "http://localhost:$port"
 
@@ -7,7 +6,7 @@ function Test-DronePort {
     try {
         $client = New-Object System.Net.Sockets.TcpClient
         $ar = $client.BeginConnect('127.0.0.1', $port, $null, $null)
-        $ok = $ar.AsyncWaitHandle.WaitOne(250, $false)
+        $ok = $ar.AsyncWaitHandle.WaitOne(300, $false)
         if ($ok -and $client.Connected) {
             $client.EndConnect($ar)
             $client.Close()
@@ -24,17 +23,8 @@ if (Test-DronePort) {
     exit 0
 }
 
-# Descobre o caminho do repositório dentro do WSL2 a partir da pasta pai deste script
-$repoWin = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$repoWsl = (wsl.exe wslpath -a ($repoWin -replace '\\', '/')) 2>$null
-if (-not $repoWsl) {
-    $repoWsl = '~/drone-manager'
-} else {
-    $repoWsl = $repoWsl.Trim()
-}
-
-# Sobe o servidor em janela minimizada do WSL
-Start-Process -FilePath 'wsl.exe' -ArgumentList @('-e', 'bash', '-lc', "`"$repoWsl/start.sh`"") -WindowStyle Minimized
+# Sobe o servidor no WSL2 em janela minimizada
+Start-Process -FilePath 'wsl.exe' -ArgumentList @('-e', 'bash', '-lc', '~/drone-manager/start.sh') -WindowStyle Minimized
 
 # Aguarda a porta 8000 responder (até 30s) antes de abrir o navegador
 for ($i = 0; $i -lt 60; $i++) {
@@ -45,5 +35,5 @@ for ($i = 0; $i -lt 60; $i++) {
     }
 }
 
-# Fallback: abre mesmo assim caso demore mais que 30s
+# Fallback: abre mesmo assim caso o WSL demore mais que 30s para iniciar
 Start-Process $url
