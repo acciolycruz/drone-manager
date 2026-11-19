@@ -1844,7 +1844,7 @@ def fs_list(path: str = ""):
 @app.post("/api/backup")
 def run_backup():
     """Executa o script backup.sh em modo não interativo (--no-pause) e retorna o log."""
-    script = BASE / "backup.sh"
+    script = Path(__file__).resolve().parent / "backup.sh"
     if not script.is_file():
         raise HTTPException(404, "Script backup.sh não encontrado")
     try:

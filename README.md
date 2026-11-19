@@ -44,7 +44,8 @@ drone-manager/
 ├── .gitignore              # Proteção contra commit de .env, banco, logs de voo, mídias e cache
 ├── requirements.txt        # Dependências Python com versões fixadas
 ├── start.sh                # Script de inicialização segura (127.0.0.1:8000)
-├── backup.sh               # Script de backup incremental para HD externo
+├── backup.sh               # Script de backup incremental para HD externo (aceita --no-pause)
+├── windows/                # Launcher inteligente, ícone (.ico) e gerador de atalho para Windows 11 + WSL2
 ├── GEMINI.md               # Documentação arquitetural e regras de contexto para IA
 └── README.md               # Este guia de instalação, arquitetura e uso
 ```
@@ -105,16 +106,23 @@ chmod 600 .env
 ```
 Abra **http://127.0.0.1:8000** no navegador.
 
+**Atalho na Área de Trabalho (Windows 11 + WSL2):**
+Para criar um atalho único com o ícone oficial do app (que verifica se a porta `8000` já está ativa ou sobe o servidor no WSL2 antes de abrir o navegador), rode no terminal do WSL:
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/drone-manager/windows/criar-atalho.ps1)"
+```
+
 1. Importe seus logs `DJIFlightRecord_*.txt` clicando em **`⬆ Enviar logs (.txt)`** na aba **Voos** (ou copiando-os para `data/logs/`).
 2. Na aba **Configurações**, adicione suas pastas de fotos/vídeos (suporta caminhos Windows `E:\DJI` ou WSL `/mnt/e/DJI`).
 3. Clique em **Escanear pastas** no menu lateral esquerdo.
 4. Para atualizar logs antigos com todos os sensores do Cockpit HUD, clique em **`⟳ Atualizar telemetria dos logs`** na aba **Voos**.
 
 ### Executar Backup para HD Externo
+Você pode disparar o backup direto pela interface web (aba **Configurações** → **💾 Fazer Backup Agora**) ou pelo terminal:
 ```bash
 ./backup.sh
 ```
-Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mantendo as 10 últimas cópias) e salva os arquivos de código/configuração em `/mnt/e/Backup_DroneManager`.
+Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mantendo as 10 últimas cópias) e salva os arquivos de código/configuração em `/mnt/e/Backup_DroneManager` (ou em `$BACKUP_DIR`).
 
 ---
 
@@ -158,6 +166,7 @@ Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mant
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
 | `GET` | `/api/stats` & `/api/battery-health` | Estatísticas gerais, frota de drones, alertas mecânicos de hélices e saúde das baterias. |
 | `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a `/mnt` e `data/media`. |
+| `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
 
 ---
 
