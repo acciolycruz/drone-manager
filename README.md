@@ -1,12 +1,12 @@
 # Drone Manager (DJI Mini 3 · Telemetria & SIG)
 
-Sistema de Informação Geográfica (SIG) e cockpit web local de telemetria para gerenciar voos, fotos, vídeos e manutenção de drones **DJI Mini 3** (e outros modelos DJI, como Phantom 4, via metadados EXIF/XMP/GPS e legendas `.SRT`).
+Sistema de Informação Geográfica (SIG) e cockpit web local de telemetria para gerenciar voos, fotos, vídeos, detecção de objetos e manutenção de drones **DJI Mini 3** (e outros modelos DJI, como Phantom 4, via metadados EXIF/XMP/GPS e legendas `.SRT`).
 
 ---
 
 ## 1. Visão Geral
 
-O **Drone Manager** processa localmente os arquivos de log criptografados do aplicativo DJI Fly (`DJIFlightRecord_*.txt`), fotos (`.jpg`, `.jpeg`, `.dng`), vídeos (`.mp4`, `.mov`) e trilhas de legenda (`.SRT`), consolidando tudo em um banco SQLite local (`data/drone.db`) e oferecendo uma interface web em estilo **DJI Cockpit** com mapas 2D (Leaflet), replay 3D sobre terreno real (CesiumJS), instrumentos de voo em tempo real, fotogrametria (Footprint/GSD), visualizador 360° (Pannellum) e consulta ao espaço aéreo brasileiro (DECEA / GEOAISWEB).
+O **Drone Manager** processa localmente os arquivos de log criptografados do aplicativo DJI Fly (`DJIFlightRecord_*.txt`), fotos (`.jpg`, `.jpeg`, `.dng`), vídeos (`.mp4`, `.mov`) e trilhas de legenda (`.SRT`), consolidando tudo em um banco SQLite local (`data/drone.db`). A interface web em estilo **DJI Cockpit** oferece mapas 2D (Leaflet), replay 3D sobre terreno real (CesiumJS), instrumentos de voo em tempo real, fotogrametria (Footprint/GSD), visualizador 360° (Pannellum), detecção aérea de objetos (YOLO11s VisDrone via ONNX) e consulta ao espaço aéreo brasileiro (DECEA / GEOAISWEB).
 
 ---
 
@@ -26,7 +26,76 @@ flowchart LR
 
 ---
 
-## 3. Estrutura de Pastas
+## 3. Instalação Fácil (Guia Rápido para Iniciantes)
+
+Nunca usou terminal ou Python? Siga os passos abaixo copiando e colando um comando por vez.
+
+### Passo 1 — Abrir o Terminal (Linux ou Windows 11 com WSL2)
+- **No Linux (Ubuntu/Debian):** Abra o aplicativo **Terminal**.
+- **No Windows 11:** Abra o **Ubuntu (WSL2)** pelo Menu Iniciar.
+  > *Se ainda não tiver o WSL2 instalado no Windows 11, abra o PowerShell como Administrador, execute `wsl --install` e reinicie o computador.*
+
+### Passo 2 — Baixar o projeto e instalar os programas auxiliares
+No terminal, entre na pasta onde deseja salvar o projeto (por exemplo, na sua pasta pessoal) e instale os utilitários de sistema (`python3-venv`, `exiftool`, `ffmpeg` e `cargo`):
+
+```bash
+git clone <URL_DO_REPOSITORIO> ~/drone-manager
+cd ~/drone-manager
+sudo apt update && sudo apt install -y python3 python3-venv python3-pip libimage-exiftool-perl ffmpeg cargo
+```
+
+Em seguida, instale o decodificador oficial de logs da DJI (`dji-log`):
+
+```bash
+cargo install --git https://github.com/lvauvillier/dji-log-parser dji-log-cli
+```
+*(O binário `dji-log` será salvo automaticamente em `~/.cargo/bin/dji-log`.)*
+
+### Passo 3 — Criar o ambiente Python e instalar as bibliotecas
+Ainda dentro da pasta `~/drone-manager`, crie um ambiente isolado (`.venv`) e instale as dependências listadas em [`requirements.txt`](requirements.txt):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Passo 4 — Configurar o arquivo `.env` (o que é obrigatório vs. opcional)
+Copie o modelo [`.env.example`](.env.example) para `.env` e proteja as permissões do arquivo:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Você pode editar o `.env` com `nano .env` (pressione `Ctrl+O` e `Enter` para salvar, e `Ctrl+X` para sair). Veja o que realmente precisa preencher:
+
+- **Funciona sem nenhuma chave:** O aplicativo já abre e funciona para organizar fotos e vídeos, ler GPS/EXIF e legendas `.SRT`, exibir mapas 2D, planejar missões, consultar o DECEA e rodar a detecção de objetos.
+- **`DJI_API_KEY` *(Opcional — gratuita)*:** Só é necessária se você quiser importar logs de voo `.txt` criptografados (versão v13+) do app DJI Fly. A chave é obtida gratuitamente no portal DJI Developer (Open API).
+- **`CESIUM_TOKEN` *(Opcional — gratuito)*:** Só é necessário se você quiser usar o relevo 3D mundial no modo **Replay 3D** (CesiumJS). O mapa 2D funciona normalmente sem esse token.
+
+### Passo 5 — Iniciar o servidor
+Execute o script de inicialização:
+
+```bash
+./start.sh
+```
+
+Quando aparecer a mensagem de que o servidor está rodando, abra o navegador e acesse:
+**http://127.0.0.1:8000**
+
+### Passo 6 *(Opcional — apenas Windows 11 + WSL2)* — Criar atalho com ícone na Área de Trabalho
+Para não precisar abrir o terminal toda vez, crie um atalho oficial do **Drone Manager** na sua Área de Trabalho rodando este comando no terminal do WSL2:
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/drone-manager/windows/criar-atalho.ps1)"
+```
+
+Esse comando usa [`windows/criar-atalho.ps1`](windows/criar-atalho.ps1) para copiar o launcher [`windows/DroneManager.ps1`](windows/DroneManager.ps1) e o ícone `windows/drone.ico` para `%LOCALAPPDATA%\DroneManager`. Ao clicar duas vezes no atalho **Drone Manager**, ele verifica se o servidor já está ativo na porta `8000`, sobe o `./start.sh` no WSL2 automaticamente caso não esteja e abre o navegador em `http://localhost:8000`.
+
+---
+
+## 4. Estrutura de Pastas
 
 ```text
 drone-manager/
@@ -38,91 +107,59 @@ drone-manager/
 │   ├── logs/               # Arquivos DJIFlightRecord_*.txt copiados do celular
 │   ├── logs_ignorados/     # Logs sem decolagem ou corrompidos
 │   ├── media/              # Pasta padrão local para fotos/vídeos/.SRT
+│   ├── models/             # Cache do modelo ONNX de detecção aérea (yolo11s_visdrone.onnx)
 │   └── thumbs/             # Cache de miniaturas JPEG (400px) e clipes HUD temporários
-├── .agent/                 # Regras globais, workflow de auditoria (full-audit.md) e skills de agentes especialistas
+├── .agent/                 # Regras e skills de agentes especialistas para desenvolvimento
 ├── .env.example            # Modelo documentado de variáveis de ambiente (sem segredos)
 ├── .gitignore              # Proteção contra commit de .env, banco, logs de voo, mídias e cache
-├── requirements.txt        # Dependências Python com versões fixadas
+├── requirements.txt        # Dependências Python com versões mínimas/compatíveis
 ├── start.sh                # Script de inicialização segura (127.0.0.1:8000)
 ├── backup.sh               # Script de backup incremental para HD externo (aceita --no-pause)
-├── windows/                # Launcher inteligente, ícone (.ico) e gerador de atalho para Windows 11 + WSL2
+├── windows/
+│   ├── DroneManager.ps1    # Launcher inteligente que sobe o WSL2 e abre o navegador
+│   ├── criar-atalho.ps1    # Gerador do atalho "Drone Manager.lnk" na Área de Trabalho
+│   └── drone.ico           # Ícone oficial do aplicativo para Windows
 ├── GEMINI.md               # Documentação arquitetural e regras de contexto para IA
 └── README.md               # Este guia de instalação, arquitetura e uso
 ```
 
 ---
 
-## 4. Pré-requisitos e Instalação
-
-1. **Python 3.9+ e Ambiente Virtual:**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. **Ferramentas de Linha de Comando (`exiftool` e `ffmpeg`):**
-   ```bash
-   sudo apt update && sudo apt install -y libimage-exiftool-perl ffmpeg
-   ```
-3. **Parser de Logs DJI (`dji-log-cli` via Rust/Cargo):**
-   ```bash
-   cargo install --git https://github.com/lvauvillier/dji-log-parser dji-log-cli
-   ```
-   *(O binário `dji-log` será instalado em `~/.cargo/bin/dji-log`).*
-4. **Chaves Gratuitas de API:**
-   - **DJI Developer (Open API):** Necessária para descriptografar logs de voo v13+.
-   - **Cesium Ion (`CESIUM_TOKEN`):** Necessária para carregar o relevo 3D mundial (`CesiumWorldTerrain`) no replay 3D.
-
----
-
 ## 5. Configuração de Variáveis de Ambiente
 
-Copie o arquivo [`.env.example`](file:///home/dudu/drone-manager/.env.example) para `.env` e restrinja suas permissões:
+Todas as variáveis podem ser configuradas no arquivo `.env` (baseado em [`.env.example`](.env.example)):
 
-```bash
-cp .env.example .env
-chmod 600 .env
-```
-
-| Variável | Padrão | Obrigatória | Descrição |
+| Variável | Padrão no Código | Obrigatória | Descrição |
 | :--- | :---: | :---: | :--- |
-| `DJI_API_KEY` | `""` | **Sim** (logs v13+) | Chave da DJI Developer para decodificar arquivos `.txt` no `dji-log`. |
-| `CESIUM_TOKEN` | `""` | **Sim** (Replay 3D) | Token do Cesium Ion para terreno 3D mundial. |
+| `DJI_API_KEY` | `""` | **Sim** *(logs v13+)* | Chave gratuita da DJI Developer para decodificar arquivos `.txt` no `dji-log`. |
+| `CESIUM_TOKEN` | `""` | **Sim** *(Replay 3D)* | Token gratuito do Cesium Ion para terreno 3D mundial (`CesiumWorldTerrain`). |
 | `TZ_OFFSET` | `-3` | Não | Fuso horário local em horas em relação ao UTC (ex.: `-3` Brasília/Rio). |
 | `LOGS_DIR` | `data/logs` | Não | Pasta onde ficam os arquivos `DJIFlightRecord_*.txt`. |
-| `MEDIA_DIR` | `data/media` | Não | Pasta principal padrão de fotos, vídeos e `.SRT` (no WSL pode apontar para `/mnt/e/DJI` via `.env`). |
-| `BACKUP_DIR` | `""` | Não | Pasta de backup para checagem de mídias já copiadas. |
+| `MEDIA_DIR` | `data/media` *(no `.env.example`: `/mnt/e/DJI`)* | Não | Pasta principal padrão de fotos, vídeos e `.SRT` (aceita caminhos WSL `/mnt/...` ou locais). |
+| `BACKUP_DIR` | `""` *(no `backup.sh`: `/mnt/e/Backup_DroneManager`)* | Não | Pasta de destino para backup e verificação de mídias já copiadas. |
 | `AIRSPACE_TILES` | `""` | Não | URL opcional de tiles XYZ extras de espaço aéreo. |
 | `PROP_LIMIT_H` | `50` | Não | Limite de horas acumuladas para aviso de troca de hélices. |
-| `DJI_LOG_BIN` | `dji-log` | Não | Nome ou caminho do binário `dji-log`. |
+| `DJI_LOG_BIN` | `dji-log` | Não | Nome ou caminho completo do binário `dji-log`. |
+| `HOST` / `PORT` | `127.0.0.1` / `8000` | Não | Endereço e porta usados pelo [`start.sh`](start.sh) ao iniciar o `uvicorn`. |
 
 ---
 
-## 6. Como Executar e Fazer Backup
+## 6. Uso Diário e Backup
 
-### Iniciar o Servidor
-```bash
-./start.sh
-```
-Abra **http://127.0.0.1:8000** no navegador.
-
-**Atalho na Área de Trabalho (Windows 11 + WSL2):**
-Para criar um atalho único com o ícone oficial do app (que verifica se a porta `8000` já está ativa ou sobe o servidor no WSL2 antes de abrir o navegador), rode no terminal do WSL:
-```bash
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(wslpath -w ~/drone-manager/windows/criar-atalho.ps1)"
-```
-
-1. Importe seus logs `DJIFlightRecord_*.txt` clicando em **`⬆ Enviar logs (.txt)`** na aba **Voos** (ou copiando-os para `data/logs/`).
-2. Na aba **Configurações**, adicione suas pastas de fotos/vídeos (suporta caminhos Windows `E:\DJI` ou WSL `/mnt/e/DJI`).
-3. Clique em **Escanear pastas** no menu lateral esquerdo.
-4. Para atualizar logs antigos com todos os sensores do Cockpit HUD, clique em **`⟳ Atualizar telemetria dos logs`** na aba **Voos**.
+### Primeiros Passos no Cockpit
+1. **Importar voos:** Na aba **Voos**, clique em **`⬆ Enviar logs (.txt)`** para enviar arquivos `DJIFlightRecord_*.txt` (ou copie-os manualmente para `data/logs/`).
+2. **Cadastrar pastas de mídia:** Na aba **Configurações**, adicione suas pastas de fotos/vídeos (suporta caminhos Windows `E:\DJI` ou Linux/WSL `/mnt/e/DJI`).
+3. **Escanear biblioteca:** Clique em **Escanear pastas** no menu lateral esquerdo para indexar EXIF, `.SRT`, gerar miniaturas e vincular fotos/vídeos aos voos.
+4. **Atualizar logs antigos:** Caso tenha logs importados anteriormente sem telemetria completa, clique em **`⟳ Atualizar telemetria dos logs`** na aba **Voos**.
 
 ### Executar Backup para HD Externo
-Você pode disparar o backup direto pela interface web (aba **Configurações** → **💾 Fazer Backup Agora**) ou pelo terminal:
+Você pode disparar o backup direto pela interface web (**Configurações** → **💾 Fazer Backup Agora**) ou pelo terminal:
+
 ```bash
 ./backup.sh
 ```
-Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mantendo as 10 últimas cópias) e salva os arquivos de código/configuração em `/mnt/e/Backup_DroneManager` (ou em `$BACKUP_DIR`).
+
+O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e consistente do SQLite (`drone-YYYY-MM-DD.db`, mantendo as **10 cópias mais recentes**) e salva os arquivos de código e configuração em `/mnt/e/Backup_DroneManager` (ou no caminho definido em `BACKUP_DIR`, sem copiar segredos do `.env`). Para automação sem pausa ao final, use `./backup.sh --no-pause`.
 
 ---
 
@@ -131,6 +168,7 @@ Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mant
 - **Menu Lateral de Operações Rápidas:**
   - **Planejar missão pré-voo:** Ativa o modo de desenho de *waypoints* no mapa, calculando em tempo real distância 3D, alcance máximo VLOS (`H`), tempo estimado e consumo de bateria para o DJI Mini 3, além de verificar automaticamente o espaço aéreo no DECEA e exportar em **KML**, **GPX** e **GeoJSON**.
   - **Consultar espaço aéreo:** Ativa a mira de inspeção direta no GeoServer do DECEA/GEOAISWEB ao clicar em qualquer ponto do mapa geral ou do mapa de detalhe do voo.
+  - **Busca em Linguagem Natural (sem IA externa):** Interpreta consultas em português como *"voos acima de 80 m em 2025"*, *"fotos sem voo"* ou *"voos perto de aeroporto"*.
 - **Mapa Geral & Fotogrametria (`📐 Footprint / GSD`):** Polilinhas dos voos (otimizadas via Ramer-Douglas-Peucker), clusters de fotos, projeção do polígono real coberto por cada foto no solo, cálculo de **GSD (`cm/pixel`)** e **% de sobreposição**, e camadas WMS do DECEA.
 - **Cockpit HUD ao Vivo no Replay 2D/3D:**
   - **Joysticks do Controle Remoto (RC Sticks):** Movimento em tempo real dos dois sticks (`Acel./Giro` e `Frente/Lado`), **Sinal RC (%)** e **Satélites**.
@@ -140,6 +178,7 @@ Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mant
 - **Extração de Coordenada Geográfica do Frame (`📍 Coordenada do frame`):**
   - Extrai a coordenada GPS exata do frame exibido no vídeo/replay (via `.SRT` ou interpolação da trilha do voo) e calcula também a **coordenada estimada do Alvo da Câmera no Solo**, gerando botões diretos para **`🗺 Abrir no Google Maps ↗`**, copiar ou salvar nos Locais Favoritos.
 - **Exportador de Clipe MP4 com HUD Embutido (`🎬 Exportar clipe com HUD`):** Renderiza via `ffmpeg` um trecho do vídeo com telemetria DJI gravada na imagem (com limpeza automática de arquivos temporários em background).
+- **Detecção Aérea de Objetos (`YOLO11s VisDrone ONNX`):** Analisa fotos e frames de vídeo localmente via `onnxruntime`, identifica 10 classes aéreas (pedestre, carro, van, caminhão, ônibus, moto, bicicleta, etc.), aplica tags automáticas `ia:*` e gera relatórios filtráveis em HTML/JSON.
 - **Galeria Inteligente e Visualizador 360° (`Pannellum`):** Filtros para fotos/vídeos **Verticais `9:16` (Modo Retrato do Mini 3)**, **Horizontais**, **Panoramas `360°`** e **`4K`**, com visualizador esférico 360° interativo no modal.
 - **Segurança Local-First:**
   - Servidor restrito ao *loopback* local (`127.0.0.1`), protegido por `TrustedHostMiddleware`, validação de `Origin`/`Referer` contra CSRF, sanitização contra *CSV Injection* e bloqueio de diretórios sensíveis do sistema (`/mnt/c/Windows`, `/mnt/c/Users`, etc.).
@@ -160,30 +199,35 @@ Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mant
 | `GET` | `/api/flights/{fid}` | Detalhe completo do voo, incluindo `track` (15 posições/s), `events`, `bat`, `air` e `meta`. |
 | `POST` | `/api/flights/{fid}/airspace-check` | Consulta WFS no GeoServer do DECEA (GEOAISWEB) para o trajeto do voo. |
 | `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` | Exporta a rota do voo em KML, GPX, GeoJSON (RFC 7946) ou relatório HTML/PDF para impressão. |
+| `GET` | `/api/logbook.csv` | Exporta o livro de bordo completo em CSV (com proteção contra *CSV Injection*). |
 | `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KML/GPX/GeoJSON). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
 | `GET` | `/api/media/{mid}/srt` | Retorna a trilha segundo a segundo do arquivo `.SRT` do vídeo (GPS, altitude e câmera). |
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
+| `POST` | `/api/media/{mid}/detect` & `/api/detect/batch` | Executa detecção aérea de objetos (YOLO11s VisDrone ONNX) em uma mídia ou em lote. |
+| `GET` | `/api/detections/report` | Gera relatório consolidado das detecções (HTML ou JSON), filtrável por voo e classe. |
+| `GET` | `/api/export/photos` | Exporta fotos selecionadas em arquivo `.zip` (pronto para fotogrametria/OpenDroneMap). |
 | `GET` | `/api/stats` & `/api/battery-health` | Estatísticas gerais, frota de drones, alertas mecânicos de hélices e saúde das baterias. |
 | `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a discos montados (`/mnt`, `/media`, `/run/media`, `/Volumes`) e `data/media`. |
 | `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
 
 ---
 
-## 9. Repositórios do GitHub Utilizados
+## 9. Repositórios e Serviços Open-Source Utilizados
 
 1. **Parser de Logs em Rust:**
    - **[lvauvillier/dji-log-parser](https://github.com/lvauvillier/dji-log-parser)** (`dji-log-cli` / binário `dji-log`)
-2. **Bibliotecas Frontend (CDN em `static/index.html`):**
+2. **Bibliotecas Frontend (CDN em [`static/index.html`](static/index.html)):**
    - **[Leaflet/Leaflet](https://github.com/Leaflet/Leaflet)** (`v1.9.4`)
    - **[Leaflet/Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster)** (`v1.5.3`)
    - **[Leaflet/Leaflet.heat](https://github.com/Leaflet/Leaflet.heat)** (`v0.2.0`)
    - **[chartjs/Chart.js](https://github.com/chartjs/Chart.js)** (`v4.4.1`)
    - **[CesiumGS/cesium](https://github.com/CesiumGS/cesium)** (`v1.145`)
    - **[mpetroff/pannellum](https://github.com/mpetroff/pannellum)** (`v2.5.6`)
-3. **Bibliotecas Backend em Python (`requirements.txt`):**
-   - **[fastapi/fastapi](https://github.com/fastapi/fastapi)** (junto com **[encode/starlette](https://github.com/encode/starlette)** e **[pydantic/pydantic](https://github.com/pydantic/pydantic)**)
+3. **Bibliotecas Backend em Python ([`requirements.txt`](requirements.txt)):**
+   - **[fastapi/fastapi](https://github.com/fastapi/fastapi)** (com **[encode/starlette](https://github.com/encode/starlette)** e **[pydantic/pydantic](https://github.com/pydantic/pydantic)**)
    - **[encode/uvicorn](https://github.com/encode/uvicorn)**
    - **[python-pillow/Pillow](https://github.com/python-pillow/Pillow)**
-4. **Ferramentas CLI e Serviços Open-Source:**
+   - **[microsoft/onnxruntime](https://github.com/microsoft/onnxruntime)** & **[numpy/numpy](https://github.com/numpy/numpy)**
+4. **Ferramentas CLI e Serviços Externos:**
    - **[exiftool/exiftool](https://github.com/exiftool/exiftool)** · **[FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg)** · **[osm-search/Nominatim](https://github.com/osm-search/Nominatim)** · **[open-meteo/open-meteo](https://github.com/open-meteo/open-meteo)** · **[geoserver/geoserver](https://github.com/geoserver/geoserver)** (DECEA / GEOAISWEB).
