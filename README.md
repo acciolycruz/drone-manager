@@ -90,7 +90,7 @@ chmod 600 .env
 | `CESIUM_TOKEN` | `""` | **Sim** (Replay 3D) | Token do Cesium Ion para terreno 3D mundial. |
 | `TZ_OFFSET` | `-3` | Não | Fuso horário local em horas em relação ao UTC (ex.: `-3` Brasília/Rio). |
 | `LOGS_DIR` | `data/logs` | Não | Pasta onde ficam os arquivos `DJIFlightRecord_*.txt`. |
-| `MEDIA_DIR` | `/mnt/e/DJI` | Não | Pasta principal padrão de fotos, vídeos e `.SRT`. |
+| `MEDIA_DIR` | `data/media` | Não | Pasta principal padrão de fotos, vídeos e `.SRT` (no WSL pode apontar para `/mnt/e/DJI` via `.env`). |
 | `BACKUP_DIR` | `""` | Não | Pasta de backup para checagem de mídias já copiadas. |
 | `AIRSPACE_TILES` | `""` | Não | URL opcional de tiles XYZ extras de espaço aéreo. |
 | `PROP_LIMIT_H` | `50` | Não | Limite de horas acumuladas para aviso de troca de hélices. |
@@ -165,7 +165,7 @@ Copia logs novos, realiza backup atômico do SQLite (`drone-YYYY-MM-DD.db`, mant
 | `GET` | `/api/media/{mid}/srt` | Retorna a trilha segundo a segundo do arquivo `.SRT` do vídeo (GPS, altitude e câmera). |
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
 | `GET` | `/api/stats` & `/api/battery-health` | Estatísticas gerais, frota de drones, alertas mecânicos de hélices e saúde das baterias. |
-| `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a `/mnt` e `data/media`. |
+| `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a discos montados (`/mnt`, `/media`, `/run/media`, `/Volumes`) e `data/media`. |
 | `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
 
 ---
