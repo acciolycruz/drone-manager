@@ -1752,7 +1752,7 @@ def root_out(r, c):
     n = c.execute("SELECT COUNT(*) FROM media WHERE substr(path,1,?)=?", (len(p) + 1, p + "/")).fetchone()[0]
     return {**dict(r), "online": Path(p).is_dir(), "files": n, "win": to_win(p)}
 
-ALLOWED_FS_PREFIXES = ("/mnt", os.path.abspath("data/media"), os.path.abspath(str(MEDIA_DIR)))
+ALLOWED_FS_PREFIXES = ("/mnt", "/media", "/run/media", "/Volumes", os.path.abspath("data/media"), os.path.abspath(str(MEDIA_DIR)))
 
 def _is_allowed_fs_path(p: str) -> bool:
     rp = os.path.realpath(p)
@@ -1768,7 +1768,7 @@ def roots_list():
 def root_add(b: RootIn):
     p = norm_path(b.path)
     if not p or not _is_allowed_fs_path(p):
-        raise HTTPException(403, "Caminho não permitido. Use apenas pastas dentro de discos montados (/mnt/...) ou data/media.")
+        raise HTTPException(403, "Caminho não permitido. Use apenas pastas dentro de discos montados (/mnt, /media, /run/media, /Volumes) ou data/media.")
     if not Path(p).is_dir(): raise HTTPException(400, "Pasta não encontrada: " + (p or "(vazio)") + ". O disco está conectado?")
     with db() as c:
         for o in c.execute("SELECT path, recursive FROM media_roots").fetchall():
@@ -1786,7 +1786,7 @@ def root_edit(rid: int, b: RootPatch):
         p = norm_path(b.path) if b.path else old["path"]
         if p != old["path"]:
             if not _is_allowed_fs_path(p):
-                raise HTTPException(403, "Caminho não permitido. Use apenas pastas dentro de discos montados (/mnt/...) ou data/media.")
+                raise HTTPException(403, "Caminho não permitido. Use apenas pastas dentro de discos montados (/mnt, /media, /run/media, /Volumes) ou data/media.")
             if not Path(p).is_dir(): raise HTTPException(400, "Pasta não encontrada: " + p + ". O disco está conectado?")
             if c.execute("SELECT 1 FROM media_roots WHERE path=? AND id<>?", (p, rid)).fetchone():
                 raise HTTPException(400, "Já existe outra entrada com este caminho.")
@@ -1823,10 +1823,18 @@ def fs_list(path: str = ""):
         dirs = []
         mnt = Path("/mnt")
         if mnt.is_dir():
-            dirs = [{"name": d.name.upper() + ":", "path": str(d)} for d in sorted(mnt.iterdir()) if len(d.name) == 1 and d.is_dir()]
+            dirs.extend({"name": d.name.upper() + ":", "path": str(d)} for d in sorted(mnt.iterdir()) if len(d.name) == 1 and d.is_dir())
+        for base_p in (Path("/media"), Path("/run/media"), Path("/Volumes")):
+            if base_p.is_dir():
+                for d in sorted(base_p.iterdir(), key=lambda z: z.name.lower()):
+                    if d.is_dir() and not d.name.startswith("."):
+                        dirs.append({"name": d.name, "path": str(d)})
+        dm = Path("data/media").resolve()
+        if dm.is_dir():
+            dirs.append({"name": "data/media (local)", "path": str(dm)})
         return {"path": "", "win": "", "parent": None, "dirs": dirs}
     if not _is_allowed_fs_path(p):
-        raise HTTPException(403, "Acesso permitido apenas aos discos em /mnt e à pasta data/media")
+        raise HTTPException(403, "Acesso permitido apenas aos discos montados e à pasta data/media")
     d = Path(p)
     if not d.is_dir(): raise HTTPException(400, "Pasta não encontrada")
     dirs = []
@@ -1838,7 +1846,7 @@ def fs_list(path: str = ""):
             except OSError: pass
             if len(dirs) >= 500: break
     except PermissionError: raise HTTPException(403, "Sem permissão para abrir esta pasta")
-    top = str(d) == "/" or re.fullmatch(r"/mnt/[a-z]", str(d))
+    top = str(d) in ("/", "/mnt", "/media", "/run/media", "/Volumes") or bool(re.fullmatch(r"/mnt/[a-z]", str(d))) or str(d) == os.path.abspath("data/media")
     return {"path": str(d), "win": to_win(str(d)), "parent": "" if top else str(d.parent), "dirs": dirs}
 
 @app.post("/api/backup")

@@ -1,4 +1,6 @@
 # Launcher inteligente do Drone Manager (Windows 11 + WSL2)
+param([string]$RepoPath = '~/drone-manager')
+
 $port = 8000
 $url = "http://localhost:$port"
 
@@ -23,8 +25,9 @@ if (Test-DronePort) {
     exit 0
 }
 
-# Sobe o servidor no WSL2 em janela minimizada
-Start-Process -FilePath 'wsl.exe' -ArgumentList @('-e', 'bash', '-lc', '~/drone-manager/start.sh') -WindowStyle Minimized
+# Sobe o servidor no WSL2 em janela minimizada usando o caminho detectado do repositório
+$startCmd = if ($RepoPath -eq '~/drone-manager') { '~/drone-manager/start.sh' } else { "'$RepoPath/start.sh'" }
+Start-Process -FilePath 'wsl.exe' -ArgumentList @('-e', 'bash', '-lc', $startCmd) -WindowStyle Minimized
 
 # Aguarda a porta 8000 responder (até 30s) antes de abrir o navegador
 for ($i = 0; $i -lt 60; $i++) {

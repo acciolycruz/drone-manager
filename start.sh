@@ -19,7 +19,7 @@ else
 fi
 
 export TZ_OFFSET="${TZ_OFFSET:--3}"
-export MEDIA_DIR="${MEDIA_DIR:-/mnt/e/DJI}"
+export MEDIA_DIR="${MEDIA_DIR:-data/media}"
 
 # Verificação rápida de ferramentas CLI externas no PATH
 for cmd in dji-log exiftool ffmpeg; do

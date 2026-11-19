@@ -1,7 +1,12 @@
 #!/bin/bash
 # Backup do Drone Manager: logs de voo, banco de dados, configurações (sem segredos) e código
+SRC="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SRC/.env" ]; then
+  set -a
+  source "$SRC/.env"
+  set +a
+fi
 DEST="${BACKUP_DIR:-/mnt/e/Backup_DroneManager}"
-SRC="$HOME/drone-manager"
 NO_PAUSE=0
 if [ "${1:-}" = "--no-pause" ]; then
   NO_PAUSE=1
