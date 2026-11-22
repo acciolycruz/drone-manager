@@ -1144,17 +1144,18 @@ const EV_TRANS={
 function trEvent(lbl){return LANG==='pt-BR'?lbl:(EV_TRANS[LANG]&&EV_TRANS[LANG][lbl])||lbl}
 async function loadI18n(lang){
   LANG=['pt-BR','en','es'].includes(lang)?lang:'pt-BR';
-  try{const r=await fetch('/static/i18n/'+LANG+'.json');if(r.ok)I18N=await r.json();}catch(e){}
+  try{const r=await fetch('/i18n/'+LANG+'.json');if(r.ok)I18N=await r.json();}catch(e){}
 }
 function applyI18n(){
   document.documentElement.lang=LANG;
   document.querySelectorAll('[data-i18n]').forEach(el=>{
     const k=el.getAttribute('data-i18n');
+    if(!I18N[k])return;
     if(el.classList.contains('nav')){const lb=el.querySelector('.lb');if(lb)lb.textContent=t(k);el.title=t(k)}
     else el.textContent=t(k);
   });
-  document.querySelectorAll('[data-i18n-ph]').forEach(el=>{el.placeholder=t(el.getAttribute('data-i18n-ph'))});
-  document.querySelectorAll('[data-i18n-title]').forEach(el=>{el.title=t(el.getAttribute('data-i18n-title'))});
+  document.querySelectorAll('[data-i18n-ph]').forEach(el=>{const k=el.getAttribute('data-i18n-ph');if(I18N[k])el.placeholder=t(k)});
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{const k=el.getAttribute('data-i18n-title');if(I18N[k])el.title=t(k)});
   const ls=$('#langsel');if(ls)ls.value=LANG;
   const dr=$('#a-detrep');if(dr)dr.href='/api/detections/report?lang='+LANG;
 }
