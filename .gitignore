@@ -10,3 +10,6 @@ data/logs/
 data/logs_ignorados/
 data/media/
 TODO.md
+.agent/
+.gemini/
+GEMINI.md
