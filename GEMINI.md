@@ -182,3 +182,8 @@ SPA em arquivo único dividida em uma barra lateral (`#side`, inicializada por `
    - Como as mídias frequentemente ficam em HDs externos (`/mnt/e/...`), qualquer nova funcionalidade que acesse arquivos de mídia deve lidar graciosamente com o caso em que o disco está desconectado (`Path(p).is_dir()` / `Path(p).exists()`), sem quebrar a listagem ou o escaneamento.
 6. **Execução do Servidor:**
    - O app roda no ambiente virtual `.venv` via `./start.sh` (ou `uvicorn app:app`). O binário `dji-log` fica em `~/.cargo/bin`.
+7. **Entrega Pós-Alteração (Obrigatório):**
+   - Sempre que for feita uma alteração:
+     - Exibir na janela de contexto uma **checklist marcável** (`- [ ] ...`) para que o usuário abra a aplicação e teste as novas funções.
+     - Atualizar a documentação (`README.md` / `GEMINI.md`).
+     - Subir as alterações para o GitHub (`git commit` + `git push`).

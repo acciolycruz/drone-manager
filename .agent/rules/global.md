@@ -18,6 +18,10 @@
 - **Idioma:** Responda sempre em Português do Brasil (pt-BR). Mantenha nomes de variáveis, funções, arquivos e mensagens de commit em Inglês, e comentários explicativos em Português.
 - **Confirmação Explícita:** Antes de executar comandos no terminal que alterem esquemas de banco de dados, apaguem arquivos ou modifiquem dependências (`pip install`, `npm install`), peça confirmação explícita.
 - **Planejamento Prévio:** Ao propor alterações em múltiplos arquivos, apresente primeiro um resumo objetivo das mudanças antes de editar o código.
+- **Entrega Pós-Alteração (Obrigatório):** Sempre que for feita uma alteração no projeto:
+  - **Checklist de Teste para o Usuário:** Apresente na janela de contexto uma checklist marcável (`- [ ] ...`) para que o usuário abra a aplicação e realize o teste das novas funções implementadas.
+  - **Atualização de Documentação:** O agente responsável deve inserir a nova funcionalidade/alteração na documentação (`README.md`, `GEMINI.md`, etc.).
+  - **Publicação no GitHub:** O agente responsável deve commitar e subir as alterações para o GitHub.
 
 # Delegação de Agentes Especialistas (Skills)
 Sempre que uma tarefa envolver os domínios abaixo, carregue e execute obrigatoriamente a respectiva skill localizada em `.agent/skills/`:
