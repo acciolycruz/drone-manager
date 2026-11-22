@@ -853,6 +853,7 @@ input[type=range] {
   <button id="b-mapa" onclick="show('mapa')">Mapa</button>
   <button id="b-plan" onclick="menuPlan()">Planejar missão pré-voo</button>
   <button id="b-airq" onclick="menuAirQuery()">Consultar espaço aéreo</button>
+  <button id="b-wx" onclick="menuWeather()">Previsão de janela de voo</button>
   <button id="b-voos" onclick="show('voos')">Voos</button>
   <button id="b-fotos" onclick="show('fotos')">Fotos</button>
   <button id="b-videos" onclick="show('videos')">Vídeos</button>
@@ -890,8 +891,25 @@ input[type=range] {
         <div class="row" style="margin:8px 0 0">
           <button onclick="undoWaypoint()" style="font-size:12px;padding:5px 9px">↶ Desfazer</button>
           <button onclick="clearDraftMission()" style="font-size:12px;padding:5px 9px">Limpar</button>
+          <button onclick="checkDraftWeather()" style="font-size:12px;padding:5px 9px" title="Ver previsão de vento, chuva e índice Kp para esta missão">🌤 Janela de Voo</button>
           <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px">💾 Salvar Missão</button>
         </div>
+      </div>
+      <div id="mwx" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:685;width:min(470px,94vw);max-height:76vh;display:flex;flex-direction:column;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
+        <div class="row" style="margin:0 0 6px;justify-content:space-between">
+          <b style="color:var(--acc-cyan)">🌤 Janela de Voo (Posso Voar?)</b>
+          <div class="row" style="margin:0;gap:6px">
+            <select id="wx-days" onchange="reloadWx()" style="font-size:11.5px;padding:2px 6px">
+              <option value="1">Hoje</option>
+              <option value="3" selected>3 dias</option>
+              <option value="5">5 dias</option>
+              <option value="7">7 dias</option>
+            </select>
+            <button onclick="toggleWx(false)" style="padding:2px 7px;font-size:12px">✕</button>
+          </div>
+        </div>
+        <div id="wx-head" style="font-size:11.5px;color:#94a3b8;margin-bottom:6px">Clique em qualquer ponto do mapa para consultar vento em altitude, rajadas, chuva e índice Kp.</div>
+        <div id="wx-body" style="overflow-y:auto;font-size:12px"></div>
       </div>
       <div class="maphint">Botão direito no mapa: salvar local favorito</div>
     </div>
@@ -1104,6 +1122,7 @@ function airLayers(){const o={};
 function toggleAirQuery(on){
   AIRQ_ON=!!on;
   if(AIRQ_ON&&PLAN_ON)togglePlanner(false);
+  if(AIRQ_ON&&typeof WX_ON!=='undefined'&&WX_ON)toggleWx(false);
   const b=$('#b-airq');if(b)b.classList.toggle('on',AIRQ_ON);
   if(map)map.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
   if(fm)fm.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
@@ -1187,14 +1206,89 @@ const PHI=L.divIcon({className:'ph-dot',iconSize:[16,16]});
 const HOMEI=L.divIcon({className:'home-dot',html:'H',iconSize:[22,22]});
 
 /* ---------- mapa geral e planejador de missões pré-voo ---------- */
-let map,L_={},PLAN_ON=false,PLAN_WPS=[];
+let map,L_={},PLAN_ON=false,PLAN_WPS=[],WX_ON=false,WX_PT=null,WX_DATA=null,WX_DAY=0;
 function togglePlanner(on){
   PLAN_ON=!!on;
   if(PLAN_ON&&AIRQ_ON)toggleAirQuery(false);
+  if(PLAN_ON&&WX_ON)toggleWx(false);
   const p=$('#mplan');if(p)p.classList.toggle('hide',!PLAN_ON);
   const b=$('#b-plan');if(b)b.classList.toggle('on',PLAN_ON);
-  if(map)map.getContainer().style.cursor=PLAN_ON?'crosshair':(AIRQ_ON?'crosshair':'');
+  if(map)map.getContainer().style.cursor=(PLAN_ON||AIRQ_ON||WX_ON)?'crosshair':'';
   renderDraftMission();
+}
+function toggleWx(on,pt){
+  WX_ON=!!on;
+  if(WX_ON&&AIRQ_ON)toggleAirQuery(false);
+  if(WX_ON&&PLAN_ON)togglePlanner(false);
+  const p=$('#mwx');if(p)p.classList.toggle('hide',!WX_ON);
+  const b=$('#b-wx');if(b)b.classList.toggle('on',WX_ON);
+  if(map)map.getContainer().style.cursor=(PLAN_ON||AIRQ_ON||WX_ON)?'crosshair':'';
+  if(WX_ON){
+    const target=pt||WX_PT||(PLAN_WPS.length?{lat:PLAN_WPS[0][0],lon:PLAN_WPS[0][1]}:null)||(map?{lat:map.getCenter().lat,lon:map.getCenter().lng}:null);
+    if(target)loadWxForecast(target.lat,target.lon);
+  }
+}
+async function menuWeather(){
+  if($('#mapa').classList.contains('hide')){
+    await show('mapa');
+    toggleWx(true);
+  }else{
+    toggleWx(!WX_ON);
+  }
+}
+function checkDraftWeather(){
+  const pt=PLAN_WPS.length?{lat:PLAN_WPS[0][0],lon:PLAN_WPS[0][1]}:(map?{lat:map.getCenter().lat,lon:map.getCenter().lng}:null);
+  toggleWx(true,pt);
+}
+function reloadWx(){if(WX_PT)loadWxForecast(WX_PT.lat,WX_PT.lon)}
+async function loadWxForecast(lat,lon){
+  WX_PT={lat:+lat,lon:+lon};
+  const days=+($('#wx-days')&&$('#wx-days').value||3);
+  const hd=$('#wx-head'),bd=$('#wx-body');
+  if(hd)hd.innerHTML=`Consultando <b>${WX_PT.lat.toFixed(4)}, ${WX_PT.lon.toFixed(4)}</b>… (clique no mapa para trocar o ponto)`;
+  if(bd)bd.innerHTML='<p style="color:#94a3b8">Carregando previsão horária…</p>';
+  if(L_.wx){
+    L_.wx.clearLayers();
+    L.circleMarker([WX_PT.lat,WX_PT.lon],{radius:7,color:'#fff',weight:2,fillColor:'#38bdf8',fillOpacity:0.95})
+      .addTo(L_.wx).bindTooltip('🌤 Previsão',{permanent:false});
+  }
+  try{
+    WX_DATA=await api(`/weather/forecast?lat=${WX_PT.lat}&lon=${WX_PT.lon}&days=${days}`);
+    WX_DAY=0;
+    renderWxPanel();
+  }catch(e){
+    if(bd)bd.innerHTML=`<p style="color:#f87171">Erro ao consultar previsão: ${esc(e.message)}</p>`;
+  }
+}
+function renderWxPanel(){
+  const d=WX_DATA,hd=$('#wx-head'),bd=$('#wx-body');
+  if(!d||!bd)return;
+  const kp=d.kp?` · <span style="padding:1px 6px;border-radius:4px;background:${d.kp.value>=5?'rgba(239,68,68,.25)':d.kp.value>=4?'rgba(245,158,11,.25)':'rgba(16,185,129,.2)'}">Kp ${d.kp.value} (${esc(d.kp.status)})</span>`:'';
+  if(hd)hd.innerHTML=`Ponto: <b>${d.lat}, ${d.lon}</b>${kp} · <span style="color:#64748b">Clique no mapa para mudar</span>`;
+  const ico=s=>s>=2?'🔴':s===1?'🟡':'🟢';
+  const lbl=s=>s>=2?'Não voar':s===1?'Atenção':'Ideal';
+  const best=(d.best_windows||[]).map(w=>{
+    const dt=w.date.slice(8,10)+'/'+w.date.slice(5,7);
+    return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 7px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid ${w.sev===0?'rgba(16,185,129,.45)':'rgba(245,158,11,.45)'}">${ico(w.sev)} <b>${dt} ${w.start}–${w.end}</b> · ${w.max_w10} m/s (raj. ${w.max_g10})</span>`;
+  }).join('');
+  const bestHtml=`<div style="margin-bottom:8px"><div style="font-size:11px;color:#94a3b8;margin-bottom:3px">Melhores janelas diurnas:</div>${best||'<span style="color:#f87171">Nenhuma janela diurna favorável encontrada no período.</span>'}</div>`;
+  const days=d.daily||[];
+  if(WX_DAY>=days.length)WX_DAY=0;
+  const tabs=days.map((dy,i)=>{
+    const dt=dy.date.slice(8,10)+'/'+dy.date.slice(5,7);
+    const act=i===WX_DAY;
+    return `<button onclick="WX_DAY=${i};renderWxPanel()" style="font-size:11.5px;padding:3px 8px;${act?'background:var(--acc);color:#fff;border-color:var(--acc)':''}">${dt}</button>`;
+  }).join(' ');
+  const curDay=days[WX_DAY];
+  const sun=curDay?`<span style="font-size:11px;color:#94a3b8;margin-left:auto">🌅 ${curDay.sunrise||'—'} · 🌇 ${curDay.sunset||'—'}</span>`:'';
+  const rows=(d.hours||[]).filter(h=>!curDay||h.time.startsWith(curDay.date)).map(h=>{
+    const st=!h.is_day?'🌙':ico(h.sev);
+    const title=h.reasons.length?h.reasons.join('; '):(h.is_day?lbl(h.sev):'Período noturno');
+    const bg=h.sev>=2?'rgba(239,68,68,.12)':h.sev===1?'rgba(245,158,11,.10)':'';
+    return `<tr style="${bg?'background:'+bg:''}" title="${esc(title)}"><td><b>${h.time.slice(11,16)}</b></td><td>${st}</td><td>${h.wind10} ${h.dir10_txt}</td><td>${h.wind80}/${h.wind120}</td><td>${h.gust10}</td><td>${h.rain_prob}%${h.rain>0?' ('+h.rain+'mm)':''}</td><td>${h.temp}°</td><td style="font-size:11px;color:#cbd5e1">${esc(h.reasons[0]||(h.is_day?'Favorável':'Noite'))}</td></tr>`;
+  }).join('');
+  bd.innerHTML=bestHtml+`<div class="row" style="margin:6px 0;gap:4px">${tabs}${sun}</div>`+
+    `<table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th>Hora</th><th></th><th>V10m</th><th>V80/120</th><th>Raj.</th><th>Chuva</th><th>Temp</th><th>Condição</th></tr>${rows}</table>`;
 }
 async function menuPlan(){
   if($('#mapa').classList.contains('hide')){
@@ -1250,13 +1344,14 @@ async function loadMap(){
   if(!map){
     map=L.map('map').setView([-22.9,-43.2],10);
     const bases=makeBases();wireBases(map,bases);
-    L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),
+    L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),wx:L.layerGroup().addTo(map),
         fotos:L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}).addTo(map),
         footprints:L.layerGroup(),spots:L.layerGroup().addTo(map)};
     const cfg=await api('/config'),ov={'Voos realizados':L_.voos,'🧭 Missões planejadas':L_.missoes,'Fotos':L_.fotos,'📐 Pegada das fotos (Footprint / GSD)':L_.footprints,'Locais favoritos':L_.spots};
     if(cfg.airspace)ov['Espaço aéreo']=L.tileLayer(cfg.airspace,{opacity:.6});Object.assign(ov,airLayers());
     L.control.layers(bases,ov).addTo(map);airQuery(map);
     map.on('click',e=>{
+      if(WX_ON){loadWxForecast(e.latlng.lat,e.latlng.lng);return}
       if(!PLAN_ON)return;
       PLAN_WPS.push([+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)]);
       renderDraftMission();
@@ -2265,6 +2360,7 @@ const NAVICON={
   mapa:'<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
   plan:'<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19h5.5a3.5 3.5 0 0 0 0-7h-4a3.5 3.5 0 0 1 0-7H15.5"/>',
   airq:'<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  wx:'<path d="M12 3v2M5.6 5.6l1.4 1.4M3 12h2M18.4 5.6l-1.4 1.4"/><circle cx="12" cy="11" r="3.5"/><path d="M7 19h10a3 3 0 0 0 .4-5.97A4.5 4.5 0 0 0 8.5 14a2.5 2.5 0 0 0-1.5 5z"/>',
   voos:'<path d="M3 11 21 3l-8 18-2-8-8-2z"/>',
   fotos:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>',
   videos:'<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>',
@@ -2409,17 +2505,23 @@ async function delMission(id){
   if(!confirm('Remover esta missão planejada?'))return;
   await api('/missions/'+id,{method:'DELETE'});toast('Missão removida');loadSpots();
 }
+async function viewWxAt(lat,lon){
+  await show('mapa');
+  setTimeout(()=>{map&&map.setView([lat,lon],Math.max(map.getZoom(),14));toggleWx(true,{lat,lon})},150);
+}
 async function loadSpots(){
   const [sp,ms]=await Promise.all([api('/spots'),api('/missions')]);
   const mRows=(ms||[]).map(m=>{
     const a=m.air;
     const chip=!a?'<span style="color:var(--mut)">não verificado</span>':(a.sev>=3?'🔴 Restrição/Controle':a.sev>=2?'🟡 Atenção (<9km aeródromo)':'🟢 Livre');
-    return `<tr><td><b>${esc(m.name)}</b><td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b><td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button> <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
+    const wp0=m.waypoints&&m.waypoints[0];
+    const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">🌤 Previsão</button>`:'';
+    return `<tr><td><b>${esc(m.name)}</b><td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b><td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
   }).join('');
   $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">Missões Pré-Voo Planejadas</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">+ Planejar nova missão no Mapa</button></div>`+
    (ms.length?`<table><tr><th>Missão<th>Waypoints<th>Distância<th>VLOS máx.<th>Duração est.<th>Bateria est.<th>Espaço Aéreo (DECEA)<th>Ações</tr>${mRows}</table>`:'<p style="color:var(--mut)">Nenhuma missão pré-voo salva. Clique em <b>+ Planejar nova missão no Mapa</b> para desenhar uma rota e checar bateria e espaço aéreo antes de voar.</p>')+
    `<h3 style="margin-top:24px">Locais Favoritos</h3>`+
-   (sp.length?`<table><tr><th>Local<th>Anotações<th>Coordenadas<th></tr>${sp.map(s=>`<tr><td>${esc(s.name)}<td>${esc(s.notes||'')}<td>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}<td><button onclick="delSpot(${s.id})">Remover</button></tr>`).join('')}</table>`
+   (sp.length?`<table><tr><th>Local<th>Anotações<th>Coordenadas<th></tr>${sp.map(s=>`<tr><td>${esc(s.name)}<td>${esc(s.notes||'')}<td>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}<td><button onclick="viewWxAt(${s.lat},${s.lon})">🌤 Previsão</button> <button onclick="delSpot(${s.id})">Remover</button></tr>`).join('')}</table>`
     :'<p style="color:var(--mut)">Nenhum local salvo. No Mapa, clique com o botão direito onde quer marcar.</p>');
 }
 async function delSpot(id){await api('/spots/'+id,{method:'DELETE'});loadSpots()}

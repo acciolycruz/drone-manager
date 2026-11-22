@@ -1867,4 +1867,132 @@ def run_backup():
         raise HTTPException(500, out or "Falha ao executar o backup")
     return {"ok": True, "output": out}
 
+_KP_CACHE = {"ts": 0.0, "val": None}
+
+def _kp_index():
+    """Obtém o índice geomagnético Kp atual (NOAA SWPC) com cache de 30 min; retorna float ou None."""
+    now = time.time()
+    if now - _KP_CACHE["ts"] < 1800 and _KP_CACHE["val"] is not None:
+        return _KP_CACHE["val"]
+    try:
+        req = urllib.request.Request("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
+                                     headers={"User-Agent": "drone-manager-local/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            rows = json.loads(r.read())
+        if isinstance(rows, list) and len(rows) > 1:
+            last = rows[-1]
+            val = float(last.get("Kp") if isinstance(last, dict) else last[1])
+            _KP_CACHE["ts"], _KP_CACHE["val"] = now, round(val, 1)
+            return _KP_CACHE["val"]
+    except Exception:
+        pass
+    return _KP_CACHE["val"]
+
+def _eval_flight_hour(rain, rain_prob, w10, w80, g10, vis, kp_val, near_now):
+    """Avalia condição horária para voo (0=Ideal, 1=Atenção, 2=Não voar) considerando limites do DJI Mini 3."""
+    sev, reasons = 0, []
+    def flag(s, msg):
+        nonlocal sev
+        if s > sev: sev = s
+        reasons.append(msg)
+
+    if rain >= 0.5 or (rain_prob >= 70 and rain >= 0.1): flag(2, f"Chuva ({rain:.1f} mm/h)")
+    elif rain > 0 or rain_prob >= 40: flag(1, f"Risco de chuva ({rain_prob}%)")
+
+    if w10 >= 10.5 or w80 >= 13.0: flag(2, f"Vento forte ({w10:.1f} m/s em 10m / {w80:.1f} m/s em 80m)")
+    elif w10 >= 7.0 or w80 >= 9.5: flag(1, f"Vento moderado ({w10:.1f} m/s em 10m / {w80:.1f} m/s em 80m)")
+
+    if g10 >= 13.5: flag(2, f"Rajadas fortes ({g10:.1f} m/s)")
+    elif g10 >= 10.0: flag(1, f"Rajadas ({g10:.1f} m/s)")
+
+    if vis is not None:
+        if vis < 1000: flag(2, f"Baixa visibilidade ({vis/1000:.1f} km)")
+        elif vis < 3000: flag(1, f"Visibilidade reduzida ({vis/1000:.1f} km)")
+
+    if near_now and kp_val is not None and kp_val >= 5.0:
+        flag(1, f"Índice Kp elevado ({kp_val:.1f} — atenção GPS)")
+    return sev, reasons
+
+@app.get("/api/weather/forecast")
+def weather_forecast(lat: float, lon: float, days: int = 3):
+    """Previsão horária de janela de voo (Open-Meteo + Kp NOAA) para um ponto no mapa."""
+    if not valid_gps(lat, lon):
+        raise HTTPException(400, "Coordenadas inválidas")
+    days = max(1, min(7, int(days)))
+    url = (
+        "https://api.open-meteo.com/v1/forecast?"
+        f"latitude={lat:.6f}&longitude={lon:.6f}&forecast_days={days}&timezone=auto&wind_speed_unit=ms"
+        "&hourly=temperature_2m,precipitation,precipitation_probability,cloud_cover,"
+        "wind_speed_10m,wind_gusts_10m,wind_direction_10m,wind_speed_80m,wind_speed_120m,visibility"
+        "&daily=sunrise,sunset"
+    )
+    try:
+        j = http_json(url)
+    except Exception as e:
+        raise HTTPException(502, f"Não foi possível consultar a previsão do tempo: {e}")
+
+    kp_val = _kp_index()
+    dly = j.get("daily") or {}
+    sun_map, daily = {}, []
+    for i, d in enumerate(dly.get("time") or []):
+        sr = (dly.get("sunrise") or [None])[i] if i < len(dly.get("sunrise") or []) else None
+        ss = (dly.get("sunset") or [None])[i] if i < len(dly.get("sunset") or []) else None
+        sun_map[d] = (sr, ss)
+        daily.append({"date": d, "sunrise": sr[11:16] if sr else None, "sunset": ss[11:16] if ss else None})
+
+    h = j.get("hourly") or {}
+    times = h.get("time") or []
+    def _v(key, idx, default=0.0):
+        arr = h.get(key)
+        if not arr or idx >= len(arr) or arr[idx] is None: return default
+        return arr[idx]
+
+    now_str = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    hours, windows, cur_w = [], [], None
+    for i, t in enumerate(times):
+        d = t[:10]
+        sr, ss = sun_map.get(d, (None, None))
+        is_day = bool(sr and ss and sr[:16] <= t[:16] <= ss[:16])
+        temp = round(float(_v("temperature_2m", i, 0.0)), 1)
+        rain = round(float(_v("precipitation", i, 0.0)), 2)
+        rain_prob = int(_v("precipitation_probability", i, 0))
+        clouds = int(_v("cloud_cover", i, 0))
+        vis = _v("visibility", i, None)
+        w10 = round(float(_v("wind_speed_10m", i, 0.0)), 1)
+        g10 = round(float(_v("wind_gusts_10m", i, 0.0)), 1)
+        dir10 = int(_v("wind_direction_10m", i, 0))
+        w80 = round(float(_v("wind_speed_80m", i, w10)), 1)
+        w120 = round(float(_v("wind_speed_120m", i, w80)), 1)
+        near_now = t >= now_str and i < 18
+        sev, reasons = _eval_flight_hour(rain, rain_prob, w10, w80, g10, vis, kp_val, near_now)
+        row = {
+            "time": t, "temp": temp, "rain": rain, "rain_prob": rain_prob, "clouds": clouds,
+            "vis_km": round(vis / 1000.0, 1) if vis is not None else None,
+            "wind10": w10, "gust10": g10, "dir10": dir10, "dir10_txt": _cardinal(dir10),
+            "wind80": w80, "wind120": w120, "is_day": is_day, "sev": sev, "reasons": reasons
+        }
+        hours.append(row)
+        # Agrupa melhores janelas diurnas futuras (sev <= 1)
+        if t >= now_str[:13] and is_day and sev <= 1:
+            if cur_w and cur_w["date"] == d and cur_w["sev"] == sev and cur_w["last_i"] == i - 1:
+                cur_w["end"] = t[11:16]
+                cur_w["last_i"] = i
+                cur_w["max_w10"] = max(cur_w["max_w10"], w10)
+                cur_w["max_g10"] = max(cur_w["max_g10"], g10)
+                cur_w["max_w80"] = max(cur_w["max_w80"], w80)
+            else:
+                if cur_w: windows.append(cur_w)
+                cur_w = {"date": d, "start": t[11:16], "end": t[11:16], "sev": sev,
+                         "last_i": i, "max_w10": w10, "max_g10": g10, "max_w80": w80}
+        else:
+            if cur_w: windows.append(cur_w); cur_w = None
+    if cur_w: windows.append(cur_w)
+
+    windows.sort(key=lambda x: (x["sev"], x["date"], x["start"]))
+    kp_obj = None
+    if kp_val is not None:
+        kp_obj = {"value": kp_val, "status": "Alto (atenção GPS)" if kp_val >= 5 else "Moderado" if kp_val >= 4 else "Normal"}
+    return {"lat": round(lat, 5), "lon": round(lon, 5), "timezone": j.get("timezone", ""),
+            "kp": kp_obj, "daily": daily, "hours": hours, "best_windows": windows[:5]}
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

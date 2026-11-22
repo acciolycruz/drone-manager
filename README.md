@@ -168,6 +168,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 - **Menu Lateral de Operações Rápidas:**
   - **Planejar missão pré-voo:** Ativa o modo de desenho de *waypoints* no mapa, calculando em tempo real distância 3D, alcance máximo VLOS (`H`), tempo estimado e consumo de bateria para o DJI Mini 3, além de verificar automaticamente o espaço aéreo no DECEA e exportar em **KML**, **GPX** e **GeoJSON**.
   - **Consultar espaço aéreo:** Ativa a mira de inspeção direta no GeoServer do DECEA/GEOAISWEB ao clicar em qualquer ponto do mapa geral ou do mapa de detalhe do voo.
+  - **Previsão de janela de voo ("Posso Voar?"):** Consulta previsão horária de 1 a 7 dias via Open-Meteo (vento a 10m, 80m e 120m, rajadas, chuva, nuvens, visibilidade, nascer/pôr do sol) e índice geomagnético **Kp** (NOAA SWPC), gerando semáforo por hora (🟢/🟡/🔴/🌙) e resumo das melhores janelas diurnas a partir do mapa, do planejador pré-voo ou da aba Locais.
   - **Busca em Linguagem Natural (sem IA externa):** Interpreta consultas em português como *"voos acima de 80 m em 2025"*, *"fotos sem voo"* ou *"voos perto de aeroporto"*.
 - **Mapa Geral & Fotogrametria (`📐 Footprint / GSD`):** Polilinhas dos voos (otimizadas via Ramer-Douglas-Peucker), clusters de fotos, projeção do polígono real coberto por cada foto no solo, cálculo de **GSD (`cm/pixel`)** e **% de sobreposição**, e camadas WMS do DECEA.
 - **Cockpit HUD ao Vivo no Replay 2D/3D:**
@@ -201,6 +202,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` | Exporta a rota do voo em KML, GPX, GeoJSON (RFC 7946) ou relatório HTML/PDF para impressão. |
 | `GET` | `/api/logbook.csv` | Exporta o livro de bordo completo em CSV (com proteção contra *CSV Injection*). |
 | `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KML/GPX/GeoJSON). |
+| `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Previsão horária de janela de voo (Open-Meteo: vento em altitude, rajadas, chuva, visibilidade + índice Kp NOAA). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
 | `GET` | `/api/media/{mid}/srt` | Retorna a trilha segundo a segundo do arquivo `.SRT` do vídeo (GPS, altitude e câmera). |
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
@@ -230,4 +232,4 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
    - **[python-pillow/Pillow](https://github.com/python-pillow/Pillow)**
    - **[microsoft/onnxruntime](https://github.com/microsoft/onnxruntime)** & **[numpy/numpy](https://github.com/numpy/numpy)**
 4. **Ferramentas CLI e Serviços Externos:**
-   - **[exiftool/exiftool](https://github.com/exiftool/exiftool)** · **[FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg)** · **[osm-search/Nominatim](https://github.com/osm-search/Nominatim)** · **[open-meteo/open-meteo](https://github.com/open-meteo/open-meteo)** · **[geoserver/geoserver](https://github.com/geoserver/geoserver)** (DECEA / GEOAISWEB).
+   - **[exiftool/exiftool](https://github.com/exiftool/exiftool)** · **[FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg)** · **[osm-search/Nominatim](https://github.com/osm-search/Nominatim)** · **[open-meteo/open-meteo](https://github.com/open-meteo/open-meteo)** · **NOAA SWPC** (índice geomagnético Kp) · **[geoserver/geoserver](https://github.com/geoserver/geoserver)** (DECEA / GEOAISWEB).
