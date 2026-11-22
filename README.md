@@ -166,7 +166,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 ## 7. Principais Funcionalidades e Atalhos
 
 - **Menu Lateral de Operações Rápidas:**
-  - **Planejar missão pré-voo:** Ativa o modo de desenho de *waypoints* no mapa, calculando em tempo real distância 3D, alcance máximo VLOS (`H`), tempo estimado e consumo de bateria para o DJI Mini 3, além de verificar automaticamente o espaço aéreo no DECEA e exportar em **KML**, **GPX** e **GeoJSON**.
+  - **Planejar missão pré-voo (Rota Livre, Grade, Grade Dupla 3D e Órbita POI):** Desenhe rotas manuais ou polígonos/órbitas no mapa para gerar automaticamente *waypoints* em zigue-zague com cálculo de **GSD desejado** (sincronizado com a altitude), **sobreposição frontal/lateral**, ângulo automático, estimativa de fotos, **divisão por bateria**, alcance VLOS (`H`), checagem no DECEA e exportação em **KML**, **GPX** e **GeoJSON**.
   - **Consultar espaço aéreo:** Ativa a mira de inspeção direta no GeoServer do DECEA/GEOAISWEB ao clicar em qualquer ponto do mapa geral ou do mapa de detalhe do voo.
   - **Previsão de janela de voo ("Posso Voar?"):** Consulta previsão horária de 1 a 7 dias via Open-Meteo (vento a 10m, 80m e 120m, rajadas, chuva, nuvens, visibilidade, nascer/pôr do sol) e índice geomagnético **Kp** (NOAA SWPC), gerando semáforo por hora (🟢/🟡/🔴/🌙) e resumo das melhores janelas diurnas a partir do mapa, do planejador pré-voo ou da aba Locais.
   - **Busca em Linguagem Natural (sem IA externa):** Interpreta consultas em português como *"voos acima de 80 m em 2025"*, *"fotos sem voo"* ou *"voos perto de aeroporto"*.

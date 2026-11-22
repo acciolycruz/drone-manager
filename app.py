@@ -67,6 +67,9 @@ with db() as _c:
         if col not in mcols: _c.execute(f"ALTER TABLE media ADD COLUMN {col} {ddl}")
     _c.execute("CREATE TABLE IF NOT EXISTS missions(id INTEGER PRIMARY KEY, name TEXT NOT NULL, waypoints TEXT NOT NULL, "
                "alt REAL DEFAULT 60, speed REAL DEFAULT 8, notes TEXT DEFAULT '', air TEXT, created TEXT)")
+    mscols = [r[1] for r in _c.execute("PRAGMA table_info(missions)")]
+    if "meta" not in mscols:
+        _c.execute("ALTER TABLE missions ADD COLUMN meta TEXT DEFAULT '{}'")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_media_flight_id ON media(flight_id)")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_media_taken ON media(taken)")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_flights_start ON flights(start)")
@@ -1898,12 +1901,17 @@ class MissionIn(BaseModel):
     alt: float = 60.0
     speed: float = 8.0
     notes: str = ""
+    meta: dict | None = None
 
 def _mission_out(r):
     d = dict(r)
     wps = json.loads(d["waypoints"] or "[]")
     d["waypoints"] = wps
     d["air"] = json.loads(d["air"]) if d.get("air") else None
+    try:
+        d["meta"] = json.loads(d.get("meta") or "{}") if isinstance(d.get("meta"), str) else (d.get("meta") or {})
+    except Exception:
+        d["meta"] = {}
     alt = float(d.get("alt") or 60.0)
     spd = max(1.0, float(d.get("speed") or 8.0))
     dist, max_vlos = 0.0, 0.0
@@ -1916,13 +1924,15 @@ def _mission_out(r):
                 a2 = w[2] if len(w) > 2 else alt
                 dist += dist_3d(wps[i - 1][0], wps[i - 1][1], a1, w[0], w[1], a2)
     climb_s = (alt * 2.0) / 2.5
-    dur_s = round(dist / spd + len(wps) * 3.0 + climb_s)
-    # Estimativa conservadora para DJI Mini 3 (~25 min de voo efetivo seguro com margem de vento)
-    est_bat = min(100, max(3, round((dur_s / (25.0 * 60.0)) * 100)))
+    dur_s = round(dist / spd + len(wps) * 2.5 + climb_s)
+    bat_min = float(d["meta"].get("drone_bat_min") or 25.0)
+    # Estimativa conservadora (tempo seguro por bateria com margem de vento/RTH)
+    est_bat = max(3, round((dur_s / (bat_min * 60.0)) * 100))
     d["distance"] = round(dist, 1)
     d["max_vlos"] = round(max_vlos, 1)
     d["duration"] = dur_s
-    d["est_battery_pct"] = est_bat
+    d["est_battery_pct"] = min(100, est_bat)
+    d["batteries"] = int(d["meta"].get("batteries") or max(1, math.ceil(dur_s / (bat_min * 60.0 * 0.85))))
     return d
 
 def _get_mission(mid: int):
@@ -1943,9 +1953,10 @@ def missions_add(b: MissionIn):
     alt = max(5.0, min(500.0, float(b.alt)))
     spd = max(1.0, min(16.0, float(b.speed)))
     now = datetime.now().isoformat(timespec="seconds")
+    meta_s = json.dumps(b.meta or {}, ensure_ascii=False)
     with db() as c:
-        cur = c.execute("INSERT INTO missions(name,waypoints,alt,speed,notes,created) VALUES(?,?,?,?,?,?)",
-                        (b.name.strip() or "Missão planejada", json.dumps(wps), alt, spd, b.notes.strip(), now))
+        cur = c.execute("INSERT INTO missions(name,waypoints,alt,speed,notes,meta,created) VALUES(?,?,?,?,?,?,?)",
+                        (b.name.strip() or "Missão planejada", json.dumps(wps), alt, spd, b.notes.strip(), meta_s, now))
         return _mission_out(c.execute("SELECT * FROM missions WHERE id=?", (cur.lastrowid,)).fetchone())
 
 @app.delete("/api/missions/{mid}")
@@ -1968,6 +1979,9 @@ def missions_air_check(mid: int):
             f = k / steps
             cur_t += int(max(1, (seg_d / steps) / spd))
             pts.append([cur_t, a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f])
+    if len(pts) > 350:
+        step = max(1, len(pts) // 300)
+        pts = pts[::step] + [pts[-1]]
     res = air_check_pts(pts)
     if res["failed"]: raise HTTPException(502, "não foi possível consultar o DECEA: " + "; ".join(res["errors"][:2]))
     with db() as c: c.execute("UPDATE missions SET air=? WHERE id=?", (json.dumps(res), mid))
@@ -1992,15 +2006,19 @@ def mission_gpx(mid: int):
 def mission_geojson(mid: int):
     m = _get_mission(mid)
     coords = [[round(float(w[1]), 6), round(float(w[0]), 6), round(float(w[2]), 1)] for w in m["waypoints"]]
-    feat = {
-        "type": "FeatureCollection",
-        "features": [{
-            "type": "Feature",
-            "properties": {"id": m["id"], "name": m["name"], "distance_m": m["distance"], "duration_s": m["duration"],
-                           "est_battery_pct": m["est_battery_pct"], "max_vlos_m": m["max_vlos"], "crs": "EPSG:4326"},
-            "geometry": {"type": "LineString", "coordinates": coords}
-        }]
-    }
+    meta = m.get("meta") or {}
+    props = {"id": m["id"], "name": m["name"], "distance_m": m["distance"], "duration_s": m["duration"],
+             "est_battery_pct": m["est_battery_pct"], "batteries": m["batteries"], "max_vlos_m": m["max_vlos"], "crs": "EPSG:4326"}
+    for k in ("mode", "gsd_cm", "front_overlap", "side_overlap", "est_photos", "area_ha", "angle"):
+        if k in meta: props[k] = meta[k]
+    feats = [{"type": "Feature", "properties": props, "geometry": {"type": "LineString", "coordinates": coords}}]
+    poly = meta.get("polygon")
+    if isinstance(poly, list) and len(poly) >= 3:
+        ring = [[round(float(p[1]), 6), round(float(p[0]), 6)] for p in poly]
+        if ring[0] != ring[-1]: ring.append(ring[0])
+        feats.append({"type": "Feature", "properties": {"name": m["name"] + " (Área)"},
+                      "geometry": {"type": "Polygon", "coordinates": [ring]}})
+    feat = {"type": "FeatureCollection", "features": feats}
     return attach(json.dumps(feat, ensure_ascii=False, indent=2), f"missao_{mid}.geojson", "application/geo+json")
 
 class RootIn(BaseModel):

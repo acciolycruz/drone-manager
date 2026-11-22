@@ -872,26 +872,58 @@ input[type=range] {
   <section id="mapa">
     <div id="mapwrap">
       <div id="map"></div>
-      <div id="mplan" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:680;width:min(380px,92vw);background:rgba(15,20,28,0.95);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
+      <div id="mplan" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:680;width:min(440px,94vw);max-height:78vh;overflow-y:auto;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
         <div class="row" style="margin:0 0 8px;justify-content:space-between">
           <b style="color:var(--acc-cyan)">🧭 Planejador de Missão Pré-Voo</b>
           <button onclick="togglePlanner(false)" style="padding:2px 7px;font-size:12px">✕</button>
         </div>
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Clique no mapa para adicionar pontos (Waypoints) da rota planejada.</div>
-        <div class="row" style="margin:6px 0">
-          <input id="mp-name" placeholder="Nome da missão (ex.: Mapeamento Praia)" style="flex:1;min-width:140px;font-size:12.5px">
+        <div class="row" id="mp-modes" style="margin:0 0 8px;gap:4px">
+          <button id="mpm-waypoints" class="on" onclick="setPlanMode('waypoints')" style="flex:1;font-size:11.5px;padding:5px 6px">📍 Rota Livre</button>
+          <button id="mpm-grid" onclick="setPlanMode('grid')" style="flex:1;font-size:11.5px;padding:5px 6px">▦ Grade</button>
+          <button id="mpm-double_grid" onclick="setPlanMode('double_grid')" style="flex:1;font-size:11.5px;padding:5px 6px">╬ Grade Dupla</button>
+          <button id="mpm-orbit" onclick="setPlanMode('orbit')" style="flex:1;font-size:11.5px;padding:5px 6px">◎ Órbita</button>
         </div>
-        <div class="row" style="margin:6px 0;font-size:12px">
-          <label>Alt. (m) <input id="mp-alt" type="number" min="5" max="500" value="60" oninput="renderDraftMission()" style="width:68px;padding:4px 6px"></label>
-          <label>Vel. (m/s) <input id="mp-spd" type="number" min="1" max="16" value="8" oninput="renderDraftMission()" style="width:62px;padding:4px 6px"></label>
+        <div id="mp-hint" style="font-size:11.5px;color:#94a3b8;margin-bottom:8px">Clique no mapa para adicionar pontos (Waypoints) da rota planejada.</div>
+        <div class="row" style="margin:6px 0;gap:6px">
+          <input id="mp-name" placeholder="Nome da missão (ex.: Mapeamento Praia)" style="flex:1;min-width:140px;font-size:12.5px">
+          <select id="mp-drone" onchange="onDronePreset()" style="font-size:11.5px;padding:4px 6px;max-width:165px" title="Perfil de câmera e bateria do drone">
+            <option value="mini3">DJI Mini 3 (24mm·12MP)</option>
+            <option value="mini4">DJI Mini 4 Pro (24mm·12MP)</option>
+            <option value="mavic3">DJI Mavic 3 / Air 3 (24mm·20MP)</option>
+            <option value="p4">Phantom 4 / Air 2 (24mm·12MP)</option>
+          </select>
+        </div>
+        <div class="row" style="margin:6px 0;font-size:12px;gap:8px">
+          <label>Alt. (m) <input id="mp-alt" type="number" min="10" max="500" value="60" oninput="onAltInput()" style="width:60px;padding:4px 6px"></label>
+          <label>GSD (cm/px) <input id="mp-gsd" type="number" min="0.3" max="20" step="0.1" value="2.25" oninput="onGsdInput()" style="width:60px;padding:4px 6px" title="Resolução no solo desejada (ajusta a altitude automaticamente)"></label>
+          <label>Vel. (m/s) <input id="mp-spd" type="number" min="1" max="16" value="8" oninput="renderDraftMission()" style="width:54px;padding:4px 6px"></label>
+        </div>
+        <div id="mp-grid-opts" class="hide" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;margin:6px 0;font-size:11.5px">
+          <div class="row" style="margin:0 0 6px;gap:8px">
+            <label>Sobrep. Frontal % <input id="mp-ovf" type="number" min="30" max="95" value="75" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
+            <label>Sobrep. Lateral % <input id="mp-ovs" type="number" min="30" max="95" value="65" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
+          </div>
+          <div class="row" style="margin:0;gap:6px;align-items:center">
+            <span>Ângulo (°):</span>
+            <input id="mp-ang-rng" type="range" min="0" max="179" value="0" oninput="$('#mp-ang').value=this.value;renderDraftMission()" style="flex:1;min-width:80px">
+            <input id="mp-ang" type="number" min="0" max="179" value="0" oninput="$('#mp-ang-rng').value=this.value;renderDraftMission()" style="width:50px;padding:3px 5px">
+            <button onclick="autoGridAngle()" style="font-size:11px;padding:3px 7px" title="Alinhar ao maior lado do polígono para economizar bateria">Auto</button>
+          </div>
+        </div>
+        <div id="mp-orbit-opts" class="hide" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;margin:6px 0;font-size:11.5px">
+          <div class="row" style="margin:0;gap:8px">
+            <label>Raio (m) <input id="mp-rad" type="number" min="10" max="500" value="50" oninput="renderDraftMission()" style="width:56px;padding:3px 5px"></label>
+            <label>Pontos <input id="mp-opts" type="number" min="6" max="60" value="16" oninput="renderDraftMission()" style="width:50px;padding:3px 5px"></label>
+            <label>Sentido <select id="mp-dir" onchange="renderDraftMission()" style="padding:3px 5px;font-size:11.5px"><option value="1">Horário</option><option value="-1">Anti-horário</option></select></label>
+          </div>
         </div>
         <div id="mp-stats" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums">
           Adicione pelo menos 2 pontos no mapa.
         </div>
-        <div class="row" style="margin:8px 0 0">
+        <div class="row" style="margin:8px 0 0;gap:6px">
           <button onclick="undoWaypoint()" style="font-size:12px;padding:5px 9px">↶ Desfazer</button>
           <button onclick="clearDraftMission()" style="font-size:12px;padding:5px 9px">Limpar</button>
-          <button onclick="checkDraftWeather()" style="font-size:12px;padding:5px 9px" title="Ver previsão de vento, chuva e índice Kp para esta missão">🌤 Janela de Voo</button>
+          <button onclick="checkDraftWeather()" style="font-size:12px;padding:5px 9px" title="Ver previsão de vento, chuva e índice Kp para esta missão">🌤 Janela</button>
           <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px">💾 Salvar Missão</button>
         </div>
       </div>
@@ -1216,7 +1248,140 @@ const PHI=L.divIcon({className:'ph-dot',iconSize:[16,16]});
 const HOMEI=L.divIcon({className:'home-dot',html:'H',iconSize:[22,22]});
 
 /* ---------- mapa geral e planejador de missões pré-voo ---------- */
-let map,L_={},PLAN_ON=false,PLAN_WPS=[],WX_ON=false,WX_PT=null,WX_DATA=null,WX_DAY=0;
+let map,L_={},PLAN_ON=false,PLAN_WPS=[],PLAN_MODE='waypoints',PLAN_POLY=[],PLAN_CENTER=null,PLAN_META={},WX_ON=false,WX_PT=null,WX_DATA=null,WX_DAY=0;
+const DRONE_PRESETS={
+  mini3:{name:'DJI Mini 3',f35:24,w:4000,h:3000,batMin:25},
+  mini4:{name:'DJI Mini 4 Pro',f35:24,w:4032,h:3024,batMin:25},
+  mavic3:{name:'DJI Mavic 3 / Air 3',f35:24,w:5280,h:3956,batMin:32},
+  p4:{name:'Phantom 4 / Air 2',f35:24,w:4000,h:3000,batMin:21}
+};
+function curPreset(){return DRONE_PRESETS[($('#mp-drone')&&$('#mp-drone').value)||'mini3']||DRONE_PRESETS.mini3}
+function calcGsd(alt,p){return (alt*3600)/(p.f35*p.w)}
+function onAltInput(){
+  const alt=Math.max(10,Math.min(500,+($('#mp-alt').value||60))),p=curPreset();
+  if($('#mp-gsd'))$('#mp-gsd').value=calcGsd(alt,p).toFixed(2);
+  renderDraftMission();
+}
+function onGsdInput(){
+  const gsd=Math.max(0.2,+($('#mp-gsd').value||2)),p=curPreset();
+  const alt=Math.max(10,Math.min(500,Math.round((gsd*p.f35*p.w)/3600)));
+  if($('#mp-alt'))$('#mp-alt').value=alt;
+  renderDraftMission();
+}
+function onDronePreset(){onAltInput()}
+function setPlanMode(m){
+  PLAN_MODE=m;
+  ['waypoints','grid','double_grid','orbit'].forEach(k=>{
+    const b=$('#mpm-'+k);if(b)b.classList.toggle('on',k===m);
+  });
+  const isGrid=(m==='grid'||m==='double_grid');
+  if($('#mp-grid-opts'))$('#mp-grid-opts').classList.toggle('hide',!isGrid);
+  if($('#mp-orbit-opts'))$('#mp-orbit-opts').classList.toggle('hide',m!=='orbit');
+  const hints={
+    waypoints:'Clique no mapa para adicionar pontos (Waypoints) da rota livre.',
+    grid:'Clique no mapa para desenhar o polígono da área (mín. 3 vértices). Arraste os vértices para ajustar.',
+    double_grid:'Clique no mapa para desenhar o polígono. Gera grade cruzada (90°) para reconstrução 3D.',
+    orbit:'Clique no mapa para definir o ponto central (POI) da órbita circular.'
+  };
+  if($('#mp-hint'))$('#mp-hint').textContent=hints[m]||'';
+  renderDraftMission();
+}
+function autoGridAngle(){
+  if(PLAN_POLY.length<2)return;
+  const lat0=PLAN_POLY.reduce((s,p)=>s+p[0],0)/PLAN_POLY.length;
+  const kx=111320*Math.cos(lat0*Math.PI/180),ky=111320;
+  let bestLen=0,bestAng=0;
+  for(let i=0;i<PLAN_POLY.length;i++){
+    const a=PLAN_POLY[i],b=PLAN_POLY[(i+1)%PLAN_POLY.length];
+    const dx=(b[1]-a[1])*kx,dy=(b[0]-a[0])*ky,len=Math.hypot(dx,dy);
+    if(len>bestLen){bestLen=len;bestAng=(Math.atan2(dy,dx)*180/Math.PI)}
+  }
+  const deg=((Math.round(bestAng)%180)+180)%180;
+  if($('#mp-ang'))$('#mp-ang').value=deg;
+  if($('#mp-ang-rng'))$('#mp-ang-rng').value=deg;
+  renderDraftMission();
+}
+function _scanPolygon(ptsXY,lineSp,photoSp,angDeg){
+  const rad=-angDeg*Math.PI/180,c=Math.cos(rad),s=Math.sin(rad);
+  const rot=ptsXY.map(([x,y])=>[x*c-y*s,x*s+y*c]);
+  let minY=Infinity,maxY=-Infinity;
+  rot.forEach(([,y])=>{if(y<minY)minY=y;if(y>maxY)maxY=y});
+  const lines=[];let rev=false;
+  for(let y=minY+lineSp*0.35;y<=maxY-lineSp*0.15;y+=lineSp){
+    const xs=[];
+    for(let i=0;i<rot.length;i++){
+      const [x1,y1]=rot[i],[x2,y2]=rot[(i+1)%rot.length];
+      if((y1<=y&&y2>y)||(y2<=y&&y1>y))xs.push(x1+(y-y1)*(x2-x1)/(y2-y1));
+    }
+    xs.sort((a,b)=>a-b);
+    for(let i=0;i+1<xs.length;i+=2){
+      if(xs[i+1]-xs[i]<1)continue;
+      const seg=rev?[[xs[i+1],y],[xs[i],y]]:[[xs[i],y],[xs[i+1],y]];
+      lines.push(seg);rev=!rev;
+    }
+  }
+  if(!lines.length){
+    const cy=(minY+maxY)/2,xs=rot.map(p=>p[0]);
+    lines.push([[Math.min(...xs),cy],[Math.max(...xs),cy]]);
+  }
+  const c2=Math.cos(-rad),s2=Math.sin(-rad);
+  let photos=0;const wpsXY=[];
+  lines.forEach(([a,b])=>{
+    const slen=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    photos+=Math.max(1,Math.floor(slen/Math.max(1,photoSp))+1);
+    [a,b].forEach(([xr,yr])=>wpsXY.push([xr*c2-yr*s2,xr*s2+yr*c2]));
+  });
+  return {wpsXY,photos,passes:lines.length};
+}
+function buildPlanGeometry(alt,spd){
+  const p=curPreset(),gsd=calcGsd(alt,p);
+  const gw=2*alt*(18/p.f35),gh=gw*(p.h/p.w);
+  if(PLAN_MODE==='waypoints'){
+    return {wps:PLAN_WPS.slice(),photos:0,areaHa:0,gsd,gw,gh,lines:0};
+  }
+  if(PLAN_MODE==='orbit'){
+    if(!PLAN_CENTER)return {wps:[],photos:0,areaHa:0,gsd,gw,gh,lines:0};
+    const rad=Math.max(10,Math.min(500,+($('#mp-rad')&&$('#mp-rad').value||50)));
+    const pts=Math.max(6,Math.min(60,+($('#mp-opts')&&$('#mp-opts').value||16)));
+    const dir=+($('#mp-dir')&&$('#mp-dir').value||1);
+    const [lat0,lon0]=PLAN_CENTER;
+    const kx=111320*Math.cos(lat0*Math.PI/180),ky=111320;
+    const wps=[];
+    for(let i=0;i<=pts;i++){
+      const a=dir*(i*2*Math.PI/pts);
+      wps.push([+(lat0+(rad*Math.cos(a))/ky).toFixed(6),+(lon0+(rad*Math.sin(a))/kx).toFixed(6)]);
+    }
+    return {wps,photos:pts,areaHa:0,gsd,gw,gh,lines:1};
+  }
+  if(PLAN_POLY.length<3)return {wps:[],photos:0,areaHa:0,gsd,gw,gh,lines:0};
+  const ovF=Math.max(30,Math.min(95,+($('#mp-ovf')&&$('#mp-ovf').value||75)));
+  const ovS=Math.max(30,Math.min(95,+($('#mp-ovs')&&$('#mp-ovs').value||65)));
+  const ang=((+($('#mp-ang')&&$('#mp-ang').value||0)%180)+180)%180;
+  const lineSp=Math.max(2,gw*(1-ovS/100)),photoSp=Math.max(2,gh*(1-ovF/100));
+  const lat0=PLAN_POLY.reduce((s,pt)=>s+pt[0],0)/PLAN_POLY.length;
+  const lon0=PLAN_POLY.reduce((s,pt)=>s+pt[1],0)/PLAN_POLY.length;
+  const kx=111320*Math.cos(lat0*Math.PI/180),ky=111320;
+  const ptsXY=PLAN_POLY.map(([la,lo])=>[(lo-lon0)*kx,(la-lat0)*ky]);
+  let area2=0;
+  for(let i=0;i<ptsXY.length;i++){
+    const [x1,y1]=ptsXY[i],[x2,y2]=ptsXY[(i+1)%ptsXY.length];
+    area2+=x1*y2-x2*y1;
+  }
+  const areaHa=Math.abs(area2)/20000;
+  const g1=_scanPolygon(ptsXY,lineSp,photoSp,ang);
+  let wpsXY=g1.wpsXY,photos=g1.photos,lines=g1.passes;
+  if(PLAN_MODE==='double_grid'){
+    const g2=_scanPolygon(ptsXY,lineSp,photoSp,(ang+90)%180);
+    if(wpsXY.length&&g2.wpsXY.length){
+      const last=wpsXY[wpsXY.length-1],s0=g2.wpsXY[0],s1=g2.wpsXY[g2.wpsXY.length-1];
+      const d0=Math.hypot(s0[0]-last[0],s0[1]-last[1]),d1=Math.hypot(s1[0]-last[0],s1[1]-last[1]);
+      if(d1<d0)g2.wpsXY.reverse();
+    }
+    wpsXY=wpsXY.concat(g2.wpsXY);photos+=g2.photos;lines+=g2.passes;
+  }
+  const wps=wpsXY.map(([x,y])=>[+(lat0+y/ky).toFixed(6),+(lon0+x/kx).toFixed(6)]);
+  return {wps,photos,areaHa,gsd,gw,gh,lines,lineSp,photoSp};
+}
 function togglePlanner(on){
   PLAN_ON=!!on;
   if(PLAN_ON&&AIRQ_ON)toggleAirQuery(false);
@@ -1312,35 +1477,100 @@ function renderDraftMission(){
   if(!L_.draft)return;
   L_.draft.clearLayers();
   const box=$('#mp-stats');
-  if(!PLAN_WPS.length){if(box)box.textContent='Adicione pelo menos 2 pontos no mapa.';return}
-  const alt=+(($('#mp-alt')&&$('#mp-alt').value)||60),spd=Math.max(1,+(($('#mp-spd')&&$('#mp-spd').value)||8));
-  let dist=0,vlos=0;
-  const h0=PLAN_WPS[0];
+  const alt=Math.max(10,Math.min(500,+(($('#mp-alt')&&$('#mp-alt').value)||60)));
+  const spd=Math.max(1,+(($('#mp-spd')&&$('#mp-spd').value)||8));
+  const p=curPreset();
+  if($('#mp-gsd')&&document.activeElement!==$('#mp-gsd'))$('#mp-gsd').value=calcGsd(alt,p).toFixed(2);
+
+  if((PLAN_MODE==='grid'||PLAN_MODE==='double_grid')&&PLAN_POLY.length){
+    if(PLAN_POLY.length>=3)L.polygon(PLAN_POLY,{color:'#00d2ff',weight:2,dashArray:'4 4',fillColor:'#00d2ff',fillOpacity:0.10}).addTo(L_.draft);
+    else if(PLAN_POLY.length===2)L.polyline(PLAN_POLY,{color:'#00d2ff',weight:2,dashArray:'4 4'}).addTo(L_.draft);
+    PLAN_POLY.forEach((pt,idx)=>{
+      const mk=L.marker([pt[0],pt[1]],{draggable:true,icon:L.divIcon({className:'',html:`<div style="width:14px;height:14px;border-radius:50%;background:#00d2ff;border:2px solid #fff;box-shadow:0 1px 4px #000"></div>`,iconSize:[14,14],iconAnchor:[7,7]})}).addTo(L_.draft);
+      mk.bindTooltip(`V${idx+1}`,{direction:'top',offset:[0,-6]});
+      mk.on('dragend',ev=>{const ll=ev.target.getLatLng();PLAN_POLY[idx]=[+ll.lat.toFixed(6),+ll.lng.toFixed(6)];renderDraftMission()});
+    });
+  }
+  if(PLAN_MODE==='orbit'&&PLAN_CENTER){
+    const rad=Math.max(10,Math.min(500,+($('#mp-rad')&&$('#mp-rad').value||50)));
+    L.circle(PLAN_CENTER,{radius:rad,color:'#00d2ff',weight:1.5,dashArray:'4 4',fillOpacity:0.06}).addTo(L_.draft);
+    L.circleMarker(PLAN_CENTER,{radius:6,color:'#fff',weight:2,fillColor:'#a855f7',fillOpacity:1}).addTo(L_.draft).bindTooltip('◎ POI',{permanent:true,direction:'top',offset:[0,-6]});
+  }
+
+  const g=buildPlanGeometry(alt,spd);
+  if(PLAN_MODE!=='waypoints')PLAN_WPS=g.wps;
+  if(!PLAN_WPS.length){
+    PLAN_META={};
+    if(box)box.textContent=PLAN_MODE==='waypoints'?'Adicione pelo menos 2 pontos no mapa.':PLAN_MODE==='orbit'?'Clique no mapa para posicionar o centro (POI) da órbita.':'Clique no mapa para marcar ao menos 3 vértices do polígono.';
+    return;
+  }
+
+  let dist=0,vlos=0;const h0=PLAN_WPS[0],batSafeSec=p.batMin*60*0.85,splits=[];
+  let accDur=(alt*2)/2.5,curBat=1;
+  const segPts=[[]];
   PLAN_WPS.forEach((w,i)=>{
     vlos=Math.max(vlos,havDist(h0[0],h0[1],w[0],w[1]));
-    if(i>0)dist+=havDist(PLAN_WPS[i-1][0],PLAN_WPS[i-1][1],w[0],w[1]);
-    L.circleMarker([w[0],w[1]],{radius:i===0?7:5,color:'#fff',weight:2,fillColor:i===0?'#f59e0b':'#00d2ff',fillOpacity:1})
-      .addTo(L_.draft).bindTooltip(i===0?'H (WP1)':`WP${i+1}`,{permanent:true,direction:'top',offset:[0,-6]});
+    if(i>0){
+      const d=havDist(PLAN_WPS[i-1][0],PLAN_WPS[i-1][1],w[0],w[1]);
+      dist+=d;accDur+=d/spd+2.5;
+      if(accDur>batSafeSec&&segPts[segPts.length-1].length>=2){
+        splits.push(i);curBat++;accDur=(alt*2)/2.5+d/spd+2.5;
+        segPts.push([PLAN_WPS[i-1],w]);
+      }else segPts[segPts.length-1].push(w);
+    }else segPts[0].push(w);
+    if(PLAN_MODE==='waypoints'||i===0||i===PLAN_WPS.length-1){
+      const lbl=i===0?'H (WP1)':(i===PLAN_WPS.length-1&&PLAN_MODE!=='waypoints'?'FIM':`WP${i+1}`);
+      L.circleMarker([w[0],w[1]],{radius:i===0?7:(PLAN_MODE==='waypoints'?5:6),color:'#fff',weight:2,fillColor:i===0?'#f59e0b':(i===PLAN_WPS.length-1&&PLAN_MODE!=='waypoints'?'#ef4444':'#00d2ff'),fillOpacity:1})
+        .addTo(L_.draft).bindTooltip(lbl,{permanent:true,direction:'top',offset:[0,-6]});
+    }else if(PLAN_MODE==='orbit'){
+      L.circleMarker([w[0],w[1]],{radius:3.5,color:'#fff',weight:1,fillColor:'#00d2ff',fillOpacity:0.9}).addTo(L_.draft);
+    }
   });
-  if(PLAN_WPS.length>=2){
-    L.polyline(PLAN_WPS,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.draft);
-  }
-  const dur=Math.round(dist/spd+PLAN_WPS.length*3+(alt*2)/2.5);
-  const bat=Math.min(100,Math.max(3,Math.round((dur/(25*60))*100)));
+  const batCols=['#f59e0b','#10b981','#a855f7','#ec4899'];
+  segPts.forEach((seg,si)=>{
+    if(seg.length>=2)L.polyline(seg,{color:batCols[si%batCols.length],weight:3,dashArray:PLAN_MODE==='waypoints'?'8 6':null}).addTo(L_.draft);
+  });
+  splits.forEach((wi,idx)=>{
+    L.circleMarker(PLAN_WPS[wi],{radius:6,color:'#fff',weight:2,fillColor:batCols[(idx+1)%batCols.length],fillOpacity:1})
+      .addTo(L_.draft).bindTooltip(`🔋 Bat. ${idx+2} (WP${wi+1})`,{permanent:true,direction:'bottom',offset:[0,6]});
+  });
+
+  const dur=Math.round(dist/spd+PLAN_WPS.length*2.5+(alt*2)/2.5);
+  const batPct=Math.max(3,Math.round((dur/(p.batMin*60))*100));
+  const nBats=Math.max(1,splits.length+1);
+  const intS=g.photoSp?g.photoSp/spd:0;
+  PLAN_META={
+    mode:PLAN_MODE,drone_preset:$('#mp-drone').value,drone_bat_min:p.batMin,
+    gsd_cm:+g.gsd.toFixed(2),est_photos:g.photos,batteries:nBats,battery_splits:splits,
+    area_ha:+g.areaHa.toFixed(2),
+    ...(PLAN_MODE==='grid'||PLAN_MODE==='double_grid'?{
+      polygon:PLAN_POLY,front_overlap:+($('#mp-ovf').value||75),side_overlap:+($('#mp-ovs').value||65),angle:+($('#mp-ang').value||0)
+    }:{}),
+    ...(PLAN_MODE==='orbit'&&PLAN_CENTER?{center:PLAN_CENTER,radius:+($('#mp-rad').value||50),orbit_pts:+($('#mp-opts').value||16)}:{})
+  };
   if(box){
-    box.innerHTML=`Pontos: <b>${PLAN_WPS.length}</b> · Distância: <b>${fmt.km(dist)}</b> · VLOS máx.: <b style="color:${vlos>500?'#f59e0b':'#10b981'}">${Math.round(vlos)} m</b><br>`+
-      `Tempo est.: <b>${fmt.t(dur)}</b> · Bateria est. (Mini 3): <b style="color:${bat>80?'#ef4444':bat>60?'#f59e0b':'#10b981'}">${bat}%</b>`;
+    const areaTxt=g.areaHa>0?`Área: <b>${g.areaHa>=1?g.areaHa.toFixed(2)+' ha':Math.round(g.areaHa*10000)+' m²'}</b> · `:'';
+    const photoTxt=g.photos?`<br>Fotos est.: <b>${g.photos}</b> · GSD: <b>${g.gsd.toFixed(2)} cm/px</b> (${Math.round(g.gw)}×${Math.round(g.gh)} m)${intS&&intS<2.0?` · <span style="color:#f59e0b">⚠ Intervalo ${intS.toFixed(1)}s (&lt;2s)</span>`:(intS?` · Disparo ~${intS.toFixed(1)}s`:'')}`:'';
+    const batTxt=nBats>1?`<br><span style="color:#38bdf8">🔋 Divisão: <b>${nBats} baterias</b> (trocas nos WPs: ${splits.map(x=>x+1).join(', ')})</span>`:'';
+    box.innerHTML=`${areaTxt}Waypoints: <b>${PLAN_WPS.length}</b> · Dist.: <b>${fmt.km(dist)}</b> · VLOS: <b style="color:${vlos>500?'#f59e0b':'#10b981'}">${Math.round(vlos)} m</b><br>`+
+      `Tempo est.: <b>${fmt.t(dur)}</b> · Bateria (${esc(p.name)}): <b style="color:${batPct>85?'#ef4444':batPct>60?'#f59e0b':'#10b981'}">${batPct}%</b>${photoTxt}${batTxt}`;
   }
 }
-function undoWaypoint(){PLAN_WPS.pop();renderDraftMission()}
-function clearDraftMission(){PLAN_WPS=[];renderDraftMission()}
+function undoWaypoint(){
+  if(PLAN_MODE==='grid'||PLAN_MODE==='double_grid')PLAN_POLY.pop();
+  else if(PLAN_MODE==='orbit')PLAN_CENTER=null;
+  else PLAN_WPS.pop();
+  renderDraftMission();
+}
+function clearDraftMission(){PLAN_WPS=[];PLAN_POLY=[];PLAN_CENTER=null;PLAN_META={};renderDraftMission()}
 async function saveDraftMission(){
-  if(PLAN_WPS.length<2)return alert('Clique no mapa para adicionar pelo menos 2 waypoints.');
-  const name=($('#mp-name').value||'').trim()||'Missão planejada';
+  if(PLAN_WPS.length<2)return alert('Defina pontos suficientes no mapa para gerar a missão (mín. 2 waypoints).');
+  const defName=PLAN_MODE==='grid'?'Grade de Mapeamento':PLAN_MODE==='double_grid'?'Grade Dupla 3D':PLAN_MODE==='orbit'?'Órbita POI':'Missão planejada';
+  const name=($('#mp-name').value||'').trim()||defName;
   const alt=+(($('#mp-alt').value)||60),speed=+(($('#mp-spd').value)||8);
-  const m=await api('/missions',J('POST',{name,waypoints:PLAN_WPS,alt,speed}));
+  const m=await api('/missions',J('POST',{name,waypoints:PLAN_WPS,alt,speed,meta:PLAN_META}));
   toast('✓ Missão pré-voo salva!');
-  PLAN_WPS=[];$('#mp-name').value='';togglePlanner(false);
+  clearDraftMission();$('#mp-name').value='';togglePlanner(false);
   try{await api('/missions/'+m.id+'/airspace-check',{method:'POST'});toast('✈ Espaço aéreo da missão verificado no DECEA')}catch(e){}
   loadMap();
 }
@@ -1363,7 +1593,10 @@ async function loadMap(){
     map.on('click',e=>{
       if(WX_ON){loadWxForecast(e.latlng.lat,e.latlng.lng);return}
       if(!PLAN_ON)return;
-      PLAN_WPS.push([+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)]);
+      const pt=[+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)];
+      if(PLAN_MODE==='grid'||PLAN_MODE==='double_grid')PLAN_POLY.push(pt);
+      else if(PLAN_MODE==='orbit')PLAN_CENTER=pt;
+      else PLAN_WPS.push(pt);
       renderDraftMission();
     });
     map.on('contextmenu',async e=>{
@@ -1379,9 +1612,15 @@ async function loadMap(){
     .bindPopup(`<b>${f.fav?'★ ':''}${f.name?esc(f.name):fmt.d(f.start)}</b><br>${f.name?fmt.d(f.start)+' · ':''}${esc(f.place||'')}<br>${fmt.km(f.distance)}, máx. ${Math.round(f.max_alt)} m<br><a href="#" onclick="openFlight(${f.id});return false">Abrir voo</a>`)));
   (ms||[]).forEach(m=>{
     const pts=m.waypoints.map(w=>[w[0],w[1]]);
+    const mt=m.meta||{};
+    if(Array.isArray(mt.polygon)&&mt.polygon.length>=3){
+      L.polygon(mt.polygon,{color:'#00d2ff',weight:1.5,dashArray:'4 4',fillOpacity:0.08}).addTo(L_.missoes);
+    }
     if(pts.length>=2){
+      const modeLbl=mt.mode==='grid'?'▦ Grade':mt.mode==='double_grid'?'╬ Grade Dupla':mt.mode==='orbit'?'◎ Órbita':'📍 Rota';
+      const extra=mt.est_photos?`<br>Fotos: <b>${mt.est_photos}</b> · GSD: <b>${mt.gsd_cm} cm/px</b> · Baterias: <b>${m.batteries||1}</b>`:'';
       all.push(L.polyline(pts,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.missoes)
-        .bindPopup(`<b>🧭 Missão: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · Bateria est. <b>${m.est_battery_pct}%</b><br>Alt. ${m.alt} m · VLOS máx. ${Math.round(m.max_vlos)} m<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
+        .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · Bateria est. <b>${m.est_battery_pct}%</b>${extra}<br>Alt. ${m.alt} m · VLOS máx. ${Math.round(m.max_vlos)} m<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
     }
   });
   ph.forEach((p,idx)=>{
@@ -2610,11 +2849,13 @@ async function viewWxAt(lat,lon){
 async function loadSpots(){
   const [sp,ms]=await Promise.all([api('/spots'),api('/missions')]);
   const mRows=(ms||[]).map(m=>{
-    const a=m.air;
+    const a=m.air,mt=m.meta||{};
     const chip=!a?'<span style="color:var(--mut)">não verificado</span>':(a.sev>=3?'🔴 Restrição/Controle':a.sev>=2?'🟡 Atenção (<9km aeródromo)':'🟢 Livre');
     const wp0=m.waypoints&&m.waypoints[0];
     const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">🌤 Previsão</button>`:'';
-    return `<tr><td><b>${esc(m.name)}</b><td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b><td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
+    const modeTag=mt.mode==='grid'?'▦ Grade':mt.mode==='double_grid'?'╬ Grade Dupla':mt.mode==='orbit'?'◎ Órbita':'📍 Rota';
+    const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${mt.est_photos} fotos · GSD ${mt.gsd_cm} cm/px${m.batteries>1?' · 🔋 '+m.batteries+' bats':''}</span>`:'';
+    return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
   }).join('');
   $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">Missões Pré-Voo Planejadas</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">+ Planejar nova missão no Mapa</button></div>`+
    (ms.length?`<table><tr><th>Missão<th>Waypoints<th>Distância<th>VLOS máx.<th>Duração est.<th>Bateria est.<th>Espaço Aéreo (DECEA)<th>Ações</tr>${mRows}</table>`:'<p style="color:var(--mut)">Nenhuma missão pré-voo salva. Clique em <b>+ Planejar nova missão no Mapa</b> para desenhar uma rota e checar bateria e espaço aéreo antes de voar.</p>')+
