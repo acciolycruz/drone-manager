@@ -184,6 +184,10 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 - **Galeria Inteligente e Visualizador 360° (`Pannellum`):** Filtros para fotos/vídeos **Verticais `9:16` (Modo Retrato do Mini 3)**, **Horizontais**, **Panoramas `360°`** e **`4K`**, com visualizador esférico 360° interativo no modal e opção de **remover mídias apenas da galeria** ou **apagar permanentemente do HD** (individualmente no modal ou em lote pelos itens marcados).
 - **Segurança Local-First:**
   - Servidor restrito ao *loopback* local (`127.0.0.1`), protegido por `TrustedHostMiddleware`, validação de `Origin`/`Referer` contra CSRF, sanitização contra *CSV Injection* e bloqueio de diretórios sensíveis do sistema (`/mnt/c/Windows`, `/mnt/c/Users`, etc.).
+- **Suporte Multilíngue (i18n) e Unidades Imperiais:**
+  - Seletor de idioma na barra lateral e em Configurações para **Português (BR)**, **English** e **Español** (`static/i18n/{pt-BR,en,es}.json`), com persistência em `localStorage` e no SQLite (`/api/lang`).
+  - Em **English**, as medidas de telemetria, mapas, estatísticas e relatórios HTML/PDF são convertidas automaticamente para o **sistema imperial** (`ft`, `mi`, `mph`, `ft/s`, `°F`); em Português e Español, permanecem no sistema métrico (`m`, `km`, `km/h`, `m/s`, `°C`).
+  - A busca em linguagem natural (`nlParse`) também reconhece expressões em português, inglês e espanhol (incluindo `ft`, `mi` e `mph`).
 - **Atalhos de Teclado:**
   - `Espaço`: Pausar / Reproduzir o replay na tela de detalhe do voo.
   - `←` / `→`: Retroceder ou avançar 5 segundos no replay do voo.
@@ -215,6 +219,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET` | `/api/stats` & `/api/battery-health` | Estatísticas gerais, frota de drones, alertas mecânicos de hélices e saúde das baterias. |
 | `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a discos montados (`/mnt`, `/media`, `/run/media`, `/Volumes`) e `data/media`. |
 | `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
+| `GET/POST` | `/api/lang` | Lê ou salva o idioma ativo (`pt-BR`, `en`, `es`) na tabela `kv` do SQLite. |
 
 ---
 

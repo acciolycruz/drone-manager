@@ -846,26 +846,31 @@ input[type=range] {
   </svg>
   <div>
     <h1>Drone Manager</h1>
-    <p>DJI Mini 3 · Telemetria &amp; SIG</p>
+    <p data-i18n="app.subtitle">DJI Mini 3 · Telemetria &amp; SIG</p>
   </div>
 </div>
 <header>
-  <button id="b-mapa" onclick="show('mapa')">Mapa</button>
-  <button id="b-plan" onclick="menuPlan()">Planejar missão pré-voo</button>
-  <button id="b-airq" onclick="menuAirQuery()">Consultar espaço aéreo</button>
-  <button id="b-wx" onclick="menuWeather()">Previsão de janela de voo</button>
-  <button id="b-voos" onclick="show('voos')">Voos</button>
-  <button id="b-fotos" onclick="show('fotos')">Fotos</button>
-  <button id="b-videos" onclick="show('videos')">Vídeos</button>
-  <button id="b-stats" onclick="show('stats')">Estatísticas</button>
-  <button id="b-locais" onclick="show('locais')">Locais</button>
-  <button id="b-config" onclick="show('config')">Configurações</button>
-  <input id="nlq" placeholder="Buscar voos, fotos, locais…" title="Ex.: voos acima de 80 m em 2025, fotos verticais, panoramas 360…" onkeydown="if(event.key==='Enter')nlRun()"><button onclick="nlHelp()" title="Exemplos de busca">?</button><span class="sp"></span>
-  <a href="/api/logbook.csv">⬇ Diário de voo (CSV)</a>
+  <button id="b-mapa" onclick="show('mapa')" data-i18n="nav.mapa">Mapa</button>
+  <button id="b-plan" onclick="menuPlan()" data-i18n="nav.plan">Planejar missão pré-voo</button>
+  <button id="b-airq" onclick="menuAirQuery()" data-i18n="nav.airq">Consultar espaço aéreo</button>
+  <button id="b-wx" onclick="menuWeather()" data-i18n="nav.wx">Previsão de janela de voo</button>
+  <button id="b-voos" onclick="show('voos')" data-i18n="nav.voos">Voos</button>
+  <button id="b-fotos" onclick="show('fotos')" data-i18n="nav.fotos">Fotos</button>
+  <button id="b-videos" onclick="show('videos')" data-i18n="nav.videos">Vídeos</button>
+  <button id="b-stats" onclick="show('stats')" data-i18n="nav.stats">Estatísticas</button>
+  <button id="b-locais" onclick="show('locais')" data-i18n="nav.locais">Locais</button>
+  <button id="b-config" onclick="show('config')" data-i18n="nav.config">Configurações</button>
+  <input id="nlq" placeholder="Buscar voos, fotos, locais…" data-i18n-ph="nav.nlq_placeholder" title="Ex.: voos acima de 80 m em 2025, fotos verticais, panoramas 360…" data-i18n-title="nav.nlq_title" onkeydown="if(event.key==='Enter')nlRun()"><button onclick="nlHelp()" title="Exemplos de busca" data-i18n-title="nav.nlq_help">?</button><span class="sp"></span>
+  <a href="/api/logbook.csv" data-i18n="nav.logbook">⬇ Diário de voo (CSV)</a>
   <input type="file" id="logup" accept=".txt" multiple class="hide" onchange="uploadLogs(this.files)">
-  <button id="uplog" onclick="$('#logup').click()" style="width:100%;margin-bottom:4px;font-size:12.5px" title="Enviar arquivos DJIFlightRecord_*.txt direto pelo navegador">⬆ Enviar logs (.txt)</button>
-  <button id="scan" onclick="scan()">Escanear pastas</button>
-  <button id="themetog" onclick="toggleTheme()" title="Alternar tema Escuro (DJI Cockpit) / Claro">◐ <span>Tema Claro / Escuro</span></button>
+  <button id="uplog" onclick="$('#logup').click()" style="width:100%;margin-bottom:4px;font-size:12.5px" title="Enviar arquivos DJIFlightRecord_*.txt direto pelo navegador" data-i18n="nav.uplog" data-i18n-title="nav.uplog_title">⬆ Enviar logs (.txt)</button>
+  <button id="scan" onclick="scan()" data-i18n="nav.scan">Escanear pastas</button>
+  <button id="themetog" onclick="toggleTheme()" title="Alternar tema Escuro (DJI Cockpit) / Claro" data-i18n-title="nav.theme_title">◐ <span data-i18n="nav.theme">Tema Claro / Escuro</span></button>
+  <select id="langsel" onchange="setLang(this.value)" style="width:100%;margin-top:4px;font-size:12px" title="Idioma / Language">
+    <option value="pt-BR">🇧🇷 Português (BR)</option>
+    <option value="en">🇺🇸 English (Imperial)</option>
+    <option value="es">🇪🇸 Español</option>
+  </select>
 </header>
 <div id="nlbar" class="hide"></div>
 <main>
@@ -874,19 +879,19 @@ input[type=range] {
       <div id="map"></div>
       <div id="mplan" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:680;width:min(440px,94vw);max-height:78vh;overflow-y:auto;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
         <div class="row" style="margin:0 0 8px;justify-content:space-between">
-          <b style="color:var(--acc-cyan)">🧭 Planejador de Missão Pré-Voo</b>
+          <b style="color:var(--acc-cyan)" data-i18n="plan.title">🧭 Planejador de Missão Pré-Voo</b>
           <button onclick="togglePlanner(false)" style="padding:2px 7px;font-size:12px">✕</button>
         </div>
         <div class="row" id="mp-modes" style="margin:0 0 8px;gap:4px">
-          <button id="mpm-waypoints" class="on" onclick="setPlanMode('waypoints')" style="flex:1;font-size:11.5px;padding:5px 6px">📍 Rota Livre</button>
-          <button id="mpm-grid" onclick="setPlanMode('grid')" style="flex:1;font-size:11.5px;padding:5px 6px">▦ Grade</button>
-          <button id="mpm-double_grid" onclick="setPlanMode('double_grid')" style="flex:1;font-size:11.5px;padding:5px 6px">╬ Grade Dupla</button>
-          <button id="mpm-orbit" onclick="setPlanMode('orbit')" style="flex:1;font-size:11.5px;padding:5px 6px">◎ Órbita</button>
+          <button id="mpm-waypoints" class="on" onclick="setPlanMode('waypoints')" style="flex:1;font-size:11.5px;padding:5px 6px" data-i18n="plan.mode.waypoints">📍 Rota Livre</button>
+          <button id="mpm-grid" onclick="setPlanMode('grid')" style="flex:1;font-size:11.5px;padding:5px 6px" data-i18n="plan.mode.grid">▦ Grade</button>
+          <button id="mpm-double_grid" onclick="setPlanMode('double_grid')" style="flex:1;font-size:11.5px;padding:5px 6px" data-i18n="plan.mode.double_grid">╬ Grade Dupla</button>
+          <button id="mpm-orbit" onclick="setPlanMode('orbit')" style="flex:1;font-size:11.5px;padding:5px 6px" data-i18n="plan.mode.orbit">◎ Órbita</button>
         </div>
-        <div id="mp-hint" style="font-size:11.5px;color:#94a3b8;margin-bottom:8px">Clique no mapa para adicionar pontos (Waypoints) da rota planejada.</div>
+        <div id="mp-hint" style="font-size:11.5px;color:#94a3b8;margin-bottom:8px" data-i18n="plan.hint.waypoints">Clique no mapa para adicionar pontos (Waypoints) da rota planejada.</div>
         <div class="row" style="margin:6px 0;gap:6px">
-          <input id="mp-name" placeholder="Nome da missão (ex.: Mapeamento Praia)" style="flex:1;min-width:140px;font-size:12.5px">
-          <select id="mp-drone" onchange="onDronePreset()" style="font-size:11.5px;padding:4px 6px;max-width:165px" title="Perfil de câmera e bateria do drone">
+          <input id="mp-name" placeholder="Nome da missão (ex.: Mapeamento Praia)" data-i18n-ph="plan.name_ph" style="flex:1;min-width:140px;font-size:12.5px">
+          <select id="mp-drone" onchange="onDronePreset()" style="font-size:11.5px;padding:4px 6px;max-width:165px" title="Perfil de câmera e bateria do drone" data-i18n-title="plan.drone_title">
             <option value="mini3">DJI Mini 3 (24mm·12MP)</option>
             <option value="mini4">DJI Mini 4 Pro (24mm·12MP)</option>
             <option value="mavic3">DJI Mavic 3 / Air 3 (24mm·20MP)</option>
@@ -894,75 +899,75 @@ input[type=range] {
           </select>
         </div>
         <div class="row" style="margin:6px 0;font-size:12px;gap:8px">
-          <label>Alt. (m) <input id="mp-alt" type="number" min="10" max="500" value="60" oninput="onAltInput()" style="width:60px;padding:4px 6px"></label>
-          <label>GSD (cm/px) <input id="mp-gsd" type="number" min="0.3" max="20" step="0.1" value="2.25" oninput="onGsdInput()" style="width:60px;padding:4px 6px" title="Resolução no solo desejada (ajusta a altitude automaticamente)"></label>
-          <label>Vel. (m/s) <input id="mp-spd" type="number" min="1" max="16" value="8" oninput="renderDraftMission()" style="width:54px;padding:4px 6px"></label>
+          <label><span data-i18n="plan.alt_lbl">Alt.</span> (m) <input id="mp-alt" type="number" min="10" max="500" value="60" oninput="onAltInput()" style="width:60px;padding:4px 6px"></label>
+          <label>GSD (cm/px) <input id="mp-gsd" type="number" min="0.3" max="20" step="0.1" value="2.25" oninput="onGsdInput()" style="width:60px;padding:4px 6px" title="Resolução no solo desejada (ajusta a altitude automaticamente)" data-i18n-title="plan.gsd_title"></label>
+          <label><span data-i18n="plan.spd_lbl">Vel.</span> (m/s) <input id="mp-spd" type="number" min="1" max="16" value="8" oninput="renderDraftMission()" style="width:54px;padding:4px 6px"></label>
         </div>
         <div id="mp-grid-opts" class="hide" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;margin:6px 0;font-size:11.5px">
           <div class="row" style="margin:0 0 6px;gap:8px">
-            <label>Sobrep. Frontal % <input id="mp-ovf" type="number" min="30" max="95" value="75" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
-            <label>Sobrep. Lateral % <input id="mp-ovs" type="number" min="30" max="95" value="65" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
+            <label><span data-i18n="plan.ov_front">Sobrep. Frontal %</span> <input id="mp-ovf" type="number" min="30" max="95" value="75" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
+            <label><span data-i18n="plan.ov_side">Sobrep. Lateral %</span> <input id="mp-ovs" type="number" min="30" max="95" value="65" oninput="renderDraftMission()" style="width:52px;padding:3px 5px"></label>
           </div>
           <div class="row" style="margin:0;gap:6px;align-items:center">
-            <span>Ângulo (°):</span>
+            <span data-i18n="plan.angle">Ângulo (°):</span>
             <input id="mp-ang-rng" type="range" min="0" max="179" value="0" oninput="$('#mp-ang').value=this.value;renderDraftMission()" style="flex:1;min-width:80px">
             <input id="mp-ang" type="number" min="0" max="179" value="0" oninput="$('#mp-ang-rng').value=this.value;renderDraftMission()" style="width:50px;padding:3px 5px">
-            <button onclick="autoGridAngle()" style="font-size:11px;padding:3px 7px" title="Alinhar ao maior lado do polígono para economizar bateria">Auto</button>
+            <button onclick="autoGridAngle()" style="font-size:11px;padding:3px 7px" title="Alinhar ao maior lado do polígono para economizar bateria" data-i18n-title="plan.auto_title">Auto</button>
           </div>
         </div>
         <div id="mp-orbit-opts" class="hide" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;margin:6px 0;font-size:11.5px">
           <div class="row" style="margin:0;gap:8px">
-            <label>Raio (m) <input id="mp-rad" type="number" min="10" max="500" value="50" oninput="renderDraftMission()" style="width:56px;padding:3px 5px"></label>
-            <label>Pontos <input id="mp-opts" type="number" min="6" max="60" value="16" oninput="renderDraftMission()" style="width:50px;padding:3px 5px"></label>
-            <label>Sentido <select id="mp-dir" onchange="renderDraftMission()" style="padding:3px 5px;font-size:11.5px"><option value="1">Horário</option><option value="-1">Anti-horário</option></select></label>
+            <label><span data-i18n="plan.radius">Raio</span> (m) <input id="mp-rad" type="number" min="10" max="500" value="50" oninput="renderDraftMission()" style="width:56px;padding:3px 5px"></label>
+            <label><span data-i18n="plan.points">Pontos</span> <input id="mp-opts" type="number" min="6" max="60" value="16" oninput="renderDraftMission()" style="width:50px;padding:3px 5px"></label>
+            <label><span data-i18n="plan.dir">Sentido</span> <select id="mp-dir" onchange="renderDraftMission()" style="padding:3px 5px;font-size:11.5px"><option value="1" data-i18n="plan.dir_cw">Horário</option><option value="-1" data-i18n="plan.dir_ccw">Anti-horário</option></select></label>
           </div>
         </div>
-        <div id="mp-stats" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums">
+        <div id="mp-stats" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums" data-i18n="plan.min_pts">
           Adicione pelo menos 2 pontos no mapa.
         </div>
         <div class="row" style="margin:8px 0 0;gap:6px">
-          <button onclick="undoWaypoint()" style="font-size:12px;padding:5px 9px">↶ Desfazer</button>
-          <button onclick="clearDraftMission()" style="font-size:12px;padding:5px 9px">Limpar</button>
-          <button onclick="checkDraftWeather()" style="font-size:12px;padding:5px 9px" title="Ver previsão de vento, chuva e índice Kp para esta missão">🌤 Janela</button>
-          <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px">💾 Salvar Missão</button>
+          <button onclick="undoWaypoint()" style="font-size:12px;padding:5px 9px" data-i18n="plan.undo">↶ Desfazer</button>
+          <button onclick="clearDraftMission()" style="font-size:12px;padding:5px 9px" data-i18n="plan.clear">Limpar</button>
+          <button onclick="checkDraftWeather()" style="font-size:12px;padding:5px 9px" title="Ver previsão de vento, chuva e índice Kp para esta missão" data-i18n="plan.wx_btn" data-i18n-title="plan.wx_title">🌤 Janela</button>
+          <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px" data-i18n="plan.save">💾 Salvar Missão</button>
         </div>
       </div>
       <div id="mwx" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:685;width:min(470px,94vw);max-height:76vh;display:flex;flex-direction:column;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
         <div class="row" style="margin:0 0 6px;justify-content:space-between">
-          <b style="color:var(--acc-cyan)">🌤 Janela de Voo (Posso Voar?)</b>
+          <b style="color:var(--acc-cyan)" data-i18n="wx.title">🌤 Janela de Voo (Posso Voar?)</b>
           <div class="row" style="margin:0;gap:6px">
             <select id="wx-days" onchange="reloadWx()" style="font-size:11.5px;padding:2px 6px">
-              <option value="1">Hoje</option>
-              <option value="3" selected>3 dias</option>
-              <option value="5">5 dias</option>
-              <option value="7">7 dias</option>
+              <option value="1" data-i18n="wx.today">Hoje</option>
+              <option value="3" selected data-i18n="wx.days_3">3 dias</option>
+              <option value="5" data-i18n="wx.days_5">5 dias</option>
+              <option value="7" data-i18n="wx.days_7">7 dias</option>
             </select>
             <button onclick="toggleWx(false)" style="padding:2px 7px;font-size:12px">✕</button>
           </div>
         </div>
-        <div id="wx-head" style="font-size:11.5px;color:#94a3b8;margin-bottom:6px">Clique em qualquer ponto do mapa para consultar vento em altitude, rajadas, chuva e índice Kp.</div>
+        <div id="wx-head" style="font-size:11.5px;color:#94a3b8;margin-bottom:6px" data-i18n="wx.hint">Clique em qualquer ponto do mapa para consultar vento em altitude, rajadas, chuva e índice Kp.</div>
         <div id="wx-body" style="overflow-y:auto;font-size:12px"></div>
       </div>
-      <div class="maphint">Botão direito no mapa: salvar local favorito</div>
+      <div class="maphint" data-i18n="map.hint">Botão direito no mapa: salvar local favorito</div>
     </div>
   </section>
 
   <section id="voos" class="hide">
     <div id="flist">
       <div class="row" id="ffilters">
-        <input id="fq" placeholder="Buscar por nome, local ou anotação" oninput="loadFlights()" style="min-width:220px">
-        <label>De <input id="fd1" type="date" onchange="loadFlights()"></label>
-        <label>Até <input id="fd2" type="date" onchange="loadFlights()"></label>
-        <input id="fa" type="number" min="0" placeholder="Altura mín. (m)" oninput="loadFlights()" style="width:125px">
-        <input id="fdur" type="number" min="0" placeholder="Duração mín. (min)" oninput="loadFlights()" style="width:145px">
-        <select id="fb" onchange="loadFlights()"><option value="">Todas as baterias</option></select>
-        <select id="fdri" onchange="loadFlights()"><option value="">Todas as aeronaves</option></select>
-        <select id="fs" onchange="loadFlights()"><option value="">Todos os tipos</option><option value="log">Com log (DJI)</option><option value="srt">Trilha de vídeo (.SRT)</option><option value="photos">Reconstruídos (fotos)</option></select>
-        <label><input id="ffav" type="checkbox" onchange="loadFlights()"> ★ Favoritos</label>
-        <button onclick="clearFlightFilters()">Limpar filtros</button>
-        <button onclick="$('#logup').click()">⬆ Enviar logs (.txt)</button>
-        <button onclick="airCheckAll()">Verificar espaço aéreo</button>
-        <button onclick="rescanLogs()" title="Reimporta os arquivos .txt de log para extrair sticks RC, horizonte artificial, potência em Watts, vento em altitude e vibração">⟳ Atualizar telemetria dos logs</button>
+        <input id="fq" placeholder="Buscar por nome, local ou anotação" data-i18n-ph="flights.search_ph" oninput="loadFlights()" style="min-width:220px">
+        <label><span data-i18n="flights.from">De</span> <input id="fd1" type="date" onchange="loadFlights()"></label>
+        <label><span data-i18n="flights.to">Até</span> <input id="fd2" type="date" onchange="loadFlights()"></label>
+        <input id="fa" type="number" min="0" placeholder="Altura mín. (m)" data-i18n-ph="flights.min_alt_ph" oninput="loadFlights()" style="width:125px">
+        <input id="fdur" type="number" min="0" placeholder="Duração mín. (min)" data-i18n-ph="flights.min_dur_ph" oninput="loadFlights()" style="width:145px">
+        <select id="fb" onchange="loadFlights()"><option value="" data-i18n="flights.all_bat">Todas as baterias</option></select>
+        <select id="fdri" onchange="loadFlights()"><option value="" data-i18n="flights.all_drones">Todas as aeronaves</option></select>
+        <select id="fs" onchange="loadFlights()"><option value="" data-i18n="flights.all_types">Todos os tipos</option><option value="log" data-i18n="flights.type_log">Com log (DJI)</option><option value="srt" data-i18n="flights.type_srt">Trilha de vídeo (.SRT)</option><option value="photos" data-i18n="flights.type_photos">Reconstruídos (fotos)</option></select>
+        <label><input id="ffav" type="checkbox" onchange="loadFlights()"> <span data-i18n="flights.favs">★ Favoritos</span></label>
+        <button onclick="clearFlightFilters()" data-i18n="flights.clear_filters">Limpar filtros</button>
+        <button onclick="$('#logup').click()" data-i18n="nav.uplog">⬆ Enviar logs (.txt)</button>
+        <button onclick="airCheckAll()" data-i18n="flights.air_check_all">Verificar espaço aéreo</button>
+        <button onclick="rescanLogs()" title="Reimporta os arquivos .txt de log para extrair sticks RC, horizonte artificial, potência em Watts, vento em altitude e vibração" data-i18n="flights.rescan_logs" data-i18n-title="flights.rescan_title">⟳ Atualizar telemetria dos logs</button>
         <span id="fcount" style="color:var(--mut)"></span>
       </div>
       <table id="ftab"></table>
@@ -972,38 +977,38 @@ input[type=range] {
       <div class="two" id="fplayer">
         <div id="fvbox">
           <div class="prow">
-            <span style="color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Vídeo do voo</span>
+            <span style="color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em" data-i18n="fdet.video_title">Vídeo do voo</span>
             <span id="fvsel" class="row" style="margin:0;flex-wrap:nowrap"></span>
-            <button onclick="grabFrameCoord()" style="margin-left:auto;font-size:12px;padding:3px 9px" title="Extrai a coordenada GPS exata do frame atual do vídeo">📍 Coordenada do frame</button>
-            <button onclick="exportHudVideo()" style="font-size:12px;padding:3px 9px" title="Gera um clipe MP4 com telemetria DJI embutida via FFmpeg">🎬 Exportar clipe com HUD</button>
+            <button onclick="grabFrameCoord()" style="margin-left:auto;font-size:12px;padding:3px 9px" title="Extrai a coordenada GPS exata do frame atual do vídeo" data-i18n="fdet.grab_coord" data-i18n-title="fdet.grab_coord_title">📍 Coordenada do frame</button>
+            <button onclick="exportHudVideo()" style="font-size:12px;padding:3px 9px" title="Gera um clipe MP4 com telemetria DJI embutida via FFmpeg" data-i18n="fdet.export_hud" data-i18n-title="fdet.export_hud_title">🎬 Exportar clipe com HUD</button>
           </div>
           <video id="vid" controls playsinline></video>
           <div id="vcamhud" class="hide"></div>
         </div>
         <div id="fmapbox">
-          <div class="prow"><button id="b2d" class="on" onclick="setView('2d')">2D</button><button id="b3d" onclick="setView('3d')">3D</button><span id="c3d" class="row hide" style="margin:0"><button onclick="cam3d('follow')" title="A câmera acompanha o drone">Seguir</button><button onclick="cam3d('free')" title="Visão geral do voo">Geral</button><button onclick="cam3d('top')" title="Vista de cima">Topo</button><button id="bcone" class="on" onclick="toggleCone()" title="Cone de visão da câmera">Cone</button><button id="bfot" class="on" onclick="toggleFotos()" title="Fotos no trajeto">Fotos</button></span><button id="bfs" onclick="toggleFs()" style="margin-left:auto" title="Tela cheia (Esc para sair)">⛶ Tela cheia</button></div>
+          <div class="prow"><button id="b2d" class="on" onclick="setView('2d')">2D</button><button id="b3d" onclick="setView('3d')">3D</button><span id="c3d" class="row hide" style="margin:0"><button onclick="cam3d('follow')" data-i18n="fdet.cam_follow">Seguir</button><button onclick="cam3d('free')" data-i18n="fdet.cam_free">Geral</button><button onclick="cam3d('top')" data-i18n="fdet.cam_top">Topo</button><button id="bcone" class="on" onclick="toggleCone()" data-i18n="fdet.cam_cone">Cone</button><button id="bfot" class="on" onclick="toggleFotos()" data-i18n="fdet.cam_photos">Fotos</button></span><button id="bfs" onclick="toggleFs()" style="margin-left:auto" title="Tela cheia (Esc para sair)" data-i18n="fdet.fullscreen" data-i18n-title="fdet.fullscreen_title">⛶ Tela cheia</button></div>
           <div id="fmapstack" style="position:relative;height:340px"><div id="fmap" style="height:100%"></div><div id="f3dwrap" class="hide" style="position:absolute;inset:0;z-index:1100;background:#000;border-radius:8px;overflow:hidden"><div id="f3d" style="width:100%;height:100%"></div><div id="f3dmsg" class="hide"></div><div id="s3d" style="position:absolute;left:10px;top:8px;z-index:4;background:#000a;color:#fff;font-size:12px;padding:2px 8px;border-radius:5px;pointer-events:none"></div></div></div>
         </div>
       </div>
-      <div class="row"><button id="play">▶ Replay</button><select id="rate" onchange="setRate(this.value)" title="Velocidade do replay"><option value="0.5">0,5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><input id="slider" type="range" min="0" max="0" value="0" style="flex:1"><span id="rd"></span><button onclick="grabFrameCoord()" title="Extrair coordenada geográfica do instante/frame exibido">📍 Extrair coordenada</button></div>
+      <div class="row"><button id="play" data-i18n="fdet.replay">▶ Replay</button><select id="rate" onchange="setRate(this.value)"><option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><input id="slider" type="range" min="0" max="0" value="0" style="flex:1"><span id="rd"></span><button onclick="grabFrameCoord()" data-i18n="fdet.extract_coord">📍 Extrair coordenada</button></div>
       <div id="fcoordbar" class="row hide" style="background:var(--card);border:1px solid var(--acc);padding:8px 12px;border-radius:8px;margin:4px 0 8px"></div>
-      <div id="fsync" class="row" style="margin:0 0 8px;font-size:12px;color:var(--mut)">Sincronia do vídeo: <button onclick="adjV(-5)">−5 s</button><button onclick="adjV(-1)">−1 s</button><b id="sadj">0 s</b><button onclick="adjV(1)">+1 s</button><button onclick="adjV(5)">+5 s</button><button onclick="adjV(0,true)">Zerar</button><span title="Se no mapa o drone aparece adiantado em relação ao vídeo, use −. Se aparece atrasado, use +.">ⓘ</span></div>
+      <div id="fsync" class="row" style="margin:0 0 8px;font-size:12px;color:var(--mut)"><span data-i18n="fdet.video_sync">Sincronia do vídeo:</span> <button onclick="adjV(-5)">−5 s</button><button onclick="adjV(-1)">−1 s</button><b id="sadj">0 s</b><button onclick="adjV(1)">+1 s</button><button onclick="adjV(5)">+5 s</button><button onclick="adjV(0,true)" data-i18n="fdet.zero">Zerar</button><span title="Se no mapa o drone aparece adiantado em relação ao vídeo, use −. Se aparece atrasado, use +." data-i18n-title="fdet.sync_help">ⓘ</span></div>
 
       <!-- Painel Cockpit DJI: Joysticks RC, Horizonte Artificial (Pitch/Roll/Yaw/VS) e Telemetria Elétrica ao vivo -->
       <div id="fcockpit">
         <div class="hudbox">
           <div class="stk-wrap">
             <div class="stk"><i id="stk-l"></i></div>
-            <div>Acel./Giro <b id="stk-lt" style="color:var(--fg)">0 / 0</b></div>
+            <div><span data-i18n="fdet.rc_thr">Acel./Giro</span> <b id="stk-lt" style="color:var(--fg)">0 / 0</b></div>
           </div>
           <div class="stk-wrap">
             <div class="stk"><i id="stk-r"></i></div>
-            <div>Frente/Lado <b id="stk-rt" style="color:var(--fg)">0 / 0</b></div>
+            <div><span data-i18n="fdet.rc_ele">Frente/Lado</span> <b id="stk-rt" style="color:var(--fg)">0 / 0</b></div>
           </div>
           <div style="font-size:12px;color:var(--mut);min-width:85px">
-            <div>Sinal RC</div>
+            <div data-i18n="fdet.rc_sig">Sinal RC</div>
             <b id="hud-rcsig" style="font-size:16px;color:var(--acc-cyan)">–</b>
-            <div style="margin-top:4px">Satélites</div>
+            <div style="margin-top:4px" data-i18n="fdet.sats">Satélites</div>
             <b id="hud-sats" style="font-size:15px;color:var(--fg)">–</b>
           </div>
         </div>
@@ -1023,15 +1028,15 @@ input[type=range] {
           </svg>
           <div style="font-size:12px;color:var(--mut);line-height:1.55">
             <div>Pitch / Roll: <b id="hud-pr" style="color:var(--fg)">0° / 0°</b></div>
-            <div>Proa (Yaw): <b id="hud-yaw" style="color:var(--acc-cyan)">0°</b> · Gimbal: <b id="hud-gp" style="color:var(--fg)">0°</b></div>
-            <div>Vel. Vertical (V.S.): <b id="hud-vs" style="color:var(--ok)">0,0 m/s</b></div>
+            <div><span data-i18n="fdet.yaw">Proa (Yaw):</span> <b id="hud-yaw" style="color:var(--acc-cyan)">0°</b> · Gimbal: <b id="hud-gp" style="color:var(--fg)">0°</b></div>
+            <div><span data-i18n="fdet.vs">Vel. Vertical (V.S.):</span> <b id="hud-vs" style="color:var(--ok)">0,0 m/s</b></div>
           </div>
         </div>
         <div class="hudbox">
           <div style="font-size:12px;color:var(--mut);line-height:1.55;width:100%">
-            <div style="display:flex;justify-content:space-between"><span>Potência Elétrica:</span><b id="hud-watts" style="color:#f59e0b;font-size:15px">– W</b></div>
-            <div style="display:flex;justify-content:space-between"><span>Tensão / Corrente:</span><b id="hud-va" style="color:var(--fg)">– V · – A</b></div>
-            <div style="display:flex;justify-content:space-between"><span>Células:</span><b id="hud-cells" style="color:var(--acc-cyan)">–</b></div>
+            <div style="display:flex;justify-content:space-between"><span data-i18n="fdet.power">Potência Elétrica:</span><b id="hud-watts" style="color:#f59e0b;font-size:15px">– W</b></div>
+            <div style="display:flex;justify-content:space-between"><span data-i18n="fdet.va">Tensão / Corrente:</span><b id="hud-va" style="color:var(--fg)">– V · – A</b></div>
+            <div style="display:flex;justify-content:space-between"><span data-i18n="fdet.cells">Células:</span><b id="hud-cells" style="color:var(--acc-cyan)">–</b></div>
           </div>
         </div>
       </div>
@@ -1039,48 +1044,48 @@ input[type=range] {
       <div class="two">
         <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)">
           <div class="row" style="margin:0 0 6px;justify-content:space-between">
-            <h4 style="margin:0">Gráfico do Voo</h4>
+            <h4 style="margin:0" data-i18n="fdet.chart_title">Gráfico do Voo</h4>
             <div>
-              <button id="bch-fl" class="on" onclick="setChartMode('fl')" style="padding:3px 8px;font-size:11.5px">Voo (Alt / Vel / Bat)</button>
-              <button id="bch-el" onclick="setChartMode('el')" style="padding:3px 8px;font-size:11.5px">Elétrica (Watts / Amp / Células)</button>
+              <button id="bch-fl" class="on" onclick="setChartMode('fl')" style="padding:3px 8px;font-size:11.5px" data-i18n="fdet.chart_fl">Voo (Alt / Vel / Bat)</button>
+              <button id="bch-el" onclick="setChartMode('el')" style="padding:3px 8px;font-size:11.5px" data-i18n="fdet.chart_el">Elétrica (Watts / Amp / Células)</button>
             </div>
           </div>
           <canvas id="fchart" height="170"></canvas>
         </div>
-        <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Eventos de Telemetria</h4><div id="fev" class="row"></div></div>
+        <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0" data-i18n="fdet.events_title">Eventos de Telemetria</h4><div id="fev" class="row"></div></div>
       </div>
-      <h4>Anotações de Voo</h4><textarea id="fnotes" rows="3" style="width:100%" placeholder="Vento, obstáculos, permissões, observações do voo"></textarea>
-      <h4>Mídias deste voo</h4><div id="fmedia" class="grid"></div>
+      <h4 data-i18n="fdet.notes_title">Anotações de Voo</h4><textarea id="fnotes" rows="3" style="width:100%" placeholder="Vento, obstáculos, permissões, observações do voo" data-i18n-ph="fdet.notes_ph"></textarea>
+      <h4 data-i18n="fdet.media_title">Mídias deste voo</h4><div id="fmedia" class="grid"></div>
     </div>
   </section>
 
   <section id="midia" class="hide">
     <div class="row">
-      <input id="mq" placeholder="Buscar por tag, local ou arquivo" oninput="loadMedia()">
-      <select id="mor" onchange="loadMedia()" title="Filtrar por orientação ou formato">
-        <option value="">Todas as orientações</option>
-        <option value="portrait">📱 Verticais (9:16 · Modo Retrato)</option>
-        <option value="landscape">🖼 Horizontais (Paisagem)</option>
-        <option value="pano">🌐 Panoramas 360°</option>
-        <option value="4k">🎬 Resolução 4K+</option>
+      <input id="mq" placeholder="Buscar por tag, local ou arquivo" data-i18n-ph="media.search_ph" oninput="loadMedia()">
+      <select id="mor" onchange="loadMedia()">
+        <option value="" data-i18n="media.orient_all">Todas as orientações</option>
+        <option value="portrait" data-i18n="media.orient_portrait">📱 Verticais (9:16 · Modo Retrato)</option>
+        <option value="landscape" data-i18n="media.orient_landscape">🖼 Horizontais (Paisagem)</option>
+        <option value="pano" data-i18n="media.orient_pano">🌐 Panoramas 360°</option>
+        <option value="4k" data-i18n="media.orient_4k">🎬 Resolução 4K+</option>
       </select>
-      <input id="md" type="date" onchange="loadMedia()" title="A partir de">
-      <input id="mn" placeholder="Perto de: lat,lon,km" onchange="loadMedia()">
-      <label><input id="mf" type="checkbox" onchange="loadMedia()"> Favoritas</label>
-      <label><input id="mu" type="checkbox" onchange="loadMedia()"> Sem voo associado</label>
-      <button onclick="exportSel()">Exportar selecionadas (ZIP)</button>
-      <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)">🗑 Remover da galeria</button>
-      <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria">⚠️ Apagar do HD</button>
-      <button id="bdet-batch" onclick="detectBatchMedia()">🤖 Detectar objetos (IA)</button>
-      <a href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px">📋 Relatório IA</a>
+      <input id="md" type="date" onchange="loadMedia()">
+      <input id="mn" placeholder="Perto de: lat,lon,km" data-i18n-ph="media.near_ph" onchange="loadMedia()">
+      <label><input id="mf" type="checkbox" onchange="loadMedia()"> <span data-i18n="media.favs">Favoritas</span></label>
+      <label><input id="mu" type="checkbox" onchange="loadMedia()"> <span data-i18n="media.unlinked">Sem voo associado</span></label>
+      <button onclick="exportSel()" data-i18n="media.export_zip">Exportar selecionadas (ZIP)</button>
+      <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)" data-i18n="media.del_gallery" data-i18n-title="media.del_gallery_title">🗑 Remover da galeria</button>
+      <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria" data-i18n="media.del_disk" data-i18n-title="media.del_disk_title">⚠️ Apagar do HD</button>
+      <button id="bdet-batch" onclick="detectBatchMedia()" data-i18n="media.detect_ai">🤖 Detectar objetos (IA)</button>
+      <a id="a-detrep" href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
     </div>
     <div id="sembar" class="row" style="margin-top:6px;padding:7px 10px;background:var(--card);border:1px solid var(--bd);border-radius:8px">
-      <span style="font-size:12.5px;color:var(--acc-cyan);font-weight:600">✨ Busca Semântica (CLIP)</span>
-      <input id="msem" placeholder="Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…" onkeydown="if(event.key==='Enter')runSemanticSearch()" style="min-width:260px;flex:1">
-      <button class="on" onclick="runSemanticSearch()">Buscar visualmente</button>
-      <button id="bsem-idx" onclick="indexSemanticPhotos()" title="Indexa fotos localmente com CLIP ONNX (~150 MB na 1ª execução)">🧠 Indexar fotos</button>
-      <button id="bsem-clr" class="hide" onclick="clearSemanticSearch()">✕ Limpar</button>
+      <span style="font-size:12.5px;color:var(--acc-cyan);font-weight:600" data-i18n="media.sem_title">✨ Busca Semântica (CLIP)</span>
+      <input id="msem" placeholder="Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…" data-i18n-ph="media.sem_ph" onkeydown="if(event.key==='Enter')runSemanticSearch()" style="min-width:260px;flex:1">
+      <button class="on" onclick="runSemanticSearch()" data-i18n="media.sem_btn">Buscar visualmente</button>
+      <button id="bsem-idx" onclick="indexSemanticPhotos()" title="Indexa fotos localmente com CLIP ONNX (~150 MB na 1ª execução)" data-i18n="media.sem_idx" data-i18n-title="media.sem_idx_title">🧠 Indexar fotos</button>
+      <button id="bsem-clr" class="hide" onclick="clearSemanticSearch()" data-i18n="media.sem_clr">✕ Limpar</button>
       <span id="semstat" style="font-size:12px;color:var(--mut)"></span>
     </div>
     <div id="mgrid" class="grid"></div>
@@ -1113,8 +1118,69 @@ function toggleTheme(){
 const $=s=>document.querySelector(s);
 const api=async(u,o)=>{const r=await fetch('/api'+u,o);if(!r.ok)throw new Error(await r.text());return r.json()};
 const J=(m,b)=>({method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
-const fmt={d:s=>s?new Date(s).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'',
-  t:s=>{s=Math.round(s);return Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s'},km:m=>(m/1000).toFixed(2)+' km'};
+
+/* ---------- Internacionalização (i18n) e Conversão de Unidades (Métrico / Imperial) ---------- */
+let LANG='pt-BR',I18N={};
+const IMP=()=>LANG==='en';
+const t=(k,v={})=>{let s=I18N[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll('{'+a+'}',b);return s};
+const EV_TRANS={
+  en:{'Modo normal (GPS)':'Normal mode (GPS)','Modo iniciante':'Beginner mode','Modo esportivo':'Sport mode','Modo Cine (tripé)':'Cine mode (tripod)',
+    'Retorno automático (RTH)':'Return to Home (RTH)','Pouso automático':'Auto landing','Aguardando confirmação de pouso':'Waiting landing confirmation',
+    'Pouso avançado':'Advanced landing','Decolagem automática (app)':'Auto takeoff (app)','Pouso automático pedido pelo app':'Auto landing requested by app',
+    'Retorno automático por bateria baixa':'Low battery RTH','Pouso automático por bateria crítica':'Critical battery auto landing',
+    'Retorno automático concluído':'RTH finished','Pouso por limite vertical baixo':'Low vertical limit landing',
+    'Bateria em 20%':'Battery at 20%','Bateria em 10%':'Battery at 10%','Início de gravação de vídeo':'Video recording started',
+    'Fim de gravação de vídeo':'Video recording stopped','Foto tirada':'Photo taken','GPS fraco (<8 satélites)':'Weak GPS (<8 satellites)',
+    'Sinal RC fraco (<=20%)':'Weak RC signal (<=20%)','Aviso de tensão baixa':'Low voltage warning'},
+  es:{'Modo normal (GPS)':'Modo normal (GPS)','Modo iniciante':'Modo principiante','Modo esportivo':'Modo deportivo','Modo Cine (trípode)':'Modo Cine (trípode)',
+    'Retorno automático (RTH)':'Retorno automático (RTH)','Pouso automático':'Aterrizaje automático','Aguardando confirmação de pouso':'Esperando confirmación de aterrizaje',
+    'Pouso avançado':'Aterrizaje avanzado','Decolagem automática (app)':'Despegue automático (app)','Pouso automático pedido pelo app':'Aterrizaje automático (app)',
+    'Retorno automático por bateria baixa':'RTH por batería baja','Pouso automático por bateria crítica':'Aterrizaje por batería crítica',
+    'Retorno automático concluído':'RTH completado','Pouso por limite vertical baixo':'Aterrizaje por límite vertical bajo',
+    'Bateria em 20%':'Batería al 20%','Bateria em 10%':'Batería al 10%','Início de gravação de vídeo':'Inicio de grabación de video',
+    'Fim de gravação de vídeo':'Fin de grabación de video','Foto tirada':'Foto tomada','GPS fraco (<8 satélites)':'GPS débil (<8 satélites)',
+    'Sinal RC fraco (<=20%)':'Señal RC débil (<=20%)','Aviso de tensão baixa':'Alerta de voltaje bajo'}
+};
+function trEvent(lbl){return LANG==='pt-BR'?lbl:(EV_TRANS[LANG]&&EV_TRANS[LANG][lbl])||lbl}
+async function loadI18n(lang){
+  LANG=['pt-BR','en','es'].includes(lang)?lang:'pt-BR';
+  try{const r=await fetch('/static/i18n/'+LANG+'.json');if(r.ok)I18N=await r.json();}catch(e){}
+}
+function applyI18n(){
+  document.documentElement.lang=LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k=el.getAttribute('data-i18n');
+    if(el.classList.contains('nav')){const lb=el.querySelector('.lb');if(lb)lb.textContent=t(k);el.title=t(k)}
+    else el.textContent=t(k);
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el=>{el.placeholder=t(el.getAttribute('data-i18n-ph'))});
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{el.title=t(el.getAttribute('data-i18n-title'))});
+  const ls=$('#langsel');if(ls)ls.value=LANG;
+  const dr=$('#a-detrep');if(dr)dr.href='/api/detections/report?lang='+LANG;
+}
+async function setLang(lang,persist=true){
+  await loadI18n(lang);
+  if(persist){
+    try{localStorage.setItem('dji_lang',LANG)}catch(e){}
+    try{await api('/lang',J('POST',{lang:LANG}))}catch(e){}
+  }
+  applyI18n();
+  const cur=Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'))||'mapa';
+  if(cur==='voos'&&!$('#fdet').classList.contains('hide')&&window.CURF)openFlight(window.CURF);
+  else show(cur);
+}
+
+const fmt={
+  d:s=>s?new Date(s).toLocaleString(LANG,{dateStyle:'short',timeStyle:'short'}):'',
+  t:s=>{s=Math.round(s);return Math.floor(s/60)+'m'+String(s%60).padStart(2,'0')+'s'},
+  alt:(m,dec=0)=>IMP()?(Number(m)*3.28084).toFixed(dec)+' ft':Number(m).toFixed(dec)+' m',
+  dist:m=>IMP()?(m*3.28084<1000?Math.round(m*3.28084)+' ft':(m/1609.344).toFixed(2)+' mi'):(m<1000?Math.round(m)+' m':(m/1000).toFixed(2)+' km'),
+  km:m=>IMP()?(m/1609.344).toFixed(2)+' mi':(m/1000).toFixed(2)+' km',
+  spd:(ms,dec=1)=>IMP()?(Number(ms)*2.23694).toFixed(dec)+' mph':Number(ms).toFixed(dec)+' m/s',
+  kmh:(ms,dec=0)=>IMP()?(Number(ms)*2.23694).toFixed(dec)+' mph':(Number(ms)*3.6).toFixed(dec)+' km/h',
+  vspd:(ms,dec=1)=>IMP()?(Number(ms)*3.28084).toFixed(dec)+' ft/s':Number(ms).toFixed(dec)+' m/s',
+  temp:(c,dec=0)=>IMP()?((Number(c)*9/5)+32).toFixed(dec)+' °F':Number(c).toFixed(dec)+' °C'
+};
 const PANEL={mapa:'mapa',voos:'voos',fotos:'midia',videos:'midia',stats:'stats',locais:'locais',config:'config'};
 function show(t){
   for(const k in PANEL){$('#b-'+k).classList.toggle('on',k==t)}$('main').classList.toggle('full',t=='mapa');
@@ -1122,32 +1188,32 @@ function show(t){
   ({mapa:loadMap,voos:()=>{closeFlight();loadFlights()},fotos:()=>loadMedia('photo'),videos:()=>loadMedia('video'),stats:async()=>{await loadStats();loadBatHealth();loadPanel()},locais:loadSpots,config:loadConfig})[t]();
 }
 async function scan(force=0){
-  const b=$('#scan');b.disabled=true;b.textContent='Escaneando… (pode demorar)';
+  const b=$('#scan');b.disabled=true;b.textContent=t('nav.scanning');
   try{const r=await api('/scan?force='+(force?1:0),{method:'POST'});
-    alert(`Logs processados: ${r.logs}\nMídias novas: ${r.media}\nVoos reconstruídos: ${r.reconstruidos}`+(r.errors.length?`\n\nAvisos:\n${r.errors.slice(0,8).join('\n')}`:''));}
-  catch(e){alert('Erro ao escanear: '+e.message)}
-  b.disabled=false;b.textContent='Escanear pastas';
+    alert(`Logs: ${r.logs}\nMedia: ${r.media}\nReconstructed: ${r.reconstruidos}`+(r.errors.length?`\n\nWarnings:\n${r.errors.slice(0,8).join('\n')}`:''));}
+  catch(e){alert('Error: '+e.message)}
+  b.disabled=false;b.textContent=t('nav.scan');
   const cur=Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'));show(cur||'mapa');
 }
 async function rescanLogs(){
-  if(!confirm('Reimportar todos os arquivos de log (.txt) para extrair os novos dados de telemetria (Joysticks RC, Horizonte Artificial, Potência em Watts, Vento em Altitude, Ponto Home e Vibração)?'))return;
+  if(!confirm(t('flights.rescan_confirm')))return;
   await scan(1);
 }
 async function uploadLogs(files){
   if(!files||!files.length)return;
-  const btn=$('#uplog');if(btn){btn.disabled=true;btn.textContent='Enviando logs…'}
+  const btn=$('#uplog');if(btn){btn.disabled=true;btn.textContent=t('nav.uplog_sending')}
   let ok=0,errs=[];
   for(const f of files){
     try{
       const r=await fetch('/api/logs/upload?name='+encodeURIComponent(f.name),{method:'POST',body:f});
       const j=await r.json();
       if(r.ok&&j.ok)ok++;
-      else errs.push(`${f.name}: ${j.detail||j.error||'erro'}`);
+      else errs.push(`${f.name}: ${j.detail||j.error||'err'}`);
     }catch(e){errs.push(`${f.name}: ${e.message}`)}
   }
   $('#logup').value='';
-  if(btn){btn.disabled=false;btn.textContent='⬆ Enviar logs (.txt)'}
-  toast(`✓ ${ok} log(s) importado(s)`+(errs.length?` · ${errs.length} aviso(s)`:''));
+  if(btn){btn.disabled=false;btn.textContent=t('nav.uplog')}
+  toast(`✓ ${ok} log(s)`+(errs.length?` · ${errs.length} err`:''));
   if(errs.length)alert(`Importados: ${ok}\n\nAvisos:\n${errs.join('\n')}`);
   const cur=Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'));show(cur||'voos');
 }
@@ -1587,8 +1653,8 @@ async function loadMap(){
     L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),wx:L.layerGroup().addTo(map),
         fotos:L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}).addTo(map),
         footprints:L.layerGroup(),spots:L.layerGroup().addTo(map)};
-    const cfg=await api('/config'),ov={'Voos realizados':L_.voos,'🧭 Missões planejadas':L_.missoes,'Fotos':L_.fotos,'📐 Pegada das fotos (Footprint / GSD)':L_.footprints,'Locais favoritos':L_.spots};
-    if(cfg.airspace)ov['Espaço aéreo']=L.tileLayer(cfg.airspace,{opacity:.6});Object.assign(ov,airLayers());
+    const cfg=await api('/config'),ov={[t('map.layer.flights')]:L_.voos,[t('map.layer.missions')]:L_.missoes,[t('map.layer.photos')]:L_.fotos,[t('map.layer.footprints')]:L_.footprints,[t('map.layer.spots')]:L_.spots};
+    if(cfg.airspace)ov[t('map.layer.airspace')]=L.tileLayer(cfg.airspace,{opacity:.6});Object.assign(ov,airLayers());
     L.control.layers(bases,ov).addTo(map);airQuery(map);
     map.on('click',e=>{
       if(WX_ON){loadWxForecast(e.latlng.lat,e.latlng.lng);return}
@@ -1600,8 +1666,8 @@ async function loadMap(){
       renderDraftMission();
     });
     map.on('contextmenu',async e=>{
-      const n=prompt('Nome do local favorito:');if(!n)return;
-      const notes=prompt('Anotações (vento, obstáculos, permissões):')||'';
+      const n=prompt(t('map.spot_prompt_name'));if(!n)return;
+      const notes=prompt(t('map.spot_prompt_notes'))||'';
       await api('/spots',J('POST',{name:n,lat:e.latlng.lat,lon:e.latlng.lng,notes}));loadMap();
     });
   }
@@ -1609,7 +1675,7 @@ async function loadMap(){
   const [tr,ph,sp,ms]=await Promise.all([api('/tracks'),api('/media?kind=photo&geo=1'),api('/spots'),api('/missions')]);
   const all=[];
   tr.forEach((f,i)=>all.push(L.polyline(f.pts,{color:`hsl(${(i*47)%360},82%,56%)`,weight:3,dashArray:f.source!='log'?'6 6':null}).addTo(L_.voos)
-    .bindPopup(`<b>${f.fav?'★ ':''}${f.name?esc(f.name):fmt.d(f.start)}</b><br>${f.name?fmt.d(f.start)+' · ':''}${esc(f.place||'')}<br>${fmt.km(f.distance)}, máx. ${Math.round(f.max_alt)} m<br><a href="#" onclick="openFlight(${f.id});return false">Abrir voo</a>`)));
+    .bindPopup(`<b>${f.fav?'★ ':''}${f.name?esc(f.name):fmt.d(f.start)}</b><br>${f.name?fmt.d(f.start)+' · ':''}${esc(f.place||'')}<br>${fmt.km(f.distance)}, ${t('map.max_alt_short')} ${fmt.alt(f.max_alt)}<br><a href="#" onclick="openFlight(${f.id});return false">${t('map.open_flight')}</a>`)));
   (ms||[]).forEach(m=>{
     const pts=m.waypoints.map(w=>[w[0],w[1]]);
     const mt=m.meta||{};
@@ -1617,10 +1683,10 @@ async function loadMap(){
       L.polygon(mt.polygon,{color:'#00d2ff',weight:1.5,dashArray:'4 4',fillOpacity:0.08}).addTo(L_.missoes);
     }
     if(pts.length>=2){
-      const modeLbl=mt.mode==='grid'?'▦ Grade':mt.mode==='double_grid'?'╬ Grade Dupla':mt.mode==='orbit'?'◎ Órbita':'📍 Rota';
-      const extra=mt.est_photos?`<br>Fotos: <b>${mt.est_photos}</b> · GSD: <b>${mt.gsd_cm} cm/px</b> · Baterias: <b>${m.batteries||1}</b>`:'';
+      const modeLbl=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
+      const extra=mt.est_photos?`<br>${t('map.layer.photos')}: <b>${mt.est_photos}</b> · GSD: <b>${mt.gsd_cm} cm/px</b> · ${t('flights.col.battery')}: <b>${m.batteries||1}</b>`:'';
       all.push(L.polyline(pts,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.missoes)
-        .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · Bateria est. <b>${m.est_battery_pct}%</b>${extra}<br>Alt. ${m.alt} m · VLOS máx. ${Math.round(m.max_vlos)} m<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
+        .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · <b>${m.est_battery_pct}%</b>${extra}<br>${t('plan.alt_lbl')} ${fmt.alt(m.alt)} · VLOS ${t('map.max_alt_short')} ${fmt.alt(m.max_vlos)}<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
     }
   });
   ph.forEach((p,idx)=>{
@@ -1628,12 +1694,12 @@ async function loadMap(){
     let ovl='';
     if(fp&&idx>0&&ph[idx-1].flight_id===p.flight_id){
       const d=havDist(p.lat,p.lon,ph[idx-1].lat,ph[idx-1].lon),pct=Math.max(0,Math.min(98,Math.round((1-d/Math.max(10,fp.gw))*100)));
-      if(pct>0)ovl=` · Sobreposição est.: <b>${pct}%</b>`;
+      if(pct>0)ovl=`${t('map.overlap_est')} <b>${pct}%</b>`;
     }
-    const fpInfo=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · Área: <b>${fp.gw}×${fp.gh} m</b>${ovl}</div>`:'';
-    L.marker([p.lat,p.lon],{icon:PHI}).addTo(L_.fotos).bindPopup(`<div style="text-align:center"><img src="/api/media/${p.id}/thumb" style="width:300px;max-width:100%;cursor:zoom-in;border-radius:6px" onclick="openMedia(${p.id})"><div style="margin:4px 0">${fmt.d(p.taken)}${p.place?' · '+esc(p.place):''}</div>${fpInfo}<a href="#" onclick="openMedia(${p.id});return false">Abrir em tamanho grande</a>${p.flight_id?' · <a href="#" onclick="openFlight('+p.flight_id+');return false">Ver voo</a>':''}</div>`,{maxWidth:320});
+    const fpInfo=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · ${fmt.alt(fp.gw)}×${fmt.alt(fp.gh)}${ovl}</div>`:'';
+    L.marker([p.lat,p.lon],{icon:PHI}).addTo(L_.fotos).bindPopup(`<div style="text-align:center"><img src="/api/media/${p.id}/thumb" style="width:300px;max-width:100%;cursor:zoom-in;border-radius:6px" onclick="openMedia(${p.id})"><div style="margin:4px 0">${fmt.d(p.taken)}${p.place?' · '+esc(p.place):''}</div>${fpInfo}<a href="#" onclick="openMedia(${p.id});return false">${t('map.open_large')}</a>${p.flight_id?' · <a href="#" onclick="openFlight('+p.flight_id+');return false">'+t('map.view_flight')+'</a>':''}</div>`,{maxWidth:320});
     if(fp)L.polygon(fp.corners,{color:'#00d2ff',weight:1.5,fillColor:'#1890ff',fillOpacity:0.18}).addTo(L_.footprints)
-      .bindPopup(`<b>📐 Pegada da Foto #${p.id}</b><br>GSD estimado: <b>${fp.gsd} cm/pixel</b><br>Cobertura no solo: <b>${fp.gw} × ${fp.gh} m</b> (alt. ~${fp.alt} m)${ovl}<br><a href="#" onclick="openMedia(${p.id});return false">Ver foto</a>`);
+      .bindPopup(`<b>${t('map.footprint_title',{id:p.id})}</b><br>${t('map.gsd_est')} <b>${fp.gsd} cm/pixel</b><br>${t('map.ground_cov')} <b>${fmt.alt(fp.gw)} × ${fmt.alt(fp.gh)}</b> (${t('plan.alt_lbl')} ~${fmt.alt(fp.alt)})${ovl}<br><a href="#" onclick="openMedia(${p.id});return false">${t('map.view_photo')}</a>`);
   });
   sp.forEach(s=>L.marker([s.lat,s.lon]).addTo(L_.spots).bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.notes||'')}`));
   if(all.length)map.fitBounds(L.featureGroup(all).getBounds());
@@ -1644,8 +1710,8 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 let FS={k:'start',o:'desc'};
 function sortF(k){FS.o=(FS.k==k&&FS.o=='desc')?'asc':'desc';FS.k=k;loadFlights()}
 async function favF(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));loadFlights()}
-async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));toast('✓ Nome do voo salvo')}
-async function favDetail(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));const b=$('#favbtn');b.textContent=v?'★':'☆';b.style.color=v?'#f59e0b':'var(--fg)';b.setAttribute('onclick','favDetail('+id+','+(v?0:1)+')');toast(v?'★ Adicionado aos favoritos':'☆ Removido dos favoritos')}
+async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));toast(t('flights.name_saved'))}
+async function favDetail(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));const b=$('#favbtn');b.textContent=v?'★':'☆';b.style.color=v?'#f59e0b':'var(--fg)';b.setAttribute('onclick','favDetail('+id+','+(v?0:1)+')');toast(v?t('flights.fav_added'):t('flights.fav_removed'))}
 function clearFlightFilters(){['fq','fd1','fd2','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});$('#ffav').checked=false;loadFlights()}
 async function loadFlights(){
   const sel=$('#fb'),dsel=$('#fdri');
@@ -1660,13 +1726,13 @@ async function loadFlights(){
     battery:sel.value,drone:dsel?dsel.value:'',source:$('#fs').value,fav:$('#ffav').checked?1:0,sort:FS.k,order:FS.o});
   const fl=(await api('/flights?'+p)).filter(NLF);
   const ar=k=>FS.k==k?(FS.o=='desc'?' ▼':' ▲'):'';
-  const th=(k,t)=>`<th onclick="sortF('${k}')">${t}${ar(k)}`;
+  const th=(k,l)=>`<th onclick="sortF('${k}')">${l}${ar(k)}`;
   const filtered=[...p.entries()].some(([k,v])=>!['sort','order'].includes(k)&&v!==''&&v!=='0');
-  const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">📷 fotos</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">🎬 .SRT</span>':'';
-  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start','Data')+th('name','Nome')+th('place','Local')+th('duration','Duração')+th('distance','Distância')+th('max_alt','Altura máx.')+th('max_speed','Vel. máx.')+'<th>Bateria<th>Esp. aéreo</tr>'+
-    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${Math.round(f.max_alt)} m<td>${(f.max_speed*3.6).toFixed(0)} km/h<td>${esc(f.battery_sn||'')}<td>${airChip(f)}</tr>`).join('')
-    ||`<tr><td colspan=10>${filtered?'Nenhum voo encontrado com esses filtros.':'Nenhum voo ainda. Coloque os logs em data/logs e clique em Escanear pastas.'}</tr>`);
-  $('#fcount').textContent=fl.length+(fl.length==1?' voo':' voos');
+  const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">'+t('flights.src_photos')+'</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">'+t('flights.src_srt')+'</span>':'';
+  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}<th>${t('flights.col.airspace')}</tr>`+
+    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${airChip(f)}</tr>`).join('')
+    ||`<tr><td colspan=10>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
+  $('#fcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
 }
 let fm,fg,mk,homeMk,homeLine,ch,CH_MODE='fl',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
 const cursor={id:'cursor',afterDraw(c){const i=window.CI;if(i==null||!c.scales.x)return;
@@ -1696,7 +1762,7 @@ function updateCockpitHud(i){
   $('#hud-yaw').textContent=`${yw.toFixed(0)}°`;
   $('#hud-gp').textContent=`${gp.toFixed(0)}°`;
   const vsEl=$('#hud-vs');
-  if(vsEl){vsEl.textContent=(vs>0?'+':'')+vs.toFixed(1)+' m/s';vsEl.style.color=Math.abs(vs)>3?'#f59e0b':'#10b981'}
+  if(vsEl){vsEl.textContent=(vs>0?'+':'')+fmt.vspd(vs);vsEl.style.color=Math.abs(vs)>3?'#f59e0b':'#10b981'}
   /* 3. Telemetria Elétrica ao vivo (p[14] = [V, A, W, c1, c2...]) */
   const pwr=Array.isArray(p[14])?p[14]:null;
   $('#hud-watts').textContent=pwr&&pwr[2]!=null?pwr[2].toFixed(1)+' W':'– W';
@@ -1804,33 +1870,33 @@ function setChartMode(m){
 async function openFlight(id){
   window.CURF=id;show('voos');const f=await api('/flights/'+id);T=f.track;FST=f.start_local;FEV=f.events;
   const mt=f.meta||{};FHOME=mt.home||(T.length?{lat:T[0][1],lon:T[0][2],max_dist:0}:null);
-  clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';
+  clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');
   $('#flist').classList.add('hide');$('#fdet').classList.remove('hide');
   const w=f.weather,we=mt.wind_est,dr=mt.drone||{},mc=mt.mech||{};
   const hmax=FHOME&&FHOME.max_dist!=null?Math.round(FHOME.max_dist):0;
-  const vlosBadge=hmax>500?' <span style="color:#f59e0b;font-size:12px">🟡 >500m</span>':' <span style="color:#10b981;font-size:12px">🟢 VLOS</span>';
+  const vlosBadge=hmax>500?` <span style="color:#f59e0b;font-size:12px">🟡 >${fmt.alt(500)}</span>`:' <span style="color:#10b981;font-size:12px">🟢 VLOS</span>';
   const mechWarn=[];
-  if(mc.vib_s>0)mechWarn.push(`Vibração anormal nas hélices (${mc.vib_s} s)`);
-  if(mc.force_s>0)mechWarn.push(`Força de propulsão insuficiente (${mc.force_s} s)`);
-  if(mc.comp_s>0)mechWarn.push(`Interferência na bússola (${mc.comp_s} s)`);
-  if(mc.gimb_s>0)mechWarn.push(`Gimbal travado (${mc.gimb_s} s)`);
-  const mechBanner=mechWarn.length?`<div style="background:rgba(239,68,68,0.14);border:1px solid #ef4444;color:#fca5a5;padding:8px 12px;border-radius:8px;margin:8px 0"><b>⚠ Alerta Mecânico / Sensores:</b> ${mechWarn.join(' · ')} — inspecione as hélices e motores.</div>`:'';
+  if(mc.vib_s>0)mechWarn.push(t('fdet.mech_vib',{s:mc.vib_s}));
+  if(mc.force_s>0)mechWarn.push(t('fdet.mech_force',{s:mc.force_s}));
+  if(mc.comp_s>0)mechWarn.push(t('fdet.mech_comp',{s:mc.comp_s}));
+  if(mc.gimb_s>0)mechWarn.push(t('fdet.mech_gimb',{s:mc.gimb_s}));
+  const mechBanner=mechWarn.length?`<div style="background:rgba(239,68,68,0.14);border:1px solid #ef4444;color:#fca5a5;padding:8px 12px;border-radius:8px;margin:8px 0"><b>${t('fdet.mech_alert')}</b> ${mechWarn.join(' · ')} ${t('fdet.mech_inspect')}</div>`:'';
   const drLabel=(dr.type||dr.name)?`${esc(dr.type||'DJI Mini 3')}${dr.name?' ('+esc(dr.name)+')':''}${dr.sn?' · SN '+esc(dr.sn):''}`:'';
-  $('#fhead').innerHTML=`<div class="row" style="margin-top:0"><button onclick="closeFlight()">← Voltar</button> <button id="favbtn" onclick="favDetail(${id},${f.fav?0:1})" title="Favoritar este voo" style="font-size:16px;color:${f.fav?'#f59e0b':'var(--fg)'}">${f.fav?'★':'☆'}</button> <input id="fname" value="${esc(f.name)}" placeholder="Dê um nome a este voo (ex.: Praia da Barra, pôr do sol)" onchange="renameF(${id},this.value)" style="width:min(440px,90%);font-size:15px;font-weight:600"> <span style="color:var(--mut)">${fmt.d(f.start_local)} ${f.place?'· '+esc(f.place):''} ${drLabel?'· 🛸 '+drLabel:''}</span>${f.source=='photos'?' <span style="color:var(--mut)">(reconstruído das fotos)</span>':f.source=='srt'?' <span style="color:var(--acc-cyan)">(reconstruído de trilha .SRT)</span>':''}</div>
+  $('#fhead').innerHTML=`<div class="row" style="margin-top:0"><button onclick="closeFlight()">${t('fdet.back')}</button> <button id="favbtn" onclick="favDetail(${id},${f.fav?0:1})" title="${t('fdet.fav_title')}" style="font-size:16px;color:${f.fav?'#f59e0b':'var(--fg)'}">${f.fav?'★':'☆'}</button> <input id="fname" value="${esc(f.name)}" placeholder="${t('fdet.name_ph')}" onchange="renameF(${id},this.value)" style="width:min(440px,90%);font-size:15px;font-weight:600"> <span style="color:var(--mut)">${fmt.d(f.start_local)} ${f.place?'· '+esc(f.place):''} ${drLabel?'· 🛸 '+drLabel:''}</span>${f.source=='photos'?' <span style="color:var(--mut)">'+t('fdet.src_photos')+'</span>':f.source=='srt'?' <span style="color:var(--acc-cyan)">'+t('fdet.src_srt')+'</span>':''}</div>
    ${mechBanner}
    <div class=cards>
-    <div class=card>Duração<b>${fmt.t(f.duration)}</b></div><div class=card>Distância<b>${fmt.km(f.distance)}</b></div>
-    <div class=card>Dist. máx. Home<b>${hmax} m${vlosBadge}</b>${FHOME&&FHOME.rth_alt?`<small>RTH: ${FHOME.rth_alt} m</small>`:''}</div>
-    <div class=card>Altura máx.<b>${Math.round(f.max_alt)} m</b></div><div class=card>Vel. máx.<b>${(f.max_speed*3.6).toFixed(0)} km/h</b></div>
-    <div class=card>Bateria<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
-    <div class=card>Vento no ar (est.)<b style="font-size:15px">${we?`${we.spd} m/s (${we.card})`:'–'}</b>${we?`<small>Rajada est.: ${we.max} m/s (${we.deg}°)</small>`:'<small>Reimporte o log</small>'}</div>
-    <div class=card>Clima em solo<b style="font-size:14px">${w?`${w.temperature_2m} °C, vento ${w.wind_speed_10m} m/s (raj. ${w.wind_gusts_10m})`:'indisponível'}</b></div></div>
-   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report" target=_blank>🖨 Relatório em PDF</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">🤖 Detectar objetos (IA)</button> · <a href="/api/detections/report?flight_id=${id}" target=_blank>📋 Relatório IA</a></div><div id="fair" style="margin:6px 0"></div>`;
+    <div class=card>${t('fdet.duration')}<b>${fmt.t(f.duration)}</b></div><div class=card>${t('fdet.distance')}<b>${fmt.km(f.distance)}</b></div>
+    <div class=card>${t('fdet.home_dist')}<b>${fmt.alt(hmax)}${vlosBadge}</b>${FHOME&&FHOME.rth_alt?`<small>RTH: ${fmt.alt(FHOME.rth_alt)}</small>`:''}</div>
+    <div class=card>${t('fdet.max_alt')}<b>${fmt.alt(f.max_alt)}</b></div><div class=card>${t('fdet.max_speed')}<b>${fmt.kmh(f.max_speed)}</b></div>
+    <div class=card>${t('fdet.battery')}<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
+    <div class=card>${t('fdet.wind_air')}<b style="font-size:15px">${we?`${fmt.spd(we.spd)} (${we.card})`:'–'}</b>${we?`<small>${t('fdet.gust_est')} ${fmt.spd(we.max)} (${we.deg}°)</small>`:`<small>${t('fdet.reimport_hint')}</small>`}</div>
+    <div class=card>${t('fdet.weather_ground')}<b style="font-size:14px">${w?`${fmt.temp(w.temperature_2m)}, ${t('fdet.wind_lbl')} ${fmt.spd(w.wind_speed_10m)} (${t('fdet.gust_short')} ${fmt.spd(w.wind_gusts_10m)})`:t('fdet.unavail')}</b></div></div>
+   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target=_blank>${t('fdet.report_pdf')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target=_blank>${t('fdet.report_ai')}</a></div><div id="fair" style="margin:6px 0"></div>`;
   if(!fm){
     fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
     FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
     FOTFP=L.layerGroup().addTo(fm);
-    const OV=airLayers();OV['📷 Fotos do voo']=FOTL;OV['📐 Pegada das fotos (GSD)']=FOTFP;
+    const OV=airLayers();OV[t('map.layer.flight_photos')]=FOTL;OV[t('map.layer.flight_footprints')]=FOTFP;
     L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
   }
   fg&&fm.removeLayer(fg);
@@ -1838,7 +1904,7 @@ async function openFlight(id){
   mk=L.circleMarker([T[0][1],T[0][2]],{radius:8,color:'#fff',weight:2,fillColor:'#1890ff',fillOpacity:1});
   const layers=[line,mk];
   if(FHOME){
-    homeMk=L.marker([FHOME.lat,FHOME.lon],{icon:HOMEI}).bindPopup(`<b>Ponto Home (H)</b><br>${FHOME.lat.toFixed(5)}, ${FHOME.lon.toFixed(5)}${FHOME.rth_alt?'<br>Altura RTH: '+FHOME.rth_alt+' m':''}`);
+    homeMk=L.marker([FHOME.lat,FHOME.lon],{icon:HOMEI}).bindPopup(`<b>${t('fdet.home_point')}</b><br>${FHOME.lat.toFixed(5)}, ${FHOME.lon.toFixed(5)}${FHOME.rth_alt?'<br>'+t('fdet.rth_alt')+' '+fmt.alt(FHOME.rth_alt):''}`);
     homeLine=L.polyline([[FHOME.lat,FHOME.lon],[T[0][1],T[0][2]]],{color:'#f59e0b',weight:1.8,dashArray:'5 5',opacity:0.85});
     layers.push(homeLine,homeMk);
   }
@@ -1850,9 +1916,9 @@ async function openFlight(id){
   window.CI=0;renderFlightChart();
   const sl=$('#slider');sl.max=T.length-1;sl.value=0;sl.oninput=()=>{const i=+sl.value;seek(i);syncV(i)};
   seek(0);
-  $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${e.t})">${fmt.t(e.t)} ${esc(e.label)}</button>`).join('');
-  const n=$('#fnotes');n.value=f.notes||'';n.onchange=async()=>{await api('/flights/'+id,J('PATCH',{notes:n.value}));toast('✓ Anotação salva')};
-  $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||'<span style="color:var(--mut)">Nenhuma mídia associada a este voo.</span>';
+  $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${e.t})">${fmt.t(e.t)} ${esc(trEvent(e.label))}</button>`).join('');
+  const n=$('#fnotes');n.value=f.notes||'';n.onchange=async()=>{await api('/flights/'+id,J('PATCH',{notes:n.value}));toast(t('flights.note_saved'))};
+  $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||`<span style="color:var(--mut)">${t('fdet.no_media')}</span>`;
   const vid=$('#vid');vid.pause();vid.removeAttribute('src');$('#vcamhud').classList.add('hide');
   const cb=$('#fcoordbar');if(cb){cb.classList.add('hide');cb.innerHTML=''}
   $('#fvsel').innerHTML=FV.length>1?FV.map((v,i)=>`<button class="vb${i==0?' on':''}" onclick="loadV(${i},false)">${fmt.d(v.taken).slice(-5)}</button>`).join(''):'';
@@ -2404,11 +2470,12 @@ function batCards(f){
   let b=null;try{b=f.bat?JSON.parse(f.bat):null}catch(e){}
   if(!b)return '';
   const c=(t,v,s)=>`<div class=card>${t}<b style="font-size:15px">${v}</b>${s?`<small>${s}</small>`:''}</div>`,n=(x,u,d)=>x==null?'–':(+x).toFixed(d||0)+u;
-  return c('Carga usada',b.start==null?'–':b.start+'% → '+b.end+'%',b.wh!=null?b.wh+' Wh consumidos':'')+
-    c('Potência / Corrente',b.wavg!=null?b.wavg+' W méd.':'–',b.wmax!=null?`Pico: ${b.wmax} W · ${b.amax||0} A`+(b.wh_km?` · ${b.wh_km} Wh/km`:''):'')+
-    c('Tensão mín.',b.vmin==null?'–':(b.vmin/1000).toFixed(2)+' V')+
-    c('Desvio entre células',b.est?'estimado (sem medição)':n(b.dev,' mV'))+
-    c('Temp. da bateria',b.tmax==null?'–':n(b.tmin,'',0)+'–'+n(b.tmax,' °C',0))+c('Capacidade',n(b.full,' mAh'))}
+  return c(t('bat.charge_used'),b.start==null?'–':b.start+'% → '+b.end+'%',b.wh!=null?t('bat.wh_consumed',{wh:b.wh}):'')+
+    c(t('bat.power_curr'),b.wavg!=null?t('bat.avg_w',{w:b.wavg}):'–',b.wmax!=null?`${t('bat.peak')} ${b.wmax} W · ${b.amax||0} A`+(b.wh_km?` · ${b.wh_km} Wh/km`:''):'')+
+    c(t('bat.vmin'),b.vmin==null?'–':(b.vmin/1000).toFixed(2)+' V')+
+    c(t('bat.cell_dev'),b.est?t('bat.est_no_meas'):n(b.dev,' mV'))+
+    c(t('bat.temp'),b.tmax==null?'–':(IMP()?`${Math.round(b.tmin*9/5+32)}–${fmt.temp(b.tmax)}`:`${n(b.tmin,'',0)}–${n(b.tmax,' °C',0)}`))+
+    c(t('bat.cap'),n(b.full,' mAh'))}
 let BHC=[];
 async function loadBatHealth(){
   BHC.forEach(c=>c.destroy());BHC=[];
@@ -2421,70 +2488,73 @@ async function loadBatHealth(){
       tms=fl.filter(f=>f.tmax!=null).map(f=>f.tmax),tm=tms.length?Math.max(...tms):null,
       used=fl.filter(f=>f.start!=null&&f.end!=null).map(f=>f.start-f.end),avg=used.length?used.reduce((a,x)=>a+x,0)/used.length:null,
       hours=fl.reduce((a,f)=>a+f.min,0)/60,why=[];let lvl=0;
-    if(drop!=null&&drop>=10){why.push('capacidade caiu '+drop.toFixed(0)+'%');lvl=drop>=20?2:1}
-    if(maxdev!=null&&maxdev>50){why.push('desvio entre células '+maxdev.toFixed(0)+' mV');lvl=Math.max(lvl,maxdev>100?2:1)}
-    if(tm!=null&&tm>50){why.push('temperatura '+tm.toFixed(0)+' °C');lvl=Math.max(lvl,1)}
+    if(drop!=null&&drop>=10){why.push('-'+drop.toFixed(0)+'% cap.');lvl=drop>=20?2:1}
+    if(maxdev!=null&&maxdev>50){why.push(maxdev.toFixed(0)+' mV');lvl=Math.max(lvl,maxdev>100?2:1)}
+    if(tm!=null&&tm>50){why.push(fmt.temp(tm));lvl=Math.max(lvl,1)}
     const nodata=caps.length==0&&devs.length==0&&tm==null;
-    const chip=nodata?'<span style="color:var(--mut)">sem dados (reimporte os logs)</span>':(lvl==2?'🔴 Atenção: ':lvl==1?'🟡 Observar: ':'🟢 Boa')+why.join('; ');
-    return `<tr><td>${b.sn}<td>${fl.length}<td>${hours.toFixed(1)}<td>${last!=null?Math.round(last)+' mAh':'–'}<td>${drop!=null?drop.toFixed(1)+'%':'–'}<td>${maxdev!=null?maxdev.toFixed(0)+' mV':'–'}<td>${tm!=null?tm.toFixed(0)+' °C':'–'}<td>${avg!=null?avg.toFixed(0)+'%':'–'}<td>${chip}</tr>`});
+    const chip=nodata?`<span style="color:var(--mut)">${t('bat.nodata_chip')}</span>`:(lvl==2?t('bat.status_warn'):lvl==1?t('bat.status_obs'):t('bat.status_ok'))+why.join('; ');
+    return `<tr><td>${b.sn}<td>${fl.length}<td>${hours.toFixed(1)}<td>${last!=null?Math.round(last)+' mAh':'–'}<td>${drop!=null?drop.toFixed(1)+'%':'–'}<td>${maxdev!=null?maxdev.toFixed(0)+' mV':'–'}<td>${tm!=null?fmt.temp(tm):'–'}<td>${avg!=null?avg.toFixed(0)+'%':'–'}<td>${chip}</tr>`});
   const sec=document.createElement('div');sec.id='bathealth';
-  sec.innerHTML=`<h4>Saúde das baterias</h4>
-   <p style="color:var(--mut);font-size:12px">Calculada a partir dos logs reimportados. Os limites de aviso (queda de capacidade de 10% e 20%, desvio entre células acima de 50 e 100 mV, temperatura acima de 50 °C) são referências minhas, e não valores oficiais da DJI. Desvio entre células só aparece quando o log traz medição real.</p>
-   <table><tr><th>Bateria<th>Voos<th>Horas<th>Capacidade atual<th>Queda<th>Desvio máx.<th>Temp. máx.<th>Uso médio por voo<th>Situação</tr>${tr.join('')||'<tr><td colspan=9>Sem dados de bateria.</tr>'}</table>
-   <div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Capacidade total (mAh) ao longo do tempo</h4><canvas id=bhc1 height=150></canvas></div>
-   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Desvio máximo entre células (mV)</h4><canvas id=bhc2 height=150></canvas></div></div>`;
+  sec.innerHTML=`<h4>${t('bat.health_title')}</h4>
+   <p style="color:var(--mut);font-size:12px">${t('bat.health_note')}</p>
+   <table><tr><th>${t('bat.col.bat')}<th>${t('bat.col.flights')}<th>${t('bat.col.hours')}<th>${t('bat.col.cap')}<th>${t('bat.col.drop')}<th>${t('bat.col.dev')}<th>${t('bat.col.tmax')}<th>${t('bat.col.avg')}<th>${t('bat.col.status')}</tr>${tr.join('')||`<tr><td colspan=9>${t('bat.no_data')}</tr>`}</table>
+   <div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('bat.cap_chart')}</h4><canvas id=bhc1 height=150></canvas></div>
+   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('bat.dev_chart')}</h4><canvas id=bhc2 height=150></canvas></div></div>`;
   $('#stats').appendChild(sec);
   const cols=['#1890ff','#10b981','#f59e0b','#ef4444','#a855f7','#00d2ff'];
   const ds=key=>bs.map((b,i)=>({label:b.sn,data:b.flights.filter(f=>f[key]!=null).map(f=>({x:new Date(f.start).getTime(),y:f[key]})),
     showLine:true,borderColor:cols[i%6],backgroundColor:cols[i%6],pointRadius:3,tension:0.2}));
-  const opt=u=>({scales:{x:{type:'linear',ticks:{maxTicksLimit:6,callback:v=>new Date(v).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'})}},y:{title:{display:true,text:u}}}});
+  const opt=u=>({scales:{x:{type:'linear',ticks:{maxTicksLimit:6,callback:v=>new Date(v).toLocaleDateString(LANG,{month:'short',year:'2-digit'})}},y:{title:{display:true,text:u}}}});
   BHC.push(new Chart($('#bhc1'),{type:'scatter',data:{datasets:ds('full')},options:opt('mAh')}));
   BHC.push(new Chart($('#bhc2'),{type:'scatter',data:{datasets:ds('dev')},options:opt('mV')}));
 }
 /* ---------- verificação de espaço aéreo por voo ---------- */
 function airChip(f){
   let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
-  if(!a)return '<span style="color:var(--mut)" title="Não verificado">—</span>';
+  if(!a)return `<span style="color:var(--mut)" title="${t('air.not_checked')}">—</span>`;
   const s=a.sev>=3?'🔴':a.sev>=2?'🟡':'🟢';
-  const t=a.hits.length?a.hits.map(h=>h.label+(h.name?' '+h.name:'')).join('; '):(a.near&&a.near[0]?'aeródromo mais próximo: '+a.near[0].name+' a '+a.near[0].km+' km':'sem áreas nas camadas consultadas');
-  return '<span title="'+t.replace(/[&<>"]/g,'')+'">'+s+'</span>'}
+  const t_=a.hits.length?a.hits.map(h=>h.label+(h.name?' '+h.name:'')).join('; '):(a.near&&a.near[0]?a.near[0].name+' ('+fmt.km(a.near[0].km*1000)+')':t('air.hit_ok'));
+  return '<span title="'+t_.replace(/[&<>"]/g,'')+'">'+s+'</span>'}
 function renderAir(f){
   const el=$('#fair');if(!el)return;
   let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
-  const btn=`<button onclick="airCheck(${f.id})">${a?'Verificar de novo':'Verificar espaço aéreo'}</button>`;
-  if(!a){el.innerHTML='<strong>Espaço aéreo:</strong> ainda não verificado. '+btn;return}
+  const btn=`<button onclick="airCheck(${f.id})">${a?t('air.recheck'):t('air.check')}</button>`;
+  if(!a){el.innerHTML=t('air.unverified_html')+' '+btn;return}
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
-  const head=a.sev>=3?'🔴 O trajeto passou dentro de zona com restrição ou controle':a.sev>=2?'🟡 Atenção':'🟢 Nenhuma área restrita ou controlada no trajeto';
-  const hits=a.hits.map(h=>'<li><strong>'+E(h.label)+'</strong>'+(h.name?': '+E(h.name):'')+' · do minuto '+fmt.t(h.first_t)+' ao '+fmt.t(h.last_t)+' do voo'+
+  const head=a.sev>=3?t('air.hit_sev3'):a.sev>=2?t('air.hit_sev2'):t('air.hit_ok');
+  const hits=a.hits.map(h=>'<li><strong>'+E(h.label)+'</strong>'+(h.name?': '+E(h.name):'')+t('air.from_to',{a:fmt.t(h.first_t),b:fmt.t(h.last_t)})+
     (h.props&&Object.keys(h.props).length?'<br><small style="color:var(--mut)">'+Object.entries(h.props).map(([k,v])=>E(k)+': '+E(v)).join(' · ')+'</small>':'')+'</li>').join('');
-  const near=(a.near||[]).map(n=>'<li>Aeródromo ou heliponto '+(E(n.name)||'sem nome')+': '+n.km+' km do ponto mais próximo do trajeto</li>').join('');
+  const near=(a.near||[]).map(n=>'<li>'+t('air.aerodrome',{name:E(n.name)||t('air.unnamed'),dist:fmt.km(n.km*1000)})+'</li>').join('');
   el.innerHTML='<div style="background:var(--card);border:1px solid var(--border);padding:10px 14px;border-radius:8px"><strong style="font-size:14px">'+head+'</strong> '+btn+
     '<ul style="margin:6px 0 0 18px">'+hits+near+'</ul>'+
-    (a.errors&&a.errors.length?'<small style="color:var(--mut)">'+a.errors.length+' camada(s) não responderam; o resultado pode estar incompleto.</small><br>':'')+
-    '<small style="color:var(--mut)">Verificado em '+E(a.checked.replace('T',' '))+'. Considera só a posição no mapa, e não a altura das zonas. Referência visual, não é autorização de voo: confirme no SARPAS/DECEA.</small></div>'}
+    (a.errors&&a.errors.length?'<small style="color:var(--mut)">'+t('air.partial',{n:a.errors.length})+'</small><br>':'')+
+    '<small style="color:var(--mut)">'+t('air.disclaimer',{dt:E(a.checked.replace('T',' '))})+'</small></div>'}
 async function airCheck(id){
-  const el=$('#fair');el.textContent='Consultando o DECEA… (pode levar alguns segundos)';
+  const el=$('#fair');el.textContent=t('air.checking');
   try{await api('/flights/'+id+'/airspace-check',{method:'POST'});renderAir(await api('/flights/'+id))}
-  catch(e){el.innerHTML='Não foi possível consultar o DECEA agora. <button onclick="airCheck('+id+')">Tentar de novo</button>'}}
+  catch(e){el.innerHTML=t('air.err_now')+' <button onclick="airCheck('+id+')">'+t('air.retry')+'</button>'}}
 async function airCheckAll(){
   const fl=(await api('/flights')).filter(f=>f.source!='photos'&&!f.air);
-  if(!fl.length){alert('Todos os voos já foram verificados.');return}
-  if(!confirm('Verificar '+fl.length+' voos no DECEA? Pode levar alguns minutos.'))return;
+  if(!fl.length){alert(t('air.all_done'));return}
+  if(!confirm(t('air.confirm_all',{n:fl.length})))return;
   let ok=0,bad=0;
   for(const [i,f] of fl.entries()){
-    $('#fcount').textContent='Verificando '+(i+1)+' de '+fl.length+'…';
+    $('#fcount').textContent=t('air.progress',{i:i+1,n:fl.length});
     try{await api('/flights/'+f.id+'/airspace-check',{method:'POST'});ok++}catch(e){bad++}}
-  alert('Verificação concluída: '+ok+' voo(s)'+(bad?', '+bad+' sem resposta do DECEA':'')+'.');loadFlights()}
+  alert(t('air.done_summary',{ok,bad:bad?`, ${bad} err`:''}));loadFlights()}
 
 /* ---------- busca em linguagem natural (sem IA) ---------- */
 const NZ=s=>String(s==null?'':s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const GT='(?:acima de|mais de|maior que|maior do que|superior a|pelo menos|no minimo|minimo de|a partir de|>=|>)';
-const LT='(?:abaixo de|menos de|menor que|menor do que|inferior a|no maximo|maximo de|ate|<=|<)';
+const GT='(?:acima de|mais de|maior que|maior do que|superior a|pelo menos|no minimo|minimo de|a partir de|above|over|more than|greater than|at least|mas de|mayor que|encima de|>=|>)';
+const LT='(?:abaixo de|menos de|menor que|menor do que|inferior a|no maximo|maximo de|ate|below|under|less than|at most|menos de|debajo de|<=|<)';
 const MESES=['janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const MESES_EN=['january','february','march','april','may','june','july','august','september','october','november','december'];
+const MESES_ES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const MESES_PT=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const STOP=new Set(['de','da','do','das','dos','em','na','no','nas','nos','a','o','as','os','com','que','e','ou','para','por','ao','aos','pelo','pela',
   'um','uma','meu','meus','minha','minhas','todos','todas','mostre','mostrar','ver','buscar','busca','procurar','quais','onde','quando','tive','fiz',
-  'foram','foi','tem','tiveram','sao','ja','ate','entre','perto','proximo','proximos','proxima','sobre','dentro','alto','altos','modo']);
+  'foram','foi','tem','tiveram','sao','ja','ate','entre','perto','proximo','proximos','proxima','sobre','dentro','alto','altos','modo',
+  'in','on','at','the','with','and','or','for','from','show','find','all','my','flights','photos','videos','vuelos','fotos','con','en','el','la','los','las']);
 let NLF=()=>true,NLM=()=>true;
 function nlParse(q){
   let s=' '+NZ(q).replace(/[,;]+/g,' ').replace(/\s+/g,' ')+' ';
@@ -2498,35 +2568,39 @@ function nlParse(q){
   const lim=(arr,key,mul)=>arr.forEach(o=>{const v=o.n*(mul||1);
     if(o.lt)sp[key][1]=sp[key][1]==null?v:Math.min(sp[key][1],v);else sp[key][0]=sp[key][0]==null?v:Math.max(sp[key][0],v)});
   /* orientação, panoramas 360 e 4K */
-  if(cut(/\b(vertica(?:l|is)|retrato|9:16)\b/))sp.orient='portrait';
-  else if(cut(/\b(horizonta(?:l|is)|paisagem)\b/))sp.orient='landscape';
+  if(cut(/\b(vertica(?:l|is)|retrato|portrait|verticales?|9:16)\b/))sp.orient='portrait';
+  else if(cut(/\b(horizonta(?:l|is)|paisagem|landscape|paisaje|horizontales?)\b/))sp.orient='landscape';
   else if(cut(/\b(360|panoramas?|panoramic[oa]s?|esferic[oa]s?)\b/)){sp.orient='pano';if(!/\bvideos?\b/.test(s))sp.target='fotos'}
   else if(cut(/\b(4k|ultra hd)\b/))sp.orient='4k';
   /* alertas mecânicos / VLOS */
-  if(cut(/\b(vibrac(?:ao|oes)|helices?)\b/))sp.vib=true;
-  if(cut(/\b(vlos|fora de vlos|afastamento)\b/))sp.vlos=true;
+  if(cut(/\b(vibrac(?:ao|oes)|helices?|vibration|propellers?)\b/))sp.vib=true;
+  if(cut(/\b(vlos|fora de vlos|beyond vlos|afastamento|fuera de vlos)\b/))sp.vlos=true;
   /* o que está sendo procurado */
-  if(cut(/\bsem voo( associado)?\b/))sp.unlinked=true;
-  if(/\b(fotos?|imagens?)\b/.test(s))sp.target='fotos';else if(/\bvideos?\b/.test(s))sp.target='videos';
-  s=s.replace(/\b(fotos?|imagens?|videos?|voos?)\b/g,' ');
-  if(cut(/\bfavorit[oa]s?\b/g))sp.fav=true;
-  if(cut(/\breconstruid[oa]s?\b/))sp.source='photos';
+  if(cut(/\b(sem voo(?: associado)?|unlinked|sin vuelo)\b/))sp.unlinked=true;
+  if(/\b(fotos?|imagens?|photos?|pictures?)\b/.test(s))sp.target='fotos';else if(/\bvideos?\b/.test(s))sp.target='videos';
+  s=s.replace(/\b(fotos?|imagens?|photos?|pictures?|videos?|voos?|flights?|vuelos?)\b/g,' ');
+  if(cut(/\bfavorit[oa]s?|favorites?\b/g))sp.fav=true;
+  if(cut(/\breconstruid[oa]s?|reconstructed\b/))sp.source='photos';
   if(cut(/\bsrt\b/))sp.source='srt';
   /* números com unidade: do mais específico para o mais geral */
   lim(cmp('','(?:km/h|kmh|km por hora)'),'spd');
-  lim(cmp('(?:distancia\\s*(?:total\\s*)?)?','(?:km|quilometros?)'),'dist');
-  lim(cmp('(?:duracao\\s*)?','(?:min|mins|minutos?)'),'dur',60);
-  lim(cmp('(?:duracao\\s*)?','(?:h|horas?)'),'dur',3600);
+  lim(cmp('','(?:mph|miles per hour)'),'spd',1.60934);
+  lim(cmp('(?:distancia\\s*(?:total\\s*)?|distance\\s*)?','(?:km|quilometros?|kilometros?)'),'dist');
+  lim(cmp('(?:distancia\\s*(?:total\\s*)?|distance\\s*)?','(?:mi|miles?|millas?)'),'dist',1.60934);
+  lim(cmp('(?:duracao\\s*|duration\\s*|duracion\\s*)?','(?:min|mins|minutos?|minutes?)'),'dur',60);
+  lim(cmp('(?:duracao\\s*|duration\\s*|duracion\\s*)?','(?:h|horas?|hours?)'),'dur',3600);
   /* bateria */
-  if(cut(/\bbateria baixa\b/))sp.batEnd[1]=20;
-  cmp('bateria(?: final)?(?: com| de)?\\s*','%').forEach(o=>{if(o.lt)sp.batEnd[1]=o.n;else sp.batEnd[0]=o.n});
-  cmp('usou\\s*','%(?: da bateria)?').forEach(o=>{sp.batUsedMin=o.n});
-  const bs=cut(/\bbateria\s+((?=[a-z0-9]*\d)[a-z0-9]{6,})\b/);if(bs)sp.batSn=bs[1];
+  if(cut(/\b(bateria baixa|low battery|bateria baja)\b/))sp.batEnd[1]=20;
+  cmp('(?:bateria|battery)(?: final)?(?: com| de| at)?\\s*','%').forEach(o=>{if(o.lt)sp.batEnd[1]=o.n;else sp.batEnd[0]=o.n});
+  cmp('(?:usou|used|uso)\\s*','%(?: da bateria)?').forEach(o=>{sp.batUsedMin=o.n});
+  const bs=cut(/\b(?:bateria|battery)\s+((?=[a-z0-9]*\d)[a-z0-9]{6,})\b/);if(bs)sp.batSn=bs[1];
   /* altura */
-  lim(cmp('(?:altura|altitude)(?: maxima)?\\s*','(?:m|metros?|mts?)?'),'alt');
-  lim(cmp('','(?:m|metros?|mts?)'),'alt');
+  lim(cmp('(?:altura|altitude|altitud)(?: maxima| max)?\\s*','(?:ft|feet|foot|pes)'),'alt',0.3048);
+  lim(cmp('','(?:ft|feet|foot|pes)'),'alt',0.3048);
+  lim(cmp('(?:altura|altitude|altitud)(?: maxima| max)?\\s*','(?:m|metros?|meters?|mts?)?'),'alt');
+  lim(cmp('','(?:m|metros?|meters?|mts?)'),'alt');
   /* espaço aéreo */
-  const ar=cut(/\b(?:espaco aereo|aerodromos?|aeroportos?|heliportos?|ctr)\b(?:\s*(?:com\s*)?(alerta|vermelho|restrit[oa]s?|proibid[oa]s?))?/);
+  const ar=cut(/\b(?:espaco aereo|espacio aereo|airspace|aerodromos?|aeroportos?|airports?|aeropuertos?|heliportos?|ctr)\b(?:\s*(?:com\s*|with\s*)?(alerta|vermelho|restrit[oa]s?|proibid[oa]s?|restricted|alert|red))?/);
   if(ar)sp.air=ar[1]?3:2;
   /* datas */
   const now=new Date(),d0=new Date(now.getFullYear(),now.getMonth(),now.getDate()),DAY=864e5;let m;
@@ -2546,8 +2620,9 @@ function nlParse(q){
   else if((m=cut(/\b(\d{1,2})\/(\d{4})\b/))){const a=new Date(+m[2],+m[1]-1,1);rng(a,new Date(+m[2],+m[1],1),m[0].trim())}
   else{
     let mo=null,yr=null;
-    const mm=cut(new RegExp('\\b('+MESES.join('|')+')(?:\\s*(?:de|/)?\\s*(20\\d\\d))?\\b'));
-    if(mm){mo=MESES.indexOf(mm[1]);if(mm[2])yr=+mm[2]}
+    const allM=[...MESES,...MESES_EN,...MESES_ES];
+    const mm=cut(new RegExp('\\b('+allM.join('|')+')(?:\\s*(?:de|of|/)?\\s*(20\\d\\d))?\\b'));
+    if(mm){const idx=allM.indexOf(mm[1]);mo=idx%12;if(mm[2])yr=+mm[2]}
     if(yr==null){const y=cut(/\b(20\d\d)\b/);if(y)yr=+y[1]}
     if(mo!=null||yr!=null){
       sp.dfn=d=>(mo==null||d.getMonth()==mo)&&(yr==null||d.getFullYear()==yr);
@@ -2610,7 +2685,7 @@ function nlRun(){
 function nlClear(){
   NLF=()=>true;NLM=()=>true;$('#nlq').value='';$('#nlbar').classList.add('hide');
   show(Object.keys(PANEL).find(k=>$('#b-'+k).classList.contains('on'))||'voos')}
-function nlHelp(){alert('Exemplos de busca (sem IA, por padrões):\n\n• voos acima de 80 m em 2025\n• voos com mais de 10 min em março\n• voos na Barra com bateria baixa\n• voos com alerta de vibração\n• voos fora de vlos\n• voos perto de aeroporto\n• fotos verticais na Barra\n• panoramas 360\n• vídeos 4k favoritos\n• fotos sem voo\n\nO que não for reconhecido vira palavra procurada no nome, local, anotações e tags.')}
+function nlHelp(){alert(t('nl.help'))}
 /* ---------- painel geral (aba Estatísticas) ---------- */
 let PD={p:'all',fl:[],tr:[]},PDC=[],PM=null;
 const MS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -2624,16 +2699,17 @@ function goDay(d){
 function calHtml(fl){
   const byDay={};fl.forEach(f=>{const d=f.start_local.slice(0,10);(byDay[d]=byDay[d]||{n:0,min:0}).n++;byDay[d].min+=f.duration/60});
   const years=[...new Set(fl.map(f=>+f.start_local.slice(0,4)))].sort((a,b)=>b-a),C=11,S=13;
+  const MS_=t('stats.months_short').split(','),WDS_=t('stats.wd_short').split(',');
   return years.map(y=>{
     const jan1=new Date(y,0,1),off=(jan1.getDay()+6)%7,nd=((y%4==0&&y%100!=0)||y%400==0)?366:365,cells=[];
     for(let i=0;i<nd;i++){
       const d=new Date(y,0,1+i),k=y+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),
         col=Math.floor((i+off)/7),row=(i+off)%7,v=byDay[k],op=!v?1:v.n==1?0.45:v.n==2?0.7:1;
       cells.push('<rect x="'+(col*S+24)+'" y="'+(row*S+16)+'" width="'+C+'" height="'+C+'" rx="2" style="fill:'+(v?'var(--acc)':'var(--bg-elev)')+';stroke:rgba(255,255,255,0.04);fill-opacity:'+op+(v?';cursor:pointer':'')+'"'+
-        (v?' onclick="goDay(\''+k+'\')"':'')+'><title>'+d.toLocaleDateString('pt-BR')+(v?': '+v.n+(v.n==1?' voo':' voos')+', '+Math.round(v.min)+' min':'')+'</title></rect>')}
+        (v?' onclick="goDay(\''+k+'\')"':'')+'><title>'+d.toLocaleDateString(LANG)+(v?': '+v.n+', '+Math.round(v.min)+' min':'')+'</title></rect>')}
     const months=[...Array(12)].map((_,m)=>{const i=Math.round((new Date(y,m,1)-jan1)/864e5),col=Math.floor((i+off)/7);
-      return '<text x="'+(col*S+24)+'" y="10" font-size="10" fill="currentColor" opacity=".7">'+MS[m]+'</text>'}).join('');
-    const dias=['Seg','','Qua','','Sex','','Dom'].map((t,i)=>t?'<text x="0" y="'+(i*S+26)+'" font-size="9" fill="currentColor" opacity=".7">'+t+'</text>':'').join('');
+      return '<text x="'+(col*S+24)+'" y="10" font-size="10" fill="currentColor" opacity=".7">'+MS_[m]+'</text>'}).join('');
+    const dias=[WDS_[0],'',WDS_[2],'',WDS_[4],'',WDS_[6]].map((t_,i)=>t_?'<text x="0" y="'+(i*S+26)+'" font-size="9" fill="currentColor" opacity=".7">'+t_+'</text>':'').join('');
     return '<div style="margin-bottom:8px;background:var(--card);padding:10px 12px;border-radius:var(--radius);border:1px solid var(--border)"><b>'+y+'</b><svg width="'+(Math.ceil((nd+off)/7)*S+30)+'" height="'+(7*S+20)+'" style="display:block;color:var(--fg);margin-top:4px">'+months+dias+cells.join('')+'</svg></div>'}).join('')}
 async function loadPanel(){
   const root=$('#stats');if(!root)return;
@@ -2641,41 +2717,41 @@ async function loadPanel(){
   PD.fl=fl.filter(f=>f.source!='photos'&&f.start_local&&f.duration!=null);PD.tr=tr;
   const old=$('#panel');if(old)old.remove();
   const sec=document.createElement('div');sec.id='panel';
-  sec.innerHTML='<div class=row><h3 style="margin:0">Painel de Telemetria</h3><label>Período <select id="pp" onchange="PD.p=this.value;renderPanel()"></select></label><span id="pcount" style="color:var(--mut)"></span></div><div id="pbody"></div>';
+  sec.innerHTML=`<div class=row><h3 style="margin:0">${t('stats.panel_title')}</h3><label>${t('stats.period')} <select id="pp" onchange="PD.p=this.value;renderPanel()"></select></label><span id="pcount" style="color:var(--mut)"></span></div><div id="pbody"></div>`;
   root.prepend(sec);
   const years=[...new Set(PD.fl.map(f=>f.start_local.slice(0,4)))].sort().reverse(),sel=$('#pp');
-  sel.innerHTML='<option value="all">Todo o período</option>'+years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  sel.innerHTML=`<option value="all">${t('stats.all_period')}</option>`+years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
   if(PD.p!='all'&&!years.includes(PD.p))PD.p='all';
   sel.value=PD.p;renderPanel()}
 async function renderPanel(){
   PDC.forEach(c=>c.destroy());PDC=[];if(PM){PM.remove();PM=null}
   const fl=PD.fl.filter(f=>PD.p=='all'||f.start_local.startsWith(PD.p)),B=$('#pbody'),E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
-  $('#pcount').textContent=fl.length+(fl.length==1?' voo':' voos');
-  if(!fl.length){B.innerHTML='<p style="color:var(--mut)">Nenhum voo no período.</p>';return}
-  const hrs=fl.reduce((a,f)=>a+f.duration,0)/3600,km=fl.reduce((a,f)=>a+f.distance,0)/1000,days=new Set(fl.map(f=>f.start_local.slice(0,10))).size;
+  $('#pcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
+  if(!fl.length){B.innerHTML=`<p style="color:var(--mut)">${t('stats.none_period')}</p>`;return}
+  const hrs=fl.reduce((a,f)=>a+f.duration,0)/3600,distM=fl.reduce((a,f)=>a+f.distance,0),days=new Set(fl.map(f=>f.start_local.slice(0,10))).size;
   const pl={};fl.forEach(f=>{if(f.place)pl[f.place]=(pl[f.place]||0)+1});
   const topP=Object.entries(pl).sort((a,b)=>b[1]-a[1])[0],best=k=>fl.reduce((a,f)=>(f[k]||0)>(a[k]||0)?f:a,fl[0]);
-  const hl=(t,f,v)=>'<div class=card style="cursor:pointer" onclick="openFlight('+f.id+')">'+t+'<b>'+v+'</b><small>'+fmt.d(f.start_local)+(f.place?' · '+E(f.place):'')+'</small></div>';
+  const hl=(tt,f,v)=>'<div class=card style="cursor:pointer" onclick="openFlight('+f.id+')">'+tt+'<b>'+v+'</b><small>'+fmt.d(f.start_local)+(f.place?' · '+E(f.place):'')+'</small></div>';
   const a=best('max_alt'),d=best('duration'),s=best('distance'),v=best('max_speed');
   B.innerHTML='<div class=cards>'+
-    '<div class=card>Voos<b>'+fl.length+'</b></div><div class=card>Horas de voo<b>'+hrs.toFixed(1)+' h</b></div>'+
-    '<div class=card>Distância<b>'+km.toFixed(1)+' km</b></div><div class=card>Dias com voo<b>'+days+'</b></div>'+
-    '<div class=card>Duração média<b>'+(hrs*60/fl.length).toFixed(1)+' min</b></div>'+
-    '<div class=card>Local mais voado<b style="font-size:15px">'+(topP?E(topP[0]):'–')+'</b><small>'+(topP?topP[1]+' voos':'')+'</small></div></div>'+
-    '<h4>Calendário de voos <small style="font-weight:400;text-transform:none;color:var(--mut)">(clique em um dia para ver os voos)</small></h4><div id="pcal" style="overflow-x:auto">'+calHtml(fl)+'</div>'+
-    '<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Horário de decolagem</h4><canvas id=ph1 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Dia da semana</h4><canvas id=ph2 height=140></canvas></div></div>'+
-    '<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Duração dos voos</h4><canvas id=ph3 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Horas por bateria</h4><canvas id=ph4 height=140></canvas></div></div>'+
-    '<h4>Voos em destaque</h4><div class=cards>'+hl('Maior altura',a,Math.round(a.max_alt)+' m')+hl('Voo mais longo',d,fmt.t(d.duration))+
-    hl('Maior distância',s,fmt.km(s.distance))+hl('Maior velocidade',v,(v.max_speed*3.6).toFixed(0)+' km/h')+'</div>'+
-    '<h4>Mapa de calor dos voos</h4><div id="pmap" style="height:380px;border-radius:8px;border:1px solid var(--border)"></div>';
+    `<div class=card>${t('stats.flights')}<b>`+fl.length+`</b></div><div class=card>${t('stats.hours')}<b>`+hrs.toFixed(1)+` h</b></div>`+
+    `<div class=card>${t('stats.distance')}<b>`+fmt.km(distM)+`</b></div><div class=card>${t('stats.days_flown')}<b>`+days+`</b></div>`+
+    `<div class=card>${t('stats.avg_dur')}<b>`+(hrs*60/fl.length).toFixed(1)+` min</b></div>`+
+    `<div class=card>${t('stats.top_place')}<b style="font-size:15px">`+(topP?E(topP[0]):'–')+'</b><small>'+(topP?t('flights.count_many',{n:topP[1]}):'')+'</small></div></div>'+
+    `<h4>${t('stats.calendar')} <small style="font-weight:400;text-transform:none;color:var(--mut)">${t('stats.calendar_hint')}</small></h4><div id="pcal" style="overflow-x:auto">`+calHtml(fl)+'</div>'+
+    `<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.takeoff_hour')}</h4><canvas id=ph1 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.weekday')}</h4><canvas id=ph2 height=140></canvas></div></div>`+
+    `<div class=two style="margin-top:12px"><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.dur_dist')}</h4><canvas id=ph3 height=140></canvas></div><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.bat_hours')}</h4><canvas id=ph4 height=140></canvas></div></div>`+
+    `<h4>${t('stats.highlights')}</h4><div class=cards>`+hl(t('stats.best_alt'),a,fmt.alt(a.max_alt))+hl(t('stats.best_dur'),d,fmt.t(d.duration))+
+    hl(t('stats.best_dist'),s,fmt.km(s.distance))+hl(t('stats.best_spd'),v,fmt.kmh(v.max_speed))+'</div>'+
+    `<h4>${t('stats.heatmap')}</h4><div id="pmap" style="height:380px;border-radius:8px;border:1px solid var(--border)"></div>`;
   const hours=Array(24).fill(0),wd=Array(7).fill(0),dur=[0,0,0,0,0],bat={};
-  fl.forEach(f=>{const t=new Date(f.start_local),m=f.duration/60,b=f.battery_sn||'sem bateria';
-    hours[t.getHours()]++;wd[(t.getDay()+6)%7]++;dur[m<5?0:m<10?1:m<15?2:m<20?3:4]++;bat[b]=(bat[b]||0)+f.duration/3600});
+  fl.forEach(f=>{const dt=new Date(f.start_local),m=f.duration/60,b=f.battery_sn||t('stats.no_bat');
+    hours[dt.getHours()]++;wd[(dt.getDay()+6)%7]++;dur[m<5?0:m<10?1:m<15?2:m<20?3:4]++;bat[b]=(bat[b]||0)+f.duration/3600});
   const bar=(id,labels,data)=>PDC.push(new Chart($('#'+id),{type:'bar',data:{labels:labels,datasets:[{data:data,backgroundColor:'#1890ff',borderRadius:4}]},
     options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}}));
   bar('ph1',[...Array(24).keys()].map(h=>h+'h'),hours);
-  bar('ph2',['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'],wd);
-  bar('ph3',['até 5 min','5 a 10','10 a 15','15 a 20','mais de 20'],dur);
+  bar('ph2',t('stats.wd_short').split(','),wd);
+  bar('ph3',t('stats.dur_bins').split(','),dur);
   PDC.push(new Chart($('#ph4'),{type:'doughnut',data:{labels:Object.keys(bat),datasets:[{data:Object.values(bat).map(x=>+x.toFixed(2)),
     backgroundColor:['#1890ff','#00d2ff','#10b981','#f59e0b','#a855f7','#ef4444','#64748b']}]},options:{plugins:{legend:{position:'right'}}}}));
   /* mapa de calor: pontos dos trajetos do período + um marcador por decolagem */
@@ -2728,32 +2804,37 @@ let CFG={roots:[],edit:0};
 const msgErr=e=>{try{return JSON.parse(e.message).detail||e.message}catch(x){return e.message}};
 async function loadConfig(){
   const el=$('#config');
-  let roots=[];try{roots=await api('/roots')}catch(e){el.innerHTML='<p>Não foi possível carregar as configurações.</p>';return}
+  let roots=[];try{roots=await api('/roots')}catch(e){el.innerHTML='<p>Error</p>';return}
   CFG.roots=roots;
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
-  el.innerHTML='<h3 style="margin-top:0">Configurações</h3><h4>Pastas de fotos e vídeos do drone</h4>'+
-   '<p style="color:var(--mut);margin-top:0">O app lê todas as pastas ativas desta lista quando você clica em <b>Escanear pastas</b>. Remover uma pasta daqui <b>nunca apaga arquivos do disco</b>.</p>'+
-   '<table><tr><th>Ativa<th>Nome<th>Caminho<th>Situação<th>Arquivos no app<th>Etiqueta<th></tr>'+
+  el.innerHTML=`<h3 style="margin-top:0">${t('config.title')}</h3>`+
+   `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:18px;max-width:780px">`+
+   `<h4 style="margin-top:0">${t('config.lang_title')}</h4>`+
+   `<p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('config.lang_desc')}</p>`+
+   `<div class=row style="margin:0"><select onchange="setLang(this.value)" style="min-width:220px"><option value="pt-BR"${LANG==='pt-BR'?' selected':''}>🇧🇷 Português (BR) — Métrico</option><option value="en"${LANG==='en'?' selected':''}>🇺🇸 English — Imperial (ft, mi, mph, °F)</option><option value="es"${LANG==='es'?' selected':''}>🇪🇸 Español — Métrico</option></select></div></div>`+
+   `<h4>${t('config.roots_title')}</h4>`+
+   `<p style="color:var(--mut);margin-top:0">${t('config.roots_desc')}</p>`+
+   `<table><tr><th>${t('config.col.active')}<th>${t('config.col.name')}<th>${t('config.col.path')}<th>${t('config.col.status')}<th>${t('config.col.files')}<th>${t('config.col.tag')}<th></tr>`+
    (roots.map(r=>'<tr><td><input type=checkbox '+(r.enabled?'checked':'')+' onchange="rootToggle('+r.id+',this.checked)"><td>'+E(r.name)+'<td title="'+E(r.path)+'">'+E(r.win)+
-     '<td>'+(r.online?'🟢 disponível':'🔴 desconectada')+'<td>'+r.files+'<td>'+E(r.tag)+
-     '<td><button onclick="rootForm('+r.id+')">Editar</button> <button onclick="rootDel('+r.id+')">Remover</button></tr>').join('')||'<tr><td colspan=7>Nenhuma pasta cadastrada.</tr>')+'</table>'+
-   '<div class=row><button onclick="rootForm(0)">+ Adicionar pasta</button><button class="on" onclick="scan()">Escanear pastas agora</button><button onclick="rescanLogs()">⟳ Reimportar telemetria completa dos logs</button></div><div id="rootform"></div>'+
+     '<td>'+(r.online?t('config.online'):t('config.offline'))+'<td>'+r.files+'<td>'+E(r.tag)+
+     `<td><button onclick="rootForm(${r.id})">${t('config.edit')}</button> <button onclick="rootDel(${r.id})">${t('config.remove')}</button></tr>`).join('')||`<tr><td colspan=7>${t('config.no_roots')}</tr>`)+'</table>'+
+   `<div class=row><button onclick="rootForm(0)">${t('config.add_root')}</button><button class="on" onclick="scan()">${t('config.scan_now')}</button><button onclick="rescanLogs()">${t('config.reimport_logs')}</button></div><div id="rootform"></div>`+
    '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
-   '<h4>Backup do Sistema</h4>'+
-   '<p style="color:var(--mut);margin-top:0">Copia logs de voo, banco de dados (últimas 10 versões) e código para o HD externo configurado no <code>backup.sh</code>.</p>'+
-   '<div class=row><button id="btn-backup" class="on" onclick="runBackup()">💾 Fazer Backup Agora</button></div>'+
+   `<h4>${t('config.backup_title')}</h4>`+
+   `<p style="color:var(--mut);margin-top:0">${t('config.backup_desc')}</p>`+
+   `<div class=row><button id="btn-backup" class="on" onclick="runBackup()">${t('config.backup_btn')}</button></div>`+
    '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>'}
 async function runBackup(){
   const btn=$('#btn-backup'),out=$('#backup-out');
-  btn.disabled=true;btn.textContent='⏳ Fazendo backup...';
-  out.classList.remove('hide');out.style.color='var(--mut)';out.textContent='Executando backup no HD externo...';
+  btn.disabled=true;btn.textContent=t('config.backup_running');
+  out.classList.remove('hide');out.style.color='var(--mut)';out.textContent=t('config.backup_exec');
   try{
     const r=await api('/backup',{method:'POST'});
-    out.style.color='var(--ok)';out.textContent=r.output||'Backup concluído.';
+    out.style.color='var(--ok)';out.textContent=r.output||t('config.backup_done');
   }catch(e){
-    out.style.color='#fca5a5';out.textContent='Erro: '+msgErr(e);
+    out.style.color='#fca5a5';out.textContent='Error: '+msgErr(e);
   }finally{
-    btn.disabled=false;btn.textContent='💾 Fazer Backup Agora';
+    btn.disabled=false;btn.textContent=t('config.backup_btn');
   }}
 async function rootToggle(id,on){
   try{await api('/roots/'+id,J('PATCH',{enabled:on?1:0}))}catch(e){alert(msgErr(e))}
@@ -2762,14 +2843,14 @@ function rootForm(id){
   const r=id?CFG.roots.find(x=>x.id==id):{name:'',win:'',tag:'',recursive:1},E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
   CFG.edit=id;
   $('#rootform').innerHTML='<div style="background:var(--card);border:1px solid var(--border);padding:14px;border-radius:10px;margin-top:10px;max-width:780px">'+
-   '<h4 style="margin-top:0">'+(id?'Editar pasta':'Adicionar pasta')+'</h4>'+
-   '<div class=row><label>Nome <input id="rfn" value="'+E(r.name)+'" placeholder="Ex.: HD Seagate" style="width:220px"></label>'+
-   '<label>Etiqueta <input id="rft" value="'+E(r.tag)+'" placeholder="Ex.: Phantom 4 (opcional)" style="width:230px"></label></div>'+
-   '<div class=row><label style="flex:1;min-width:260px">Caminho <input id="rfp" value="'+E(r.win)+'" placeholder="E:\\DJI  ou  /mnt/e/DJI" style="width:100%"></label><button onclick="rootBrowse()">Procurar…</button></div>'+
+   `<h4 style="margin-top:0">${id?t('config.root_edit'):t('config.root_add')}</h4>`+
+   `<div class=row><label>${t('config.root_name')} <input id="rfn" value="`+E(r.name)+'" placeholder="Ex.: HD Seagate" style="width:220px"></label>'+
+   `<label>${t('config.root_tag')} <input id="rft" value="`+E(r.tag)+'" placeholder="Ex.: Phantom 4" style="width:230px"></label></div>'+
+   `<div class=row><label style="flex:1;min-width:260px">${t('config.root_path')} <input id="rfp" value="`+E(r.win)+`" placeholder="E:\\DJI  /mnt/e/DJI" style="width:100%"></label><button onclick="rootBrowse()">${t('config.browse')}</button></div>`+
    '<div id="rootbr"></div>'+
-   '<div class=row><label><input id="rfr" type=checkbox '+(r.recursive?'checked':'')+'> Incluir subpastas</label>'+
-   (id?'<label><input id="rfm" type=checkbox> A pasta mudou de lugar (atualizar o caminho das mídias já indexadas)</label>':'')+'</div>'+
-   '<div class=row><button class=on onclick="rootSave()">Salvar</button><button onclick="$(\'#rootform\').innerHTML=\'\'">Cancelar</button></div></div>'}
+   `<div class=row><label><input id="rfr" type=checkbox `+(r.recursive?'checked':'')+`> ${t('config.recursive')}</label>`+
+   (id?`<label><input id="rfm" type=checkbox> ${t('config.remap')}</label>`:'')+'</div>'+
+   `<div class=row><button class=on onclick="rootSave()">${t('config.save')}</button><button onclick="$('#rootform').innerHTML=''">${t('config.cancel')}</button></div></div>`}
 async function rootSave(){
   const body={name:$('#rfn').value,path:$('#rfp').value,tag:$('#rft').value,recursive:$('#rfr').checked?1:0};
   try{
@@ -2779,68 +2860,68 @@ async function rootSave(){
   catch(e){alert(msgErr(e))}}
 async function rootDel(id){
   const r=CFG.roots.find(x=>x.id==id);
-  if(!confirm('Remover "'+r.name+'" da lista?\n\nOs arquivos NÃO serão apagados do disco.'))return;
-  const forget=confirm('Também esquecer as '+r.files+' fotos e vídeos desta pasta que já estão no app?\n\nOK = esquecer (somem do app até você escanear de novo)\nCancelar = manter no app (ficam marcados como desconectados)')?1:0;
+  if(!confirm(t('config.del_confirm',{name:r.name})))return;
+  const forget=confirm(t('config.forget_confirm',{n:r.files}))?1:0;
   try{await api('/roots/'+id+'?forget='+forget,{method:'DELETE'})}catch(e){alert(msgErr(e))}
   loadConfig()}
 async function rootBrowse(path){
   const box=$('#rootbr');let r;
   try{r=await api('/fs/list?path='+encodeURIComponent(path==null?$('#rfp').value:path))}
-  catch(e){try{r=await api('/fs/list?path=')}catch(x){box.textContent='Não foi possível listar as pastas.';return}}
+  catch(e){try{r=await api('/fs/list?path=')}catch(x){box.textContent='Error';return}}
   box.innerHTML='';
   const wrap=document.createElement('div');wrap.style.cssText='border:1px solid var(--border-strong);background:var(--bg-elev);border-radius:8px;padding:8px;margin:6px 0;max-height:260px;overflow:auto';
   const head=document.createElement('div');head.className='row';head.style.margin='0 0 6px';
-  const t=document.createElement('b');t.textContent=r.path?r.win:'Discos do computador';head.appendChild(t);
+  const tt=document.createElement('b');tt.textContent=r.path?r.win:t('config.drives');head.appendChild(tt);
   const mkb=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.onclick=fn;head.appendChild(b)};
   if(r.path){
-    mkb('Usar esta pasta',()=>{$('#rfp').value=r.win;if(!$('#rfn').value)$('#rfn').value=r.win.split('\\').filter(Boolean).pop()||r.win;box.innerHTML=''});
-    mkb('↑ Subir',()=>rootBrowse(r.parent||''))}
+    mkb(t('config.use_folder'),()=>{$('#rfp').value=r.win;if(!$('#rfn').value)$('#rfn').value=r.win.split('\\').filter(Boolean).pop()||r.win;box.innerHTML=''});
+    mkb(t('config.up'),()=>rootBrowse(r.parent||''))}
   wrap.appendChild(head);
   r.dirs.forEach(d=>{const x=document.createElement('div');x.style.cssText='padding:4px 8px;cursor:pointer;border-radius:4px';x.textContent='📁 '+d.name;x.onclick=()=>rootBrowse(d.path);wrap.appendChild(x)});
-  if(!r.dirs.length){const i=document.createElement('i');i.textContent='Nenhuma subpasta.';wrap.appendChild(i)}
+  if(!r.dirs.length){const i=document.createElement('i');i.textContent=t('config.no_subfolders');wrap.appendChild(i)}
   box.appendChild(wrap)}
 /* ---------- estatísticas, frota de drones, diagnóstico mecânico, manutenção e biblioteca ---------- */
 let mch;
 async function loadStats(){
   const s=await api('/stats'),L=s.library,pr=s.props,pct=Math.min(100,pr.hours/pr.limit*100);
   const ma=s.mech_alerts||[];
-  const mechHtml=ma.length?`<div style="margin-top:10px;padding:10px;background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:6px"><b style="color:#fca5a5">⚠ Alertas mecânicos e de sensores detectados nos logs:</b><ul style="margin:6px 0 0 18px">${ma.map(a=>`<li><a href="#" onclick="openFlight(${a.id});return false">${a.start} (${esc(a.place)})</a>: ${[a.vib_s?`vibração nas hélices (${a.vib_s}s)`:'',a.force_s?`força insuficiente (${a.force_s}s)`:'',a.comp_s?`erro de bússola (${a.comp_s}s)`:'',a.gimb_s?`gimbal travado (${a.gimb_s}s)`:''].filter(Boolean).join(', ')}</li>`).join('')}</ul></div>`:'<div style="margin-top:8px;color:var(--ok);font-size:12.5px">🟢 Nenhuma vibração anormal de hélice ou falha mecânica registrada nos logs reimportados.</div>';
+  const mechHtml=ma.length?`<div style="margin-top:10px;padding:10px;background:rgba(239,68,68,0.12);border:1px solid #ef4444;border-radius:6px"><b style="color:#fca5a5">${t('stats.mech_found')}</b><ul style="margin:6px 0 0 18px">${ma.map(a=>`<li><a href="#" onclick="openFlight(${a.id});return false">${a.start} (${esc(a.place)})</a>: ${[a.vib_s?t('fdet.mech_vib',{s:a.vib_s}):'',a.force_s?t('fdet.mech_force',{s:a.force_s}):'',a.comp_s?t('fdet.mech_comp',{s:a.comp_s}):'',a.gimb_s?t('fdet.mech_gimb',{s:a.gimb_s}):''].filter(Boolean).join(', ')}</li>`).join('')}</ul></div>`:`<div style="margin-top:8px;color:var(--ok);font-size:12.5px">${t('stats.mech_ok')}</div>`;
   $('#stats').innerHTML=`<div class=cards>
-   <div class=card>Voos<b>${s.flights}</b></div><div class=card>Horas de voo<b>${s.hours.toFixed(1)} h</b></div>
-   <div class=card>Distância total<b>${s.km.toFixed(1)} km</b></div><div class=card>Altura máx.<b>${Math.round(s.max_alt)} m</b></div>
-   <div class=card>Fotos<b>${s.photos}</b></div><div class=card>Vídeos<b>${s.videos}</b></div></div>
-   <div class=two><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Voos por mês</h4><canvas id=mc height=150></canvas></div>
-   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">Locais mais voados</h4><table>${s.places.map(p=>`<tr><td>${esc(p[0])}<td>${p[1]} voos</tr>`).join('')||'<tr><td>–</tr>'}</table></div></div>
-   <h4>Manutenção &amp; Diagnóstico de Hélices</h4>
+   <div class=card>${t('stats.flights')}<b>${s.flights}</b></div><div class=card>${t('stats.hours')}<b>${s.hours.toFixed(1)} h</b></div>
+   <div class=card>${t('stats.total_dist')}<b>${fmt.km(s.km*1000)}</b></div><div class=card>${t('stats.max_alt')}<b>${fmt.alt(s.max_alt)}</b></div>
+   <div class=card>${t('stats.photos')}<b>${s.photos}</b></div><div class=card>${t('stats.videos')}<b>${s.videos}</b></div></div>
+   <div class=two><div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.by_month')}</h4><canvas id=mc height=150></canvas></div>
+   <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0">${t('stats.top_places')}</h4><table>${s.places.map(p=>`<tr><td>${esc(p[0])}<td>${t('flights.count_many',{n:p[1]})}</tr>`).join('')||'<tr><td>–</tr>'}</table></div></div>
+   <h4>${t('stats.props_title')}</h4>
    <div style="background:var(--card);padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border)">
-     <div>Hélices: <b>${pr.hours.toFixed(1)} h</b> de ${pr.limit} h</div><div class=bar><i style="width:${pct}%"></i></div>
-     <button onclick="resetProps()">Troquei as hélices</button>
+     <div>${t('stats.props_lbl')} <b>${pr.hours.toFixed(1)} h</b> ${t('stats.props_of')} ${pr.limit} h</div><div class=bar><i style="width:${pct}%"></i></div>
+     <button onclick="resetProps()">${t('stats.props_reset')}</button>
      ${mechHtml}
    </div>
-   <h4>Frota / Aeronaves</h4>
-   <table><tr><th>Modelo<th>Nome<th>Número de Série<th>Voos<th>Horas<th>Distância</tr>
-   ${(s.drones||[]).map(d=>`<tr><td><b>${esc(d.type)}</b><td>${esc(d.name||'—')}<td>${esc(d.sn)}<td>${d.flights}<td>${d.hours.toFixed(1)} h<td>${d.km.toFixed(1)} km</tr>`).join('')||'<tr><td colspan=6>–</tr>'}</table>
-   <h4>Baterias</h4><table><tr><th>Número de série<th>Voos (ciclos aprox.)<th>Horas</tr>
+   <h4>${t('stats.fleet_title')}</h4>
+   <table><tr><th>${t('stats.fleet.model')}<th>${t('stats.fleet.name')}<th>${t('stats.fleet.sn')}<th>${t('stats.fleet.flights')}<th>${t('stats.fleet.hours')}<th>${t('stats.fleet.dist')}</tr>
+   ${(s.drones||[]).map(d=>`<tr><td><b>${esc(d.type)}</b><td>${esc(d.name||'—')}<td>${esc(d.sn)}<td>${d.flights}<td>${d.hours.toFixed(1)} h<td>${fmt.km(d.km*1000)}</tr>`).join('')||'<tr><td colspan=6>–</tr>'}</table>
+   <h4>${t('stats.bats_title')}</h4><table><tr><th>${t('stats.bats.sn')}<th>${t('stats.bats.cycles')}<th>${t('stats.bats.hours')}</tr>
    ${s.batteries.map(b=>`<tr><td>${esc(b.sn)}<td>${b.flights}<td>${b.hours.toFixed(1)}</tr>`).join('')}</table>
-   <h4>Biblioteca</h4>
+   <h4>${t('stats.lib_title')}</h4>
    <div style="background:var(--card);padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border)">
-     <div>${L.unlinked} mídias sem voo associado${L.not_backed!==null?` · ${L.not_backed} sem backup`:' · defina BACKUP_DIR para checar backups'}</div>
-     <div style="margin-top:6px">${L.duplicates.length?`${L.duplicates.length} grupos de arquivos duplicados:<ul>${L.duplicates.slice(0,15).map(g=>`<li>${g.map(esc).join('<br>')}`).join('')}</ul>`:'Nenhum arquivo duplicado.'}</div>
+     <div>${t('stats.lib_unlinked',{n:L.unlinked})}${L.not_backed!==null?t('stats.lib_not_backed',{n:L.not_backed}):t('stats.lib_no_backup_dir')}</div>
+     <div style="margin-top:6px">${L.duplicates.length?`${t('stats.lib_dups',{n:L.duplicates.length})}<ul>${L.duplicates.slice(0,15).map(g=>`<li>${g.map(esc).join('<br>')}`).join('')}</ul>`:t('stats.lib_no_dups')}</div>
    </div>`;
   mch&&mch.destroy();
-  mch=new Chart($('#mc'),{type:'bar',data:{labels:s.by_month.map(x=>x[0]),datasets:[{label:'Voos',data:s.by_month.map(x=>x[1]),backgroundColor:'#1890ff',borderRadius:4}]},options:{plugins:{legend:{display:false}}}});
+  mch=new Chart($('#mc'),{type:'bar',data:{labels:s.by_month.map(x=>x[0]),datasets:[{label:t('stats.flights'),data:s.by_month.map(x=>x[1]),backgroundColor:'#1890ff',borderRadius:4}]},options:{plugins:{legend:{display:false}}}});
 }
-async function resetProps(){if(confirm('Zerar o contador de horas das hélices?')){await api('/props/reset',{method:'POST'});loadStats()}}
+async function resetProps(){if(confirm(t('stats.props_confirm'))){await api('/props/reset',{method:'POST'});loadStats()}}
 
 /* ---------- locais favoritos e missões pré-voo ---------- */
 async function checkMissionAir(id){
-  toast('Consultando DECEA para a missão…');
-  try{await api('/missions/'+id+'/airspace-check',{method:'POST'});toast('✓ Espaço aéreo verificado!');loadSpots()}
-  catch(e){alert('Não foi possível consultar o DECEA agora: '+e.message)}
+  toast(t('air.checking'));
+  try{await api('/missions/'+id+'/airspace-check',{method:'POST'});toast('✓');loadSpots()}
+  catch(e){alert(t('air.err_now')+' '+e.message)}
 }
 async function delMission(id){
-  if(!confirm('Remover esta missão planejada?'))return;
-  await api('/missions/'+id,{method:'DELETE'});toast('Missão removida');loadSpots();
+  if(!confirm(t('spots.del_mission_confirm')))return;
+  await api('/missions/'+id,{method:'DELETE'});toast(t('spots.mission_removed'));loadSpots();
 }
 async function viewWxAt(lat,lon){
   await show('mapa');
@@ -2850,18 +2931,18 @@ async function loadSpots(){
   const [sp,ms]=await Promise.all([api('/spots'),api('/missions')]);
   const mRows=(ms||[]).map(m=>{
     const a=m.air,mt=m.meta||{};
-    const chip=!a?'<span style="color:var(--mut)">não verificado</span>':(a.sev>=3?'🔴 Restrição/Controle':a.sev>=2?'🟡 Atenção (<9km aeródromo)':'🟢 Livre');
+    const chip=!a?`<span style="color:var(--mut)">${t('spots.air_unverified')}</span>`:(a.sev>=3?t('spots.air_sev3'):a.sev>=2?t('spots.air_sev2'):t('spots.air_ok'));
     const wp0=m.waypoints&&m.waypoints[0];
-    const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">🌤 Previsão</button>`:'';
-    const modeTag=mt.mode==='grid'?'▦ Grade':mt.mode==='double_grid'?'╬ Grade Dupla':mt.mode==='orbit'?'◎ Órbita':'📍 Rota';
-    const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${mt.est_photos} fotos · GSD ${mt.gsd_cm} cm/px${m.batteries>1?' · 🔋 '+m.batteries+' bats':''}</span>`:'';
-    return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${m.alt} m)<td>${fmt.km(m.distance)}<td>${Math.round(m.max_vlos)} m ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">Ver no Mapa</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">Verificar DECEA</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">Remover</button></tr>`;
+    const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">${t('spots.wx_btn')}</button>`:'';
+    const modeTag=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
+    const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${mt.est_photos} ${t('map.layer.photos').toLowerCase()} · GSD ${mt.gsd_cm} cm/px${m.batteries>1?' · 🔋 '+m.batteries:''}</span>`:'';
+    return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${fmt.alt(m.alt)})<td>${fmt.km(m.distance)}<td>${fmt.alt(m.max_vlos)} ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">${t('spots.view_map')}</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">${t('spots.check_air')}</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">${t('spots.remove')}</button></tr>`;
   }).join('');
-  $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">Missões Pré-Voo Planejadas</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">+ Planejar nova missão no Mapa</button></div>`+
-   (ms.length?`<table><tr><th>Missão<th>Waypoints<th>Distância<th>VLOS máx.<th>Duração est.<th>Bateria est.<th>Espaço Aéreo (DECEA)<th>Ações</tr>${mRows}</table>`:'<p style="color:var(--mut)">Nenhuma missão pré-voo salva. Clique em <b>+ Planejar nova missão no Mapa</b> para desenhar uma rota e checar bateria e espaço aéreo antes de voar.</p>')+
-   `<h3 style="margin-top:24px">Locais Favoritos</h3>`+
-   (sp.length?`<table><tr><th>Local<th>Anotações<th>Coordenadas<th></tr>${sp.map(s=>`<tr><td>${esc(s.name)}<td>${esc(s.notes||'')}<td>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}<td><button onclick="viewWxAt(${s.lat},${s.lon})">🌤 Previsão</button> <button onclick="delSpot(${s.id})">Remover</button></tr>`).join('')}</table>`
-    :'<p style="color:var(--mut)">Nenhum local salvo. No Mapa, clique com o botão direito onde quer marcar.</p>');
+  $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">${t('spots.missions_title')}</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">${t('spots.plan_new')}</button></div>`+
+   (ms.length?`<table><tr><th>${t('spots.col.mission')}<th>${t('spots.col.wps')}<th>${t('spots.col.dist')}<th>${t('spots.col.vlos')}<th>${t('spots.col.dur')}<th>${t('spots.col.bat')}<th>${t('spots.col.air')}<th>${t('spots.col.actions')}</tr>${mRows}</table>`:`<p style="color:var(--mut)">${t('spots.no_missions')}</p>`)+
+   `<h3 style="margin-top:24px">${t('spots.title')}</h3>`+
+   (sp.length?`<table><tr><th>${t('spots.col.place')}<th>${t('spots.col.notes')}<th>${t('spots.col.coords')}<th></tr>${sp.map(s=>`<tr><td>${esc(s.name)}<td>${esc(s.notes||'')}<td>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}<td><button onclick="viewWxAt(${s.lat},${s.lon})">${t('spots.wx_btn')}</button> <button onclick="delSpot(${s.id})">${t('spots.remove')}</button></tr>`).join('')}</table>`
+    :`<p style="color:var(--mut)">${t('spots.no_spots')}</p>`);
 }
 async function delSpot(id){await api('/spots/'+id,{method:'DELETE'});loadSpots()}
 
@@ -2885,8 +2966,17 @@ window.addEventListener('keydown',e=>{
     else if(e.key==='ArrowRight'&&T.length){e.preventDefault();goT(Math.min(T[T.length-1][0],(window.TNOW||0)+5))}
   }
 });
-initSidebar();
-show('mapa');
+(async function boot(){
+  let l='';
+  try{l=localStorage.getItem('dji_lang')||''}catch(e){}
+  if(!['pt-BR','en','es'].includes(l)){
+    try{l=(await api('/lang')).lang||'pt-BR'}catch(e){l='pt-BR'}
+  }
+  await loadI18n(l);
+  initSidebar();
+  applyI18n();
+  show('mapa');
+})();
 </script>
 </body>
 </html>

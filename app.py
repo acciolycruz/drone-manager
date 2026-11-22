@@ -74,6 +74,83 @@ with db() as _c:
     _c.execute("CREATE INDEX IF NOT EXISTS idx_media_taken ON media(taken)")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_flights_start ON flights(start)")
 
+def kv_get(k: str, default=None):
+    with db() as c:
+        r = c.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+        return r[0] if r else default
+
+def kv_set(k: str, v: str):
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (k, str(v)))
+
+SUPPORTED_LANGS = ("pt-BR", "en", "es")
+_I18N_CACHE = {}
+
+def load_i18n(lang: str) -> dict:
+    lang = lang if lang in SUPPORTED_LANGS else "pt-BR"
+    if lang not in _I18N_CACHE:
+        p = Path("static/i18n") / f"{lang}.json"
+        _I18N_CACHE[lang] = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    return _I18N_CACHE[lang]
+
+def get_lang(lang: str = "") -> str:
+    if lang in SUPPORTED_LANGS: return lang
+    saved = kv_get("lang", "pt-BR")
+    return saved if saved in SUPPORTED_LANGS else "pt-BR"
+
+def tr(lang: str, key: str, **kw) -> str:
+    d = load_i18n(lang)
+    s = d.get(key) or load_i18n("pt-BR").get(key) or key
+    return s.format(**kw) if kw else s
+
+_EVENT_TRANS = {
+    "en": {
+        "Modo normal (GPS)": "Normal mode (GPS)", "Modo iniciante": "Beginner mode",
+        "Modo esportivo": "Sport mode", "Modo Cine (tripé)": "Cine mode (tripod)",
+        "Retorno automático (RTH)": "Return to Home (RTH)", "Pouso automático": "Auto landing",
+        "Aguardando confirmação de pouso": "Waiting landing confirmation", "Pouso avançado": "Advanced landing",
+        "Decolagem automática (app)": "Auto takeoff (app)", "Pouso automático pedido pelo app": "Auto landing requested by app",
+        "Retorno automático por bateria baixa": "Low battery RTH", "Pouso automático por bateria crítica": "Critical battery auto landing",
+        "Retorno automático concluído": "RTH finished", "Pouso por limite vertical baixo": "Low vertical limit landing",
+        "Bateria em 20%": "Battery at 20%", "Bateria em 10%": "Battery at 10%",
+        "Início de gravação de vídeo": "Video recording started", "Fim de gravação de vídeo": "Video recording stopped",
+        "Foto tirada": "Photo taken", "GPS fraco (<8 satélites)": "Weak GPS (<8 satellites)",
+        "Sinal RC fraco (<=20%)": "Weak RC signal (<=20%)", "Aviso de tensão baixa": "Low voltage warning",
+    },
+    "es": {
+        "Modo normal (GPS)": "Modo normal (GPS)", "Modo iniciante": "Modo principiante",
+        "Modo esportivo": "Modo deportivo", "Modo Cine (tripé)": "Modo Cine (trípode)",
+        "Retorno automático (RTH)": "Retorno automático (RTH)", "Pouso automático": "Aterrizaje automático",
+        "Aguardando confirmação de pouso": "Esperando confirmación de aterrizaje", "Pouso avançado": "Aterrizaje avanzado",
+        "Decolagem automática (app)": "Despegue automático (app)", "Pouso automático pedido pelo app": "Aterrizaje automático (app)",
+        "Retorno automático por bateria baixa": "RTH por batería baja", "Pouso automático por bateria crítica": "Aterrizaje por batería crítica",
+        "Retorno automático concluído": "RTH completado", "Pouso por limite vertical baixo": "Aterrizaje por límite vertical bajo",
+        "Bateria em 20%": "Batería al 20%", "Bateria em 10%": "Batería al 10%",
+        "Início de gravação de vídeo": "Inicio de grabación de video", "Fim de gravação de vídeo": "Fin de grabación de video",
+        "Foto tirada": "Foto tomada", "GPS fraco (<8 satélites)": "GPS débil (<8 satélites)",
+        "Sinal RC fraco (<=20%)": "Señal RC débil (<=20%)", "Aviso de tensão baixa": "Alerta de voltaje bajo",
+    },
+}
+
+def tr_event(label: str, lang: str) -> str:
+    if lang == "pt-BR": return label
+    return _EVENT_TRANS.get(lang, {}).get(label, label)
+
+def py_fmt_alt(m: float, lang: str) -> str:
+    return f"{m * 3.28084:.0f} ft" if lang == "en" else f"{m:.0f} m"
+
+def py_fmt_dist(m: float, lang: str) -> str:
+    return f"{m / 1609.344:.2f} mi" if lang == "en" else f"{m / 1000:.2f} km"
+
+def py_fmt_kmh(ms: float, lang: str) -> str:
+    return f"{ms * 2.23694:.0f} mph" if lang == "en" else f"{ms * 3.6:.0f} km/h"
+
+def py_fmt_spd(ms: float, lang: str) -> str:
+    return f"{ms * 2.23694:.1f} mph" if lang == "en" else f"{ms:.1f} m/s"
+
+def py_fmt_temp(c: float, lang: str) -> str:
+    return f"{(c * 9 / 5) + 32:.0f} °F" if lang == "en" else f"{c} °C"
+
 # ---------- utilidades ----------
 def g(d, *keys, default=None):
     for k in keys:
@@ -783,18 +860,20 @@ def flight_geojson(fid: int):
                   f"voo{fid}.geojson", "application/geo+json")
 
 @app.get("/api/flights/{fid}/report", response_class=HTMLResponse)
-def report(fid: int):
+def report(fid: int, lang: str = ""):
+    L = get_lang(lang)
     f = fl_out(get_flight(fid), True); w = f["weather"]
     with db() as c: ms = c.execute("SELECT id FROM media WHERE flight_id=? AND kind='photo' LIMIT 12", (fid,)).fetchall()
-    ev = "".join(f"<li>{e['t']//60}m{e['t']%60:02d}s — {html.escape(e['label'])}</li>" for e in f["events"])
-    wx = f"{w['temperature_2m']} °C, vento {w['wind_speed_10m']} m/s (rajadas {w['wind_gusts_10m']}), chuva {w['precipitation']} mm" if w else "sem dados"
+    ev = "".join(f"<li>{e['t']//60}m{e['t']%60:02d}s — {html.escape(tr_event(e['label'], L))}</li>" for e in f["events"])
+    wx = (f"{py_fmt_temp(w['temperature_2m'], L)}, {tr(L, 'fdet.wind_lbl')} {py_fmt_spd(w['wind_speed_10m'], L)} "
+          f"({tr(L, 'fdet.gust_short')} {py_fmt_spd(w['wind_gusts_10m'], L)}), {w['precipitation']} mm") if w else tr(L, "report.no_data")
     th = "".join(f'<img src="/api/media/{m["id"]}/thumb" width=170>' for m in ms)
-    return f"""<meta charset=utf-8><title>Voo {fid}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
-<button onclick=print() style="float:right">Imprimir / Salvar PDF</button>
-<h2>{html.escape(f['name'] or 'Voo')} — {f['start_local'][:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
-<p>Duração {int(f['duration'])//60} min {int(f['duration'])%60} s · Distância {f['distance']/1000:.2f} km · Altura máx. {f['max_alt']:.0f} m ·
-Vel. máx. {f['max_speed']*3.6:.0f} km/h · Bateria {html.escape(f['battery_sn'] or '—')}</p>
-<p>Clima: {wx}</p><h3>Eventos</h3><ul>{ev}</ul><h3>Anotações</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div>"""
+    return f"""<!doctype html><html lang="{L}"><meta charset=utf-8><title>{tr(L, 'report.flight_title', id=fid)}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
+<button onclick=print() style="float:right">{tr(L, 'report.print_pdf')}</button>
+<h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {f['start_local'][:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
+<p>{tr(L, 'report.duration')} {int(f['duration'])//60} min {int(f['duration'])%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'], L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'], L)} ·
+{tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'], L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}</p>
+<p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
 
 def _csv_safe(v):
     s = str(v if v is not None else "")
@@ -1277,7 +1356,8 @@ def api_detect_batch(b: DetectBatchIn):
     return {"processed": processed, "total_objects": total_objects, "classes": classes, "errors": errors}
 
 @app.get("/api/detections/report")
-def detections_report(flight_id: int = 0, cls: str = "", format: str = "html"):
+def detections_report(flight_id: int = 0, cls: str = "", format: str = "html", lang: str = ""):
+    L = get_lang(lang)
     with db() as c:
         sql = "SELECT m.*, f.place AS place, f.name AS flight_name FROM media m LEFT JOIN flights f ON f.id=m.flight_id WHERE m.detections IS NOT NULL"
         args = []
@@ -1328,33 +1408,36 @@ def detections_report(flight_id: int = 0, cls: str = "", format: str = "html"):
         return attach(o.getvalue(), "relatorio_deteccoes.csv", "text/csv")
 
     chips = "".join(f"<span style='display:inline-block;margin:3px 6px 3px 0;padding:4px 10px;background:#e2e8f0;border-radius:14px;font-size:13px'><b>{html.escape(k)}</b>: {v}</span>"
-                    for k, v in sorted(totals.items(), key=lambda x: -x[1])) or "<i>Nenhum objeto detectado ainda.</i>"
+                    for k, v in sorted(totals.items(), key=lambda x: -x[1])) or f"<i>{tr(L, 'report.ai_none_obj')}</i>"
     cards = []
     for e in entries:
         m = e["m"]
         objs = ", ".join(f"{html.escape(k)} ({v})" for k, v in e["summary"].items())
         gps_link = (f'<a href="https://www.google.com/maps?q={e["lat"]},{e["lon"]}" target="_blank">🗺 {e["lat"]:.5f}, {e["lon"]:.5f} ↗</a>'
-                    if valid_gps(e["lat"], e["lon"]) else "Sem GPS")
-        t_info = f" · Instante destaque: {int(e['best_t'])//60}:{int(e['best_t'])%60:02d}" if e["best_t"] is not None else ""
+                    if valid_gps(e["lat"], e["lon"]) else tr(L, "report.ai_no_gps"))
+        t_info = tr(L, "report.ai_moment", t=f"{int(e['best_t'])//60}:{int(e['best_t'])%60:02d}") if e["best_t"] is not None else ""
+        kind_lbl = tr(L, "report.ai_video") if m["kind"] == "video" else tr(L, "report.ai_photo")
         cards.append(f"""<div style="display:flex;gap:14px;border:1px solid #cbd5e1;border-radius:8px;padding:10px;margin:10px 0;align-items:center">
           <img src="/api/media/{m['id']}/thumb" width="150" style="border-radius:6px;object-fit:cover">
           <div style="font-size:13.5px;line-height:1.5">
-            <b>{'🎬 Vídeo' if m['kind']=='video' else '📷 Foto'} #{m['id']}</b> — {html.escape(str(m.get('taken') or '')[:16].replace('T',' '))} {html.escape(m.get('place') or '')}{t_info}<br>
-            <b>Objetos:</b> {objs}<br>
-            <b>Localização:</b> {gps_link}<br>
+            <b>{kind_lbl} #{m['id']}</b> — {html.escape(str(m.get('taken') or '')[:16].replace('T',' '))} {html.escape(m.get('place') or '')}{t_info}<br>
+            <b>{tr(L, 'report.ai_objects')}</b> {objs}<br>
+            <b>{tr(L, 'report.ai_location')}</b> {gps_link}<br>
             <small style="color:#64748b">{html.escape(Path(m['path']).name)} · Tags: {html.escape(m.get('tags') or '')}</small>
           </div></div>""")
-    body = f"""<!doctype html><meta charset="utf-8"><title>Relatório de Detecções (IA) — Drone Manager</title>
+    fl_str = f" · {tr(L, 'report.ai_flight', id=flight_id)}" if flight_id else ""
+    flt_str = f" · {tr(L, 'report.ai_filter')} {html.escape(cls_filter)}" if cls_filter else ""
+    body = f"""<!doctype html><html lang="{L}"><meta charset="utf-8"><title>{tr(L, 'report.ai_title')}</title>
     <body style="font:15px system-ui;max-width:860px;margin:28px auto;color:#0f172a">
       <div style="float:right;display:flex;gap:8px">
-        <a href="/api/detections/report?flight_id={flight_id}&cls={urllib.parse.quote(cls_filter)}&format=csv" style="padding:6px 12px;border:1px solid #94a3b8;border-radius:6px;text-decoration:none;color:#0f172a">⬇ Exportar CSV</a>
-        <button onclick="print()" style="padding:6px 12px;cursor:pointer">🖨 Imprimir / Salvar PDF</button>
+        <a href="/api/detections/report?flight_id={flight_id}&cls={urllib.parse.quote(cls_filter)}&format=csv&lang={L}" style="padding:6px 12px;border:1px solid #94a3b8;border-radius:6px;text-decoration:none;color:#0f172a">{tr(L, 'report.ai_export_csv')}</a>
+        <button onclick="print()" style="padding:6px 12px;cursor:pointer">🖨 {tr(L, 'report.print_pdf')}</button>
       </div>
-      <h2>🤖 Relatório de Detecção de Objetos (IA)</h2>
-      <p style="color:#475569">Mídias analisadas com detecções: <b>{len(entries)}</b>{f' · Voo #{flight_id}' if flight_id else ''}{f' · Filtro: {html.escape(cls_filter)}' if cls_filter else ''}</p>
+      <h2>{tr(L, 'report.ai_h2')}</h2>
+      <p style="color:#475569">{tr(L, 'report.ai_analyzed')} <b>{len(entries)}</b>{fl_str}{flt_str}</p>
       <div style="margin:12px 0">{chips}</div><hr>
-      {''.join(cards) or '<p>Nenhuma detecção encontrada para os filtros informados.</p>'}
-    </body>"""
+      {''.join(cards) or f"<p>{tr(L, 'report.ai_none_filter')}</p>"}
+    </body></html>"""
     return HTMLResponse(body)
 
 # ---------- Busca Semântica Local em Fotos (CLIP ViT-B/32 ONNX offline) ----------
@@ -1674,6 +1757,20 @@ def props_reset():
     total = stats()["hours"]
     with db() as c: c.execute("INSERT OR REPLACE INTO kv VALUES('prop_base',?)", (str(total),))
     return {"ok": True}
+
+class LangReq(BaseModel):
+    lang: str
+
+@app.get("/api/lang")
+def get_lang_api():
+    return {"lang": get_lang()}
+
+@app.post("/api/lang")
+def set_lang_api(req: LangReq):
+    if req.lang not in SUPPORTED_LANGS:
+        raise HTTPException(400, "Unsupported language")
+    kv_set("lang", req.lang)
+    return {"ok": True, "lang": req.lang}
 
 class Spot(BaseModel):
     name: str; lat: float; lon: float; notes: str = ""

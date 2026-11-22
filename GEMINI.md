@@ -90,7 +90,8 @@ O backend é construído com **FastAPI** e **SQLite3** (`data/drone.db`), utiliz
    - `id` (INTEGER PK), `name` (TEXT), `lat` (REAL), `lon` (REAL), `notes` (TEXT).
 
 5. **`kv`** (Chave-valor de configurações/estado):
-   - `k` (TEXT PK), `v` (TEXT) — usado por exemplo para `prop_base` (horas acumuladas no momento da última troca de hélices).
+   - `k` (TEXT PK), `v` (TEXT) — usado para `prop_base` (horas acumuladas na última troca de hélices) e `lang` (idioma ativo: `'pt-BR'`, `'en'` ou `'es'`).
+   - Dicionários i18n ficam em `static/i18n/{pt-BR,en,es}.json` (compartilhados entre frontend e relatórios HTML do backend). Em `'en'`, o app converte automaticamente medidas para unidades imperiais (`ft`, `mi`, `mph`, `ft/s`, `°F`).
 
 ### 4.2. Regras de Negócio Importantes no Backend
 
