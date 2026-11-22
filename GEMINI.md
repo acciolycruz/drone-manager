@@ -31,6 +31,7 @@ Este arquivo documenta a arquitetura, regras de negócio, convenções de códig
 ├── backup.sh               # Script de backup para HD externo (/mnt/e/Backup_DroneManager)
 ├── requirements.txt        # Dependências Python: fastapi, uvicorn, pillow
 ├── README.md               # Documentação inicial de instalação e uso
+├── TODO.md                 # Backlog de funcionalidades futuras (agrupadas por área)
 └── *.bak*                  # Histórico de backups incrementais de app.py e static/index.html (até .bak19)
 ```
 
