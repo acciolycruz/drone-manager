@@ -1041,6 +1041,14 @@ input[type=range] {
       <a href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
     </div>
+    <div id="sembar" class="row" style="margin-top:6px;padding:7px 10px;background:var(--card);border:1px solid var(--bd);border-radius:8px">
+      <span style="font-size:12.5px;color:var(--acc-cyan);font-weight:600">✨ Busca Semântica (CLIP)</span>
+      <input id="msem" placeholder="Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…" onkeydown="if(event.key==='Enter')runSemanticSearch()" style="min-width:260px;flex:1">
+      <button class="on" onclick="runSemanticSearch()">Buscar visualmente</button>
+      <button id="bsem-idx" onclick="indexSemanticPhotos()" title="Indexa fotos localmente com CLIP ONNX (~150 MB na 1ª execução)">🧠 Indexar fotos</button>
+      <button id="bsem-clr" class="hide" onclick="clearSemanticSearch()">✕ Limpar</button>
+      <span id="semstat" style="font-size:12px;color:var(--mut)"></span>
+    </div>
     <div id="mgrid" class="grid"></div>
   </section>
 
@@ -1906,16 +1914,71 @@ const mediaCard=m=>{
   if(mt.shutter)ex.push(mt.shutter);
   if(mt.fnum)ex.push('f/'+mt.fnum);
   return `<div class=it><input type=checkbox onchange="tog(${m.id},this.checked)" ${sel.has(m.id)?'checked':''}>${mediaBadges(m)}
-  <img loading=lazy src="/api/media/${m.id}/thumb" onclick="openMedia(${m.id})" alt=""${m.offline?' style="opacity:.45" title="Disco ou pasta desconectada"':''}><div class=m>${m.fav?'★':'☆'} ${m.kind=='video'?'Vídeo':'Foto'} ${fmt.d(m.taken)}${m.w&&m.h?` · <small>${m.w}×${m.h}</small>`:''}${ex.length?`<br><span style="color:var(--acc-cyan)">${esc(ex.join(' · '))}</span>`:''}<br>${esc((m.tags||'').replaceAll(',',' · '))}</div></div>`;
+  <img loading=lazy src="/api/media/${m.id}/thumb" onclick="openMedia(${m.id})" alt=""${m.offline?' style="opacity:.45" title="Disco ou pasta desconectada"':''}><div class=m>${m.score!=null?`<span style="background:rgba(0,210,255,.18);color:var(--acc-cyan);padding:1px 5px;border-radius:4px;font-size:11px;font-weight:600">✨ ${(m.score*100).toFixed(0)}%</span> `:''}${m.fav?'★':'☆'} ${m.kind=='video'?'Vídeo':'Foto'} ${fmt.d(m.taken)}${m.w&&m.h?` · <small>${m.w}×${m.h}</small>`:''}${ex.length?`<br><span style="color:var(--acc-cyan)">${esc(ex.join(' · '))}</span>`:''}<br>${esc((m.tags||'').replaceAll(',',' · '))}</div></div>`;
 };
 function tog(id,on){on?sel.add(id):sel.delete(id)}
 function exportSel(){if(!sel.size)return alert('Marque as fotos que quer exportar.');location='/api/export/photos?ids='+[...sel]}
+async function refreshSemanticStatus(){
+  const b=$('#bsem-idx');if(!b||kind!=='photo')return;
+  try{
+    const s=await api('/media/semantic-status');
+    b.textContent=`🧠 Indexar fotos (${s.indexed_photos}/${s.total_photos})`;
+    b.disabled=s.total_photos>0&&s.indexed_photos>=s.total_photos;
+  }catch(e){}
+}
+async function indexSemanticPhotos(){
+  const b=$('#bsem-idx'),st=$('#semstat');
+  if(b){b.disabled=true;b.textContent='🧠 Indexando…'}
+  if(st)st.textContent='Gerando embeddings locais (na 1ª vez baixa o modelo CLIP ~150 MB)…';
+  try{
+    const r=await api('/media/semantic-index?limit=300',{method:'POST'});
+    toast(`✓ ${r.indexed} foto(s) indexada(s) (${r.indexed_photos}/${r.total_photos})`);
+    if(st)st.textContent=`${r.indexed_photos}/${r.total_photos} indexadas`;
+    refreshSemanticStatus();
+  }catch(e){
+    alert('Falha ao indexar fotos: '+e.message);
+    if(st)st.textContent='';
+    refreshSemanticStatus();
+  }
+}
+async function runSemanticSearch(){
+  const q=($('#msem')&&$('#msem').value||'').trim();
+  if(!q)return loadMedia();
+  const st=$('#semstat'),clr=$('#bsem-clr');
+  if(st)st.textContent='Buscando visualmente…';
+  try{
+    const r=await api('/media/semantic-search?q='+encodeURIComponent(q));
+    if(!r.indexed_photos){
+      if(st)st.textContent='Nenhuma foto indexada ainda. Clique em "Indexar fotos".';
+      $('#mgrid').innerHTML='<p style="color:var(--mut)">Nenhuma foto indexada ainda. Clique em <b>🧠 Indexar fotos</b> acima para gerar os embeddings offline.</p>';
+      $('#mcount').textContent='0 itens';
+      return;
+    }
+    if(clr)clr.classList.remove('hide');
+    if(st)st.textContent=`${r.items.length} resultado(s) de ${r.indexed_photos} indexadas (prompt: "${r.en_query}")`;
+    $('#mgrid').innerHTML=r.items.map(mediaCard).join('')||'Nenhuma foto correspondeu à busca visual.';
+    $('#mcount').textContent=r.items.length+' itens (busca visual)';
+  }catch(e){
+    alert('Erro na busca semântica: '+e.message);
+    if(st)st.textContent='';
+  }
+}
+function clearSemanticSearch(){
+  if($('#msem'))$('#msem').value='';
+  if($('#semstat'))$('#semstat').textContent='';
+  if($('#bsem-clr'))$('#bsem-clr').classList.add('hide');
+  loadMedia();
+}
 async function loadMedia(k){
   kind=typeof k=='string'?k:kind;
+  const sb=$('#sembar');if(sb)sb.classList.toggle('hide',kind!=='photo');
+  if($('#bsem-clr'))$('#bsem-clr').classList.add('hide');
+  if($('#semstat'))$('#semstat').textContent='';
   const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value});
   let ms=[];try{ms=await api('/media?'+p)}catch(e){alert('Filtro inválido: '+e.message)}ms=ms.filter(NLM);
   $('#mgrid').innerHTML=ms.map(mediaCard).join('')||'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.';
   $('#mcount').textContent=ms.length+' itens';
+  if(kind==='photo')refreshSemanticStatus();
 }
 let curM;
 function loadPannellum(){

@@ -63,7 +63,7 @@ with db() as _c:
         if col not in fcols: _c.execute(f"ALTER TABLE flights ADD COLUMN {col} {ddl}")
 with db() as _c:
     mcols = [r[1] for r in _c.execute("PRAGMA table_info(media)")]
-    for col, ddl in (("manual", "INTEGER DEFAULT 0"), ("sync_adj", "REAL DEFAULT 0"), ("meta", "TEXT"), ("detections", "TEXT")):
+    for col, ddl in (("manual", "INTEGER DEFAULT 0"), ("sync_adj", "REAL DEFAULT 0"), ("meta", "TEXT"), ("detections", "TEXT"), ("clip_emb", "BLOB")):
         if col not in mcols: _c.execute(f"ALTER TABLE media ADD COLUMN {col} {ddl}")
     _c.execute("CREATE TABLE IF NOT EXISTS missions(id INTEGER PRIMARY KEY, name TEXT NOT NULL, waypoints TEXT NOT NULL, "
                "alt REAL DEFAULT 60, speed REAL DEFAULT 8, notes TEXT DEFAULT '', air TEXT, created TEXT)")
@@ -614,6 +614,7 @@ def get_flight(fid):
     return r
 
 def _enrich_media(d):
+    d.pop("clip_emb", None)
     d["meta"] = json.loads(d["meta"]) if d.get("meta") else {}
     d["detections"] = json.loads(d["detections"]) if d.get("detections") else None
     w, h = d.get("w") or 0, d.get("h") or 0
@@ -1301,6 +1302,236 @@ def detections_report(flight_id: int = 0, cls: str = "", format: str = "html"):
       {''.join(cards) or '<p>Nenhuma detecção encontrada para os filtros informados.</p>'}
     </body>"""
     return HTMLResponse(body)
+
+# ---------- Busca Semântica Local em Fotos (CLIP ViT-B/32 ONNX offline) ----------
+CLIP_DIR = MODELS_DIR / "clip"
+CLIP_VIS_ONNX = CLIP_DIR / "vision_model_quantized.onnx"
+CLIP_TXT_ONNX = CLIP_DIR / "text_model_quantized.onnx"
+CLIP_TOK_JSON = CLIP_DIR / "tokenizer.json"
+CLIP_BASE_URL = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/"
+_CLIP_LOCK = threading.Lock()
+_CLIP_STATE = None
+
+_PT_EN_CLIP = {
+    "por do sol": "sunset", "nascer do sol": "sunrise", "beira mar": "seashore coastline",
+    "praia": "beach", "mar": "ocean sea", "oceano": "ocean", "onda": "ocean wave", "ondas": "ocean waves",
+    "lagoa": "lagoon lake", "lago": "lake", "rio": "river", "cachoeira": "waterfall", "ilha": "island",
+    "barco": "boat", "navio": "ship", "lancha": "speedboat", "iate": "yacht", "veleiro": "sailboat",
+    "telhado": "roof rooftop", "casa": "house", "predio": "building skyscraper", "cidade": "city urban",
+    "rua": "street road", "estrada": "road highway", "ponte": "bridge", "viaduto": "overpass bridge",
+    "carro": "car", "carros": "cars traffic", "transito": "traffic cars", "estacionamento": "parking lot",
+    "arvore": "tree", "arvores": "trees", "floresta": "forest woods", "mata": "forest jungle", "parque": "park",
+    "montanha": "mountain", "morro": "hill mountain", "pedra": "rock cliff", "penhasco": "cliff",
+    "campo": "field pasture", "fazenda": "farm", "plantacao": "crops farm field",
+    "nuvem": "cloud", "nuvens": "clouds", "ceu": "sky", "neblina": "fog mist", "noite": "night",
+    "piscina": "swimming pool", "estadio": "stadium", "igreja": "church", "farol": "lighthouse",
+    "porto": "harbor port", "aeroporto": "airport", "pista": "runway", "obra": "construction site",
+    "pessoa": "person", "pessoas": "people crowd", "multidao": "crowd people", "surfista": "surfer",
+    "areia": "sand", "duna": "sand dune", "verde": "green", "azul": "blue", "aereo": "aerial",
+}
+
+def _strip_accents(s: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+def _clip_pt_to_en(q: str) -> str:
+    s = _strip_accents(q.lower().strip())
+    for pt, en in sorted(_PT_EN_CLIP.items(), key=lambda x: -len(x[0])):
+        s = re.sub(rf"\b{re.escape(pt)}\b", en, s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _download_clip_asset(rel: str, dest: Path, min_bytes: int = 1000):
+    if dest.is_file() and dest.stat().st_size >= min_bytes:
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(CLIP_BASE_URL + rel, headers={"User-Agent": "drone-manager/1.0"})
+    with urllib.request.urlopen(req, timeout=240) as resp:
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.write_bytes(resp.read())
+        tmp.replace(dest)
+
+def _clip_bytes_to_unicode():
+    bs = list(range(33, 127)) + list(range(161, 173)) + list(range(174, 256))
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b); cs.append(256 + n); n += 1
+    return dict(zip(bs, [chr(c) for c in cs]))
+
+def _get_clip():
+    global _CLIP_STATE
+    if _CLIP_STATE is not None:
+        return _CLIP_STATE
+    with _CLIP_LOCK:
+        if _CLIP_STATE is not None:
+            return _CLIP_STATE
+        import onnxruntime as ort
+        _download_clip_asset("onnx/vision_model_quantized.onnx", CLIP_VIS_ONNX, 1_000_000)
+        _download_clip_asset("onnx/text_model_quantized.onnx", CLIP_TXT_ONNX, 1_000_000)
+        _download_clip_asset("tokenizer.json", CLIP_TOK_JSON, 10_000)
+        tok_raw = json.loads(CLIP_TOK_JSON.read_text(encoding="utf-8"))
+        vocab = tok_raw["model"]["vocab"]
+        merges = [tuple(m.split()) for m in tok_raw["model"]["merges"]]
+        bpe_ranks = dict(zip(merges, range(len(merges))))
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = max(1, min(4, os.cpu_count() or 2))
+        vis = ort.InferenceSession(str(CLIP_VIS_ONNX), sess_options=opts, providers=["CPUExecutionProvider"])
+        txt = ort.InferenceSession(str(CLIP_TXT_ONNX), sess_options=opts, providers=["CPUExecutionProvider"])
+        _CLIP_STATE = (vis, txt, vocab, bpe_ranks, _clip_bytes_to_unicode())
+        return _CLIP_STATE
+
+def _clip_bpe(token: str, bpe_ranks: dict) -> list[str]:
+    if not token: return []
+    word = tuple(list(token[:-1]) + [token[-1] + "</w>"])
+    if len(word) == 1:
+        return list(word)
+    while True:
+        pairs = [(word[i], word[i + 1]) for i in range(len(word) - 1)]
+        bigram = min(pairs, key=lambda p: bpe_ranks.get(p, 10**9))
+        if bigram not in bpe_ranks:
+            break
+        first, second = bigram
+        new_word, i = [], 0
+        while i < len(word):
+            try:
+                j = word.index(first, i)
+                new_word.extend(word[i:j]); i = j
+            except ValueError:
+                new_word.extend(word[i:]); break
+            if i < len(word) - 1 and word[i] == first and word[i + 1] == second:
+                new_word.append(first + second); i += 2
+            else:
+                new_word.append(word[i]); i += 1
+        word = tuple(new_word)
+        if len(word) == 1:
+            break
+    return list(word)
+
+def _clip_tokenize(text: str, vocab: dict, bpe_ranks: dict, b2u: dict, max_len: int = 77):
+    import numpy as np
+    sot = vocab.get("<|startoftext|>", 49406)
+    eot = vocab.get("<|endoftext|>", 49407)
+    clean = re.sub(r"\s+", " ", text.lower()).strip()
+    tokens = re.findall(r"[a-zA-Z\u00c0-\u024f]+|[0-9]|[^\s\w]+", clean)
+    ids = [sot]
+    for tok in tokens:
+        enc = "".join(b2u[b] for b in tok.encode("utf-8"))
+        for sub in _clip_bpe(enc, bpe_ranks):
+            if sub in vocab:
+                ids.append(vocab[sub])
+            if len(ids) >= max_len - 1:
+                break
+        if len(ids) >= max_len - 1:
+            break
+    ids.append(eot)
+    n_real = len(ids)
+    ids += [0] * (max_len - n_real)
+    mask = [1] * n_real + [0] * (max_len - n_real)
+    return np.array([ids], dtype=np.int64), np.array([mask], dtype=np.int64)
+
+def _clip_embed_text(q: str):
+    import numpy as np
+    _, txt_sess, vocab, bpe_ranks, b2u = _get_clip()
+    en_q = _clip_pt_to_en(q)
+    prompts = [f"a drone aerial photo of {en_q}"]
+    if en_q != q.lower().strip():
+        prompts.append(q.strip())
+    in_names = {i.name for i in txt_sess.get_inputs()}
+    vecs = []
+    for pr in prompts:
+        ids, mask = _clip_tokenize(pr, vocab, bpe_ranks, b2u)
+        feed = {"input_ids": ids}
+        if "attention_mask" in in_names:
+            feed["attention_mask"] = mask
+        out = txt_sess.run(None, feed)[0][0].astype(np.float32)
+        n = float(np.linalg.norm(out))
+        if n > 0: out /= n
+        vecs.append(out)
+    avg = np.mean(vecs, axis=0).astype(np.float32)
+    n = float(np.linalg.norm(avg))
+    if n > 0: avg /= n
+    return avg, en_q
+
+def _clip_embed_image(img_path: Path) -> bytes:
+    import numpy as np
+    from PIL import Image, ImageOps
+    vis_sess, _, _, _, _ = _get_clip()
+    with Image.open(img_path) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB").resize((224, 224), Image.Resampling.BICUBIC)
+        arr = np.asarray(im, dtype=np.float32) / 255.0
+    mean = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
+    std = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
+    arr = ((arr - mean) / std).transpose(2, 0, 1)[None, ...]
+    in_name = vis_sess.get_inputs()[0].name
+    emb = vis_sess.run(None, {in_name: arr})[0][0].astype(np.float32)
+    n = float(np.linalg.norm(emb))
+    if n > 0: emb /= n
+    return emb.tobytes()
+
+@app.get("/api/media/semantic-status")
+def semantic_status():
+    with db() as c:
+        tot = c.execute("SELECT COUNT(*) FROM media WHERE kind='photo'").fetchone()[0]
+        idx = c.execute("SELECT COUNT(*) FROM media WHERE kind='photo' AND clip_emb IS NOT NULL").fetchone()[0]
+    ready = CLIP_VIS_ONNX.is_file() and CLIP_TXT_ONNX.is_file() and CLIP_TOK_JSON.is_file()
+    return {"total_photos": tot, "indexed_photos": idx, "model_ready": ready}
+
+@app.post("/api/media/semantic-index")
+def semantic_index(limit: int = 300, force: int = 0):
+    limit = max(1, min(2000, int(limit)))
+    with db() as c:
+        cond = "" if force else "AND clip_emb IS NULL"
+        rows = c.execute(f"SELECT id, path FROM media WHERE kind='photo' {cond} ORDER BY taken DESC LIMIT ?", (limit,)).fetchall()
+    indexed, skipped, errors = 0, 0, []
+    for mid, raw_p in rows:
+        p = Path(raw_p)
+        src = p if p.is_file() else (THUMBS / f"{mid}.jpg")
+        if not src.is_file():
+            skipped += 1
+            continue
+        try:
+            blob = _clip_embed_image(src)
+            with db() as c:
+                c.execute("UPDATE media SET clip_emb=? WHERE id=?", (blob, mid))
+            indexed += 1
+        except Exception as e:
+            errors.append(f"#{mid}: {e}")
+    st = semantic_status()
+    return {"ok": True, "indexed": indexed, "skipped": skipped, "errors": errors[:10], **st}
+
+@app.get("/api/media/semantic-search")
+def semantic_search(q: str, limit: int = 60, min_score: float = 0.17):
+    import numpy as np
+    q = (q or "").strip()
+    if not q:
+        raise HTTPException(400, "Informe o texto da busca visual.")
+    limit = max(1, min(200, int(limit)))
+    with db() as c:
+        rows = c.execute(
+            "SELECT m.*, f.place AS place FROM media m LEFT JOIN flights f ON f.id=m.flight_id "
+            "WHERE m.kind='photo' AND m.clip_emb IS NOT NULL"
+        ).fetchall()
+    if not rows:
+        return {"query": q, "en_query": _clip_pt_to_en(q), "items": [], "indexed_photos": 0}
+    q_vec, en_q = _clip_embed_text(q)
+    mat = np.vstack([np.frombuffer(r["clip_emb"], dtype=np.float32) for r in rows])
+    scores = mat @ q_vec
+    order = np.argsort(-scores)
+    items = []
+    for idx in order:
+        sc = float(scores[idx])
+        if sc < min_score and len(items) >= 8:
+            break
+        if sc < 0.10:
+            break
+        d = _enrich_media(dict(rows[idx]))
+        d["offline"] = not Path(d["path"]).is_file()
+        d["score"] = round(sc, 4)
+        items.append(d)
+        if len(items) >= limit:
+            break
+    return {"query": q, "en_query": en_q, "items": items, "indexed_photos": len(rows)}
 
 @app.get("/api/media/{mid}/thumb")
 def media_thumb(mid: int):
