@@ -1037,6 +1037,8 @@ input[type=range] {
       <label><input id="mf" type="checkbox" onchange="loadMedia()"> Favoritas</label>
       <label><input id="mu" type="checkbox" onchange="loadMedia()"> Sem voo associado</label>
       <button onclick="exportSel()">Exportar selecionadas (ZIP)</button>
+      <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)">🗑 Remover da galeria</button>
+      <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria">⚠️ Apagar do HD</button>
       <button id="bdet-batch" onclick="detectBatchMedia()">🤖 Detectar objetos (IA)</button>
       <a href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
@@ -2090,7 +2092,10 @@ async function openMedia(id){
     ${m.kind=='photo'&&hasDets?`<button id="btogbox" onclick="toggleDetBoxes()">${SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}</button>`:''}
     <button onclick="grabModalCoord(${id})">📍 Extrair coordenada${m.kind=='video'?' deste frame':''}</button>
     ${m.kind=='photo'?`<button onclick="openPano360('/api/media/${id}/file')">🌐 Ver em 360°</button>`:`<button onclick="exportHudVideo(${id})">🎬 Exportar clipe com HUD (MP4)</button>`}
-    ${m.flight_id?`<button onclick="closeM();openFlight(${m.flight_id})">Ver voo</button>`:''}<button onclick="closeM()">Fechar</button></div><div class=row id="mlink" style="color:#ccc;margin:0">Voo: <select id="mflight"></select><button onclick="linkM()">Aplicar</button></div>
+    ${m.flight_id?`<button onclick="closeM();openFlight(${m.flight_id})">Ver voo</button>`:''}
+    <button onclick="deleteModalMedia(false)" title="Remove apenas da galeria (mantém o arquivo no HD)">🗑 Remover da galeria</button>
+    <button onclick="deleteModalMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente este arquivo do HD e da galeria">⚠️ Apagar do HD</button>
+    <button onclick="closeM()">Fechar</button></div><div class=row id="mlink" style="color:#ccc;margin:0">Voo: <select id="mflight"></select><button onclick="linkM()">Aplicar</button></div>
     <div style="color:#ccc">${esc(m.tags||'sem tags')}</div>`;
   $('#modal').classList.remove('hide');fillFlightSel(m);
   if(m.orient==='pano')openPano360(`/api/media/${id}/file`);
@@ -2099,6 +2104,36 @@ function closeM(){$('#modal').classList.add('hide');$('#modal').innerHTML=''}
 async function favM(){await api('/media/'+curM.id,J('PATCH',{fav:curM.fav?0:1}));openMedia(curM.id)}
 async function tagsM(){const t=prompt('Tags separadas por vírgula (funcionam como álbuns):',curM.tags||'');
   if(t!==null){await api('/media/'+curM.id,J('PATCH',{tags:t}));openMedia(curM.id)}}
+async function deleteModalMedia(disk){
+  if(!curM)return;
+  const msg=disk
+    ?`ATENÇÃO: Apagar permanentemente este arquivo do HD e da galeria?\n\nArquivo: ${curM.path||''}\n\nEsta ação NÃO pode ser desfeita!`
+    :'Remover esta mídia apenas da galeria?\n\nO arquivo continuará intacto no HD.';
+  if(!confirm(msg))return;
+  try{
+    const r=await api(`/media/${curM.id}?disk=${disk?1:0}`,{method:'DELETE'});
+    sel.delete(curM.id);
+    closeM();
+    toast(disk?(r.disk_deleted?'✓ Arquivo apagado do HD e da galeria':'✓ Removido da galeria (arquivo estava offline)'):'✓ Removido apenas da galeria');
+    if(!$('#midia').classList.contains('hide'))loadMedia();
+    if(!$('#voos').classList.contains('hide')&&!$('#fdet').classList.contains('hide')&&typeof curF!=='undefined'&&curF)openFlight(curF);
+  }catch(e){alert('Erro ao remover mídia: '+e.message)}
+}
+async function deleteSelectedMedia(disk){
+  if(!sel.size)return alert('Marque as mídias que deseja remover.');
+  const n=sel.size;
+  const msg=disk
+    ?`ATENÇÃO: Apagar permanentemente ${n} arquivo(s) selecionado(s) do HD e da galeria?\n\nEsta ação NÃO pode ser desfeita!`
+    :`Remover ${n} item(ns) selecionado(s) apenas da galeria?\n\nOs arquivos continuarão intactos no HD.`;
+  if(!confirm(msg))return;
+  try{
+    const r=await api('/media/delete-batch',J('POST',{ids:[...sel],disk:!!disk}));
+    sel.clear();
+    toast(disk?`✓ ${r.deleted} removido(s) (${r.disk_deleted} apagado(s) do HD)`:`✓ ${r.deleted} removido(s) da galeria`);
+    if(r.errors&&r.errors.length)alert('Avisos:\n'+r.errors.join('\n'));
+    loadMedia();
+  }catch(e){alert('Erro ao remover mídias: '+e.message)}
+}
 
 /* ---------- ligar mídia a um voo e ajustar a sincronia do vídeo ---------- */
 let FLS=null;

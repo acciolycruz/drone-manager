@@ -947,6 +947,57 @@ def media_patch(mid: int, b: MediaPatch):
     if auto: link_media()
     return get_media(mid)
 
+def _allowed_media_path(p: Path) -> bool:
+    try:
+        rp = p.resolve()
+    except OSError:
+        return False
+    roots = [Path("data/media").resolve(), MEDIA_DIR.resolve()]
+    with db() as c:
+        for (rpath,) in c.execute("SELECT path FROM media_roots").fetchall():
+            try: roots.append(Path(rpath).resolve())
+            except OSError: pass
+    return any(rp == rt or rt in rp.parents for rt in roots)
+
+def _delete_media_item(mid: int, delete_disk: bool):
+    m = get_media(mid)
+    disk_deleted, offline = False, False
+    if delete_disk:
+        p = Path(m["path"])
+        if not _allowed_media_path(p):
+            raise HTTPException(403, "Caminho fora das pastas de mídia configuradas.")
+        if p.is_file():
+            p.unlink()
+            disk_deleted = True
+        else:
+            offline = True
+    _unlink_quiet(THUMBS / f"{mid}.jpg")
+    with db() as c:
+        c.execute("DELETE FROM media WHERE id=?", (mid,))
+    return {"ok": True, "id": mid, "disk_deleted": disk_deleted, "offline": offline}
+
+@app.delete("/api/media/{mid:int}")
+def media_delete(mid: int, disk: int = 0):
+    """Remove a mídia da galeria (disk=0) ou também apaga o arquivo físico do HD (disk=1)."""
+    return _delete_media_item(mid, bool(disk))
+
+class MediaDeleteBatchIn(BaseModel):
+    ids: list[int]
+    disk: bool = False
+
+@app.post("/api/media/delete-batch")
+def media_delete_batch(b: MediaDeleteBatchIn):
+    deleted, disk_deleted, errors = 0, 0, []
+    for mid in b.ids:
+        try:
+            res = _delete_media_item(int(mid), b.disk)
+            deleted += 1
+            if res["disk_deleted"]:
+                disk_deleted += 1
+        except Exception as e:
+            errors.append(f"#{mid}: {e}")
+    return {"ok": True, "deleted": deleted, "disk_deleted": disk_deleted, "errors": errors}
+
 @app.get("/api/media/{mid}/file")
 def media_file(mid: int):
     p = Path(get_media(mid)["path"])

@@ -181,7 +181,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 - **Exportador de Clipe MP4 com HUD Embutido (`🎬 Exportar clipe com HUD`):** Renderiza via `ffmpeg` um trecho do vídeo com telemetria DJI gravada na imagem (com limpeza automática de arquivos temporários em background).
 - **Detecção Aérea de Objetos (`YOLO11s VisDrone ONNX`):** Analisa fotos e frames de vídeo localmente via `onnxruntime`, identifica 10 classes aéreas (pedestre, carro, van, caminhão, ônibus, moto, bicicleta, etc.), aplica tags automáticas `ia:*` e gera relatórios filtráveis em HTML/JSON.
 - **Busca Semântica Local em Fotos (`CLIP ViT-B/32 ONNX`):** Indexa fotos localmente em `512` dimensões no SQLite (`clip_emb`) e permite buscar imagens por descrição visual offline em português ou inglês (ex.: *"praia pôr do sol"*, *"barco"*, *"telhado"*, *"lagoa"*), exibindo a pontuação de similaridade.
-- **Galeria Inteligente e Visualizador 360° (`Pannellum`):** Filtros para fotos/vídeos **Verticais `9:16` (Modo Retrato do Mini 3)**, **Horizontais**, **Panoramas `360°`** e **`4K`**, com visualizador esférico 360° interativo no modal.
+- **Galeria Inteligente e Visualizador 360° (`Pannellum`):** Filtros para fotos/vídeos **Verticais `9:16` (Modo Retrato do Mini 3)**, **Horizontais**, **Panoramas `360°`** e **`4K`**, com visualizador esférico 360° interativo no modal e opção de **remover mídias apenas da galeria** ou **apagar permanentemente do HD** (individualmente no modal ou em lote pelos itens marcados).
 - **Segurança Local-First:**
   - Servidor restrito ao *loopback* local (`127.0.0.1`), protegido por `TrustedHostMiddleware`, validação de `Origin`/`Referer` contra CSRF, sanitização contra *CSV Injection* e bloqueio de diretórios sensíveis do sistema (`/mnt/c/Windows`, `/mnt/c/Users`, etc.).
 - **Atalhos de Teclado:**
@@ -205,6 +205,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KML/GPX/GeoJSON). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Previsão horária de janela de voo (Open-Meteo: vento em altitude, rajadas, chuva, visibilidade + índice Kp NOAA). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
+| `DELETE` / `POST` | `/api/media/{mid}?disk=0\|1` & `/api/media/delete-batch` | Remove mídia(s) apenas da galeria/banco ou também apaga o(s) arquivo(s) do HD (com validação de pasta permitida). |
 | `GET` | `/api/media/{mid}/srt` | Retorna a trilha segundo a segundo do arquivo `.SRT` do vídeo (GPS, altitude e câmera). |
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
 | `POST` | `/api/media/{mid}/detect` & `/api/detect/batch` | Executa detecção aérea de objetos (YOLO11s VisDrone ONNX) em uma mídia ou em lote. |
