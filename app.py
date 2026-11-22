@@ -829,7 +829,7 @@ def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: in
     for r in rows: r["offline"] = bool(offp) and any(r["path"].startswith(o) for o in offp)
     return rows
 
-@app.get("/api/media/{mid}")
+@app.get("/api/media/{mid:int}")
 def media_one(mid: int): return get_media(mid)
 
 @app.get("/api/media/{mid}/srt")
@@ -931,7 +931,7 @@ class MediaPatch(BaseModel):
     flight_id: Optional[int] = None     # 0 = nenhum voo; -1 = automático (o app decide)
     sync_adj: Optional[float] = None    # ajuste fino da sincronia do vídeo, em segundos
 
-@app.patch("/api/media/{mid}")
+@app.patch("/api/media/{mid:int}")
 def media_patch(mid: int, b: MediaPatch):
     auto = False
     with db() as c:
