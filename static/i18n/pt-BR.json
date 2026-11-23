@@ -444,5 +444,18 @@
   "report.ai_moment": " · Instante destaque: {t}",
   "report.ai_video": "🎬 Vídeo",
   "report.ai_photo": "📷 Foto",
-  "nl.help": "Exemplos de busca (sem IA, por padrões):\n\n• voos acima de 80 m em 2025\n• voos com mais de 10 min em março\n• voos na Barra com bateria baixa\n• voos com alerta de vibração\n• voos fora de vlos\n• voos perto de aeroporto\n• fotos verticais na Barra\n• panoramas 360\n• vídeos 4k favoritos\n• fotos sem voo\n\nO que não for reconhecido vira palavra procurada no nome, local, anotações e tags."
+  "nl.help": "Exemplos de busca (sem IA, por padrões):\n\n• voos acima de 80 m em 2025\n• voos com mais de 10 min em março\n• voos na Barra com bateria baixa\n• voos com alerta de vibração\n• voos fora de vlos\n• voos perto de aeroporto\n• fotos verticais na Barra\n• panoramas 360\n• vídeos 4k favoritos\n• fotos sem voo\n\nO que não for reconhecido vira palavra procurada no nome, local, anotações e tags.",
+  "media.compare_btn": "◫ Comparar (2)",
+  "media.compare_title": "Selecione 2 fotos na galeria para comparar Antes / Depois",
+  "media.compare_gps": "Comparar no mesmo GPS",
+  "media.compare_before": "ANTES",
+  "media.compare_after": "DEPOIS",
+  "media.compare_days": "dias entre capturas",
+  "media.compare_swap": "Inverter",
+  "media.compare_back": "Voltar",
+  "media.compare_close": "Fechar",
+  "media.compare_none": "Nenhuma outra foto encontrada em {r} m deste GPS.",
+  "media.compare_none_retry": "Nenhuma outra foto em {r} m deste GPS. Tentar ampliar a busca para 500 m?",
+  "media.compare_need2": "Marque exatamente 2 fotos na galeria para comparar Antes / Depois.",
+  "media.compare_photos_only": "A comparação Antes / Depois funciona apenas com fotos."
 }

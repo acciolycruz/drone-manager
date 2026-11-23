@@ -444,5 +444,18 @@
   "report.ai_moment": " · Highlight: {t}",
   "report.ai_video": "🎬 Video",
   "report.ai_photo": "📷 Photo",
-  "nl.help": "Search examples (rule-based, no AI):\n\n• flights above 250 ft in 2025\n• flights over 10 min in march\n• flights in Barra with low battery\n• flights with vibration alert\n• flights beyond vlos\n• flights near airport\n• portrait photos in Barra\n• 360 panoramas\n• favorite 4k videos\n• unlinked photos\n\nUnrecognized terms are searched in name, place, notes and tags."
+  "nl.help": "Search examples (rule-based, no AI):\n\n• flights above 250 ft in 2025\n• flights over 10 min in march\n• flights in Barra with low battery\n• flights with vibration alert\n• flights beyond vlos\n• flights near airport\n• portrait photos in Barra\n• 360 panoramas\n• favorite 4k videos\n• unlinked photos\n\nUnrecognized terms are searched in name, place, notes and tags.",
+  "media.compare_btn": "◫ Compare (2)",
+  "media.compare_title": "Select 2 photos in the gallery to compare Before / After",
+  "media.compare_gps": "Compare at same GPS",
+  "media.compare_before": "BEFORE",
+  "media.compare_after": "AFTER",
+  "media.compare_days": "days apart",
+  "media.compare_swap": "Swap",
+  "media.compare_back": "Back",
+  "media.compare_close": "Close",
+  "media.compare_none": "No other photos found within {r} m of this GPS.",
+  "media.compare_none_retry": "No other photos within {r} m of this GPS. Expand search to 500 m?",
+  "media.compare_need2": "Select exactly 2 photos in the gallery to compare Before / After.",
+  "media.compare_photos_only": "Before / After comparison only works with photos."
 }

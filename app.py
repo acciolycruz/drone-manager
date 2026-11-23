@@ -1,8 +1,9 @@
 """Drone Manager (DJI Mini 3) - app web local.  Rodar: uvicorn app:app --reload"""
 import os, re, json, csv, io, time, html, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
 from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from math import radians, degrees, sin, cos, tan, asin, acos, atan2, sqrt, hypot
+from math import radians, degrees, sin, cos, tan, asin, acos, atan2, sqrt, hypot, ceil
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -48,9 +49,23 @@ CREATE TABLE IF NOT EXISTS spots(id INTEGER PRIMARY KEY, name TEXT, lat REAL, lo
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 """
 
+@contextmanager
 def db():
-    c = sqlite3.connect("data/drone.db"); c.row_factory = sqlite3.Row; return c
-with db() as _c: _c.executescript(SCHEMA)
+    c = sqlite3.connect("data/drone.db", timeout=30.0)
+    c.row_factory = sqlite3.Row
+    try:
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+with db() as _c:
+    _c.execute("PRAGMA journal_mode=WAL")
+    _c.execute("PRAGMA busy_timeout=30000")
+    _c.executescript(SCHEMA)
 with db() as _c:
     _c.execute("CREATE TABLE IF NOT EXISTS media_roots(id INTEGER PRIMARY KEY, name TEXT, path TEXT UNIQUE, tag TEXT DEFAULT '', "
                "recursive INTEGER DEFAULT 1, enabled INTEGER DEFAULT 1, last_scan TEXT)")
@@ -319,7 +334,7 @@ def import_log(p):
     use_rc = bool(rcs) and max(rcs) > 50                # só confia no sinal se a escala parecer 0-100
     track, events, flags, warns = [], [], set(), set()
     dist = maxalt = maxspd = max_hdist = 0.0; prev = None; last = -1; nsig = photos = 0
-    st0 = cand = low0 = home0 = rth_h = None; cand_t = 0; sig_low = vid0 = pho0 = False
+    st0 = cand = low0 = home0 = rth_h = act0 = None; cand_t = 0; sig_low = vid0 = pho0 = False
     mech = {"vib_s": 0, "force_s": 0, "comp_s": 0, "gimb_s": 0}
     wind_samples, watts_list, amps_list = [], [], []
     for x in rows:
@@ -334,8 +349,8 @@ def import_log(p):
                     events.append({"t": cand_t, "label": STATE_PT[cand]})
                 st0 = cand
         act = x["act"]
-        if act and act != getattr(import_log, "_a", None) and act in ACTION_PT and sec >= 0: ev(ACTION_PT[act])
-        import_log._a = act
+        if act and act != act0 and act in ACTION_PT and sec >= 0: ev(ACTION_PT[act])
+        act0 = act
         bat = x["bat"]
         for th in (20, 10):
             if bat is not None and bat <= th and th not in flags: flags.add(th); ev(f"Bateria em {th}%")
@@ -593,13 +608,21 @@ def index_media(errors):
             w, h = x.get("ImageWidth"), x.get("ImageHeight")
             s = read_srt(p) if kind == "video" else None
             if kind == "video":
-                if s: lat, lon, alt, taken = s["lat"] or lat, s["lon"] or lon, s["alt"] or alt, s["taken"] or taken
+                if s:
+                    lat = s["lat"] if s["lat"] is not None else lat
+                    lon = s["lon"] if s["lon"] is not None else lon
+                    alt = s["alt"] if s["alt"] is not None else alt
+                    taken = s["taken"] or taken
                 elif taken: taken += timedelta(hours=TZ_OFFSET)   # CreateDate de MP4 costuma ser UTC
             if not valid_gps(lat, lon): lat, lon = None, None
-            taken = taken or datetime.fromtimestamp(p.stat().st_mtime)
-            meta = _build_media_meta(x, kind, w, h, s)
-            c.execute("INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                      (str(p), kind, taken.isoformat(), lat, lon, alt, w, h, p.stat().st_size, sha1(p), json.dumps(meta)))
+            try:
+                st = p.stat()
+                taken = taken or datetime.fromtimestamp(st.st_mtime)
+                meta = _build_media_meta(x, kind, w, h, s)
+                c.execute("INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                          (str(p), kind, taken.isoformat(), lat, lon, alt, w, h, st.st_size, sha1(p), json.dumps(meta)))
+            except OSError:
+                continue
     # Atualiza metadados EXIF/XMP/SRT das mídias já cadastradas que ainda não tinham 'meta' (se o disco estiver conectado)
     with db() as c:
         todo = [dict(r) for r in c.execute("SELECT id,path,kind,w,h FROM media WHERE meta IS NULL").fetchall()]
@@ -649,7 +672,7 @@ def link_media():
                 c.execute("UPDATE media SET flight_id=?, tags=? WHERE id=?", (fid, ",".join(sorted(tags)), m["id"]))
 
 def check_backup():
-    if not BACKUP_DIR: return
+    if not BACKUP_DIR or not Path(BACKUP_DIR).is_dir(): return
     have = {(p.name, p.stat().st_size) for p in Path(BACKUP_DIR).rglob("*") if p.is_file()}
     with db() as c:
         for m in c.execute("SELECT id,path,size FROM media").fetchall():
@@ -734,29 +757,39 @@ async def upload_log(request: Request, name: str = ""):
     dest = LOGS_DIR / safe_name
     size = 0
     max_bytes = 25 * 1024 * 1024  # limite de 25 MB por arquivo de log
+    fd, tmp_s = tempfile.mkstemp(prefix=".up_", suffix=".tmp", dir=str(LOGS_DIR))
+    tmp = Path(tmp_s)
     try:
-        with open(dest, "wb") as f:
+        with os.fdopen(fd, "wb") as f:
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > max_bytes:
-                    f.close()
-                    _unlink_quiet(dest)
                     raise HTTPException(413, "Arquivo excede o limite máximo de 25 MB.")
                 f.write(chunk)
+        if size < 64:
+            raise HTTPException(400, "Arquivo de log vazio ou inválido.")
+        existed = dest.exists()
+        bak = LOGS_DIR / (".bak_" + safe_name) if existed else None
+        if bak:
+            shutil.copy2(str(dest), str(bak))
+        shutil.move(str(tmp), str(dest))
+        try:
+            import_log(dest)
+            link_media()
+            if bak: _unlink_quiet(bak)
+            return {"ok": True, "file": safe_name, "bytes": size}
+        except Exception as e:
+            if bak and bak.exists():
+                shutil.move(str(bak), str(dest))
+            elif not existed:
+                _unlink_quiet(dest)
+            return {"ok": False, "file": safe_name, "error": str(e)}
     except HTTPException:
+        _unlink_quiet(tmp)
         raise
     except Exception as e:
-        _unlink_quiet(dest)
+        _unlink_quiet(tmp)
         raise HTTPException(400, f"Erro ao salvar arquivo de log: {e}")
-    if size < 64:
-        _unlink_quiet(dest)
-        raise HTTPException(400, "Arquivo de log vazio ou inválido.")
-    try:
-        import_log(dest)
-        link_media()
-        return {"ok": True, "file": safe_name, "bytes": size}
-    except Exception as e:
-        return {"ok": False, "file": safe_name, "error": str(e)}
 
 @app.get("/api/config")
 def config(): return {"airspace": AIRSPACE_TILES, "cesium": os.getenv("CESIUM_TOKEN", "")}
@@ -870,9 +903,9 @@ def report(fid: int, lang: str = ""):
     th = "".join(f'<img src="/api/media/{m["id"]}/thumb" width=170>' for m in ms)
     return f"""<!doctype html><html lang="{L}"><meta charset=utf-8><title>{tr(L, 'report.flight_title', id=fid)}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
 <button onclick=print() style="float:right">{tr(L, 'report.print_pdf')}</button>
-<h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {f['start_local'][:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
-<p>{tr(L, 'report.duration')} {int(f['duration'])//60} min {int(f['duration'])%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'], L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'], L)} ·
-{tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'], L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}</p>
+<h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {(f.get('start_local') or '')[:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
+<p>{tr(L, 'report.duration')} {int(f['duration'] or 0)//60} min {int(f['duration'] or 0)%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'] or 0, L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'] or 0, L)} ·
+{tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'] or 0, L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}</p>
 <p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
 
 def _csv_safe(v):
@@ -885,8 +918,9 @@ def logbook():
     o = io.StringIO(); w = csv.writer(o)
     w.writerow(["data_hora_local", "local", "duracao_min", "distancia_km", "altura_max_m", "bateria_sn", "lat", "lon", "notas"])
     for r in rows:
-        w.writerow([local(r["start"]).isoformat(" "), _csv_safe(r["place"]), round(r["duration"] / 60, 1), round(r["distance"] / 1000, 2),
-                    round(r["max_alt"], 1), _csv_safe(r["battery_sn"]), r["lat"], r["lon"], _csv_safe(r["notes"])])
+        dt_s = local(r["start"]).isoformat(" ") if r["start"] else ""
+        w.writerow([dt_s, _csv_safe(r["place"]), round((r["duration"] or 0) / 60, 1), round((r["distance"] or 0) / 1000, 2),
+                    round(r["max_alt"] or 0, 1), _csv_safe(r["battery_sn"]), r["lat"], r["lon"], _csv_safe(r["notes"])])
     return attach(o.getvalue(), "diario_de_voo.csv", "text/csv")
 
 @app.get("/api/media")
@@ -905,7 +939,10 @@ def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: in
         else: rows = [r for r in rows if r["orient"] == orient]
     if q: rows = [r for r in rows if q.lower() in f'{r["tags"]} {r["path"]} {r["place"] or ""}'.lower()]
     if near:   # "lat,lon,km"
-        la, lo, km = map(float, near.split(","))
+        try:
+            la, lo, km = map(float, near.split(","))
+        except Exception:
+            raise HTTPException(400, "Formato inválido para 'near'. Use lat,lon,km.")
         rows = [r for r in rows if r["lat"] is not None and hav(la, lo, r["lat"], r["lon"]) <= km * 1000]
     with db() as c: offp = [r["path"].rstrip("/") + "/" for r in c.execute("SELECT path FROM media_roots") if not Path(r["path"]).is_dir()]
     for r in rows: r["offline"] = bool(offp) and any(r["path"].startswith(o) for o in offp)
@@ -913,6 +950,52 @@ def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: in
 
 @app.get("/api/media/{mid:int}")
 def media_one(mid: int): return get_media(mid)
+
+def _ang_diff(a, b):
+    if a is None or b is None: return None
+    try:
+        d = abs((float(a) - float(b) + 180.0) % 360.0 - 180.0)
+        return round(d, 1)
+    except Exception:
+        return None
+
+@app.get("/api/media/{mid:int}/nearby")
+def media_nearby(mid: int, radius_m: float = 150.0, limit: int = 30):
+    """Lista fotos tiradas próximas à coordenada GPS de uma foto base, ordenadas por distância e ângulo de câmera."""
+    base = get_media(mid)
+    radius_m = max(1.0, min(float(radius_m), 50000.0))
+    limit = max(1, min(int(limit), 100))
+    if base.get("kind") != "photo" or base.get("lat") is None or base.get("lon") is None:
+        return {"base": base, "radius_m": radius_m, "items": []}
+    bm = base.get("meta") or {}
+    byaw, bpitch = bm.get("gyaw"), bm.get("gpitch")
+    bt = None
+    if base.get("taken"):
+        try: bt = datetime.fromisoformat(str(base["taken"])[:19])
+        except Exception: bt = None
+    with db() as c:
+        rows = [_enrich_media(dict(r)) for r in c.execute(
+            "SELECT m.*, f.place AS place FROM media m LEFT JOIN flights f ON f.id=m.flight_id "
+            "WHERE m.kind='photo' AND m.id!=? AND m.lat IS NOT NULL AND m.lon IS NOT NULL", (mid,))]
+        offp = [r["path"].rstrip("/") + "/" for r in c.execute("SELECT path FROM media_roots") if not Path(r["path"]).is_dir()]
+    items = []
+    for r in rows:
+        d = hav(base["lat"], base["lon"], r["lat"], r["lon"])
+        if d > radius_m: continue
+        rm = r.get("meta") or {}
+        r["dist_m"] = round(d, 1)
+        r["yaw_diff"] = _ang_diff(byaw, rm.get("gyaw"))
+        r["pitch_diff"] = round(abs(float(bpitch) - float(rm["gpitch"])), 1) if bpitch is not None and rm.get("gpitch") is not None else None
+        r["days_diff"] = None
+        if bt and r.get("taken"):
+            try:
+                rt = datetime.fromisoformat(str(r["taken"])[:19])
+                r["days_diff"] = abs((rt - bt).days)
+            except Exception: pass
+        r["offline"] = bool(offp) and any(r["path"].startswith(o) for o in offp)
+        items.append(r)
+    items.sort(key=lambda x: (x["dist_m"], x["yaw_diff"] if x["yaw_diff"] is not None else 999.0))
+    return {"base": base, "radius_m": radius_m, "items": items[:limit]}
 
 @app.get("/api/media/{mid}/srt")
 def media_srt(mid: int):
@@ -1335,9 +1418,12 @@ class DetectBatchIn(BaseModel):
 @app.post("/api/detect/batch")
 def api_detect_batch(b: DetectBatchIn):
     with db() as c:
-        if b.ids:
-            qmarks = ",".join("?" for _ in b.ids)
-            rows = c.execute(f"SELECT id FROM media WHERE id IN ({qmarks}) ORDER BY taken DESC", b.ids).fetchall()
+        if b.ids is not None:
+            if not b.ids:
+                rows = []
+            else:
+                qmarks = ",".join("?" for _ in b.ids)
+                rows = c.execute(f"SELECT id FROM media WHERE id IN ({qmarks}) ORDER BY taken DESC", b.ids).fetchall()
         elif b.flight_id:
             rows = c.execute("SELECT id FROM media WHERE flight_id=? ORDER BY taken", (b.flight_id,)).fetchall()
         else:
@@ -1725,24 +1811,26 @@ def stats():
         fl = [dict(r) for r in c.execute("SELECT id,start,duration,distance,max_alt,battery_sn,place,meta FROM flights WHERE source='log'")]
         m = [dict(r) for r in c.execute("SELECT kind,path,sha1,backed,flight_id FROM media")]
         row = c.execute("SELECT v FROM kv WHERE k='prop_base'").fetchone()
-    hours = sum(f["duration"] for f in fl) / 3600; base = float(row[0]) if row else 0.0
+    hours = sum((f["duration"] or 0) for f in fl) / 3600; base = float(row[0]) if row else 0.0
     bats, drones, mech_alerts = {}, {}, []
     for f in fl:
+        dur = f["duration"] or 0
         b = bats.setdefault(f["battery_sn"] or "desconhecida", {"sn": f["battery_sn"] or "desconhecida", "flights": 0, "hours": 0})
-        b["flights"] += 1; b["hours"] += f["duration"] / 3600
+        b["flights"] += 1; b["hours"] += dur / 3600
         mt = json.loads(f["meta"]) if f.get("meta") else {}
         dr = mt.get("drone") or {}
         key = dr.get("sn") or dr.get("type") or "DJI Mini 3"
         dn = drones.setdefault(key, {"sn": dr.get("sn") or "—", "name": dr.get("name") or "", "type": dr.get("type") or "DJI Mini 3", "flights": 0, "hours": 0.0, "km": 0.0})
-        dn["flights"] += 1; dn["hours"] += f["duration"] / 3600; dn["km"] += (f["distance"] or 0) / 1000
+        dn["flights"] += 1; dn["hours"] += dur / 3600; dn["km"] += (f["distance"] or 0) / 1000
         mc = mt.get("mech") or {}
         if any(mc.get(k, 0) > 0 for k in ("vib_s", "force_s", "comp_s", "gimb_s")):
-            mech_alerts.append({"id": f["id"], "start": local(f["start"]).isoformat()[:16].replace("T", " "), "place": f["place"] or "", **mc})
+            st_s = local(f["start"]).isoformat()[:16].replace("T", " ") if f.get("start") else ""
+            mech_alerts.append({"id": f["id"], "start": st_s, "place": f["place"] or "", **mc})
     dups = {}
     for x in m: dups.setdefault(x["sha1"], []).append(x["path"])
-    return {"flights": len(fl), "hours": hours, "km": sum(f["distance"] for f in fl) / 1000,
+    return {"flights": len(fl), "hours": hours, "km": sum((f["distance"] or 0) for f in fl) / 1000,
             "photos": sum(x["kind"] == "photo" for x in m), "videos": sum(x["kind"] == "video" for x in m),
-            "max_alt": max((f["max_alt"] for f in fl), default=0),
+            "max_alt": max(((f["max_alt"] or 0) for f in fl), default=0),
             "by_month": sorted(Counter(f["start"][:7] for f in fl if f["start"]).items()),
             "places": Counter(f["place"] for f in fl if f["place"]).most_common(8),
             "batteries": list(bats.values()),
@@ -1925,6 +2013,7 @@ def _polys(g):
     return []
 
 def _ring_bbox(r):
+    if not r: return (0.0, 0.0, 0.0, 0.0)
     xs, ys = [p[0] for p in r], [p[1] for p in r]
     return min(xs), min(ys), max(xs), max(ys)
 
@@ -1950,15 +2039,20 @@ def _props(p):
 
 def air_check_pts(pts):
     """Verifica intersecção de uma lista de pontos [[t, lat, lon, alt], ...] contra camadas WFS do DECEA."""
+    res = {"checked": datetime.now().isoformat(timespec="seconds"), "hits": [], "near": [], "errors": [], "sev": 0}
+    if not pts:
+        res["failed"] = True
+        return res
     lats, lons = [p[1] for p in pts], [p[2] for p in pts]; pad = 0.15
     bb = (min(lons) - pad, min(lats) - pad, max(lons) + pad, max(lats) + pad)
-    res = {"checked": datetime.now().isoformat(timespec="seconds"), "hits": [], "near": [], "errors": [], "sev": 0}; ok = 0
+    ok = 0
     for layer, label, sev in AIR_CHECK:
         try: feats = _wfs(layer, bb); ok += 1
         except Exception as e: res["errors"].append(layer + ": " + str(e)[:80]); continue
         for f in feats:
             props = f.get("properties") or {}; ts = []
             for poly in _polys(f.get("geometry")):
+                if not poly or not poly[0]: continue
                 x0, y0, x1, y1 = _ring_bbox(poly[0])
                 for p in pts:
                     if x0 <= p[2] <= x1 and y0 <= p[1] <= y1 and _pip(p[2], p[1], poly[0]) and not any(_pip(p[2], p[1], h) for h in poly[1:]):
@@ -2029,7 +2123,7 @@ def _mission_out(r):
     d["max_vlos"] = round(max_vlos, 1)
     d["duration"] = dur_s
     d["est_battery_pct"] = min(100, est_bat)
-    d["batteries"] = int(d["meta"].get("batteries") or max(1, math.ceil(dur_s / (bat_min * 60.0 * 0.85))))
+    d["batteries"] = int(d["meta"].get("batteries") or max(1, ceil(dur_s / (bat_min * 60.0 * 0.85))))
     return d
 
 def _get_mission(mid: int):

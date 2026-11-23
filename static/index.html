@@ -811,6 +811,92 @@ input[type=range] {
   overflow: hidden;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
 }
+.cmp-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 92vw;
+  max-height: 68vh;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+  background: #05070b;
+  user-select: none;
+  touch-action: none;
+  cursor: ew-resize;
+}
+#modal .cmp-img {
+  display: block;
+  max-width: 92vw;
+  max-height: 68vh;
+  width: auto;
+  height: auto;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  pointer-events: none;
+}
+.cmp-after {
+  position: relative;
+  z-index: 1;
+}
+#modal .cmp-before {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  z-index: 2;
+  clip-path: inset(0 50% 0 0);
+}
+.cmp-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: var(--acc-cyan);
+  z-index: 4;
+  pointer-events: none;
+  transform: translateX(-1px);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.75);
+}
+.cmp-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(11, 17, 28, 0.92);
+  border: 2px solid var(--acc-cyan);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+.cmp-badge {
+  position: absolute;
+  top: 10px;
+  z-index: 3;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(5, 7, 11, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e2e8f0;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.cmp-badge.l { left: 10px; border-color: rgba(245, 158, 11, 0.55); }
+.cmp-badge.r { right: 10px; border-color: rgba(0, 210, 255, 0.55); }
 
 /* Responsividade da barra lateral em telas menores */
 @media (max-width: 1000px) {
@@ -1074,13 +1160,14 @@ input[type=range] {
       <label><input id="mf" type="checkbox" onchange="loadMedia()"> <span data-i18n="media.favs">Favoritas</span></label>
       <label><input id="mu" type="checkbox" onchange="loadMedia()"> <span data-i18n="media.unlinked">Sem voo associado</span></label>
       <button onclick="exportSel()" data-i18n="media.export_zip">Exportar selecionadas (ZIP)</button>
+      <button id="bcmp" onclick="compareSelected()" title="Selecione 2 fotos na galeria para comparar Antes / Depois" data-i18n="media.compare_btn" data-i18n-title="media.compare_title">◫ Comparar (2)</button>
       <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)" data-i18n="media.del_gallery" data-i18n-title="media.del_gallery_title">🗑 Remover da galeria</button>
       <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria" data-i18n="media.del_disk" data-i18n-title="media.del_disk_title">⚠️ Apagar do HD</button>
       <button id="bdet-batch" onclick="detectBatchMedia()" data-i18n="media.detect_ai">🤖 Detectar objetos (IA)</button>
-      <a id="a-detrep" href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
+      <a id="a-detrep" href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
     </div>
-    <div id="sembar" class="row" style="margin-top:6px;padding:7px 10px;background:var(--card);border:1px solid var(--bd);border-radius:8px">
+    <div id="sembar" class="row" style="margin-top:6px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px">
       <span style="font-size:12.5px;color:var(--acc-cyan);font-weight:600" data-i18n="media.sem_title">✨ Busca Semântica (CLIP)</span>
       <input id="msem" placeholder="Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…" data-i18n-ph="media.sem_ph" onkeydown="if(event.key==='Enter')runSemanticSearch()" style="min-width:260px;flex:1">
       <button class="on" onclick="runSemanticSearch()" data-i18n="media.sem_btn">Buscar visualmente</button>
@@ -1777,7 +1864,7 @@ function seek(i){
   if(homeLine&&FHOME)homeLine.setLatLngs([[FHOME.lat,FHOME.lon],ll]);
   const hdist=FHOME?Math.round(havDist(FHOME.lat,FHOME.lon,p[1],p[2])):0;
   $('#slider').value=i;window.CI=i;ch&&ch.draw();
-  $('#rd').textContent=`${fmt.t(p[0])} · Alt ${p[3]} m · ${(p[4]*3.6).toFixed(0)} km/h · Dist H ${hdist} m · Bat ${p[5]??'–'}%`;
+  $('#rd').textContent=`${fmt.t(p[0])} · Alt ${fmt.alt(p[3])} · ${fmt.kmh(p[4])} · Dist H ${fmt.alt(hdist)} · Bat ${p[5]??'–'}%`;
   updateCockpitHud(i);
 }
 function seekT(t){let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;seek(i);window.TNOW=t}
@@ -1813,7 +1900,7 @@ function updateVideoCamHud(sec){
   box.classList.toggle('hide',!parts.length);
 }
 function syncV(i){
-  if(!FV.length)return;const t=T[i][0];let k=0;FV.forEach((v,j)=>{if(v.off<=t)k=j});
+  if(!FV.length||!T.length||!T[i])return;const t=T[i][0];let k=0;FV.forEach((v,j)=>{if(v.off<=t)k=j});
   if(k!==CV){loadV(k,!$('#vid').paused,t);return}
   const el=$('#vid'),x=t-FV[CV].off,d=el.duration;scrubUntil=performance.now()+300;
   el.currentTime=Math.max(0,isFinite(d)?Math.min(x,d-0.05):x);
@@ -1821,23 +1908,24 @@ function syncV(i){
 }
 function goT(t){seekT(t);syncV(+$('#slider').value)}
 (function(){const el=$('#vid');
-  el.onplay=()=>{$('#play').textContent='⏸ Pausar'};
-  el.onpause=()=>{if(!tm)$('#play').textContent='▶ Replay'};
+  el.onplay=()=>{$('#play').textContent=t('fdet.pause')};
+  el.onpause=()=>{if(!tm)$('#play').textContent=t('fdet.replay')};
   el.ontimeupdate=()=>{
     updateVideoCamHud(el.currentTime);
     if(performance.now()<scrubUntil||!FV.length||!T.length)return;
     seekT(el.currentTime+FV[CV].off)};
   el.onended=()=>{if(CV+1<FV.length)loadV(CV+1,true)};
   $('#play').onclick=()=>{const sl=$('#slider');
+    if(!T.length)return;
     if(FV.length){
       if(!el.paused){el.pause();return}
       const x=T[+sl.value][0]-FV[CV].off;
       el.currentTime=(x<0||(isFinite(el.duration)&&x>=el.duration-0.1))?0:x;
       el.play().catch(()=>{});return}
-    if(tm){clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';return}
+    if(tm){clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');return}
     if(+sl.value>=+sl.max)seek(0);
-    $('#play').textContent='⏸ Pausar';
-    tm=setInterval(()=>{const end=T[T.length-1][0],t=(window.TNOW||0)+0.1*RATE;if(t>=end){seekT(end);clearInterval(tm);tm=null;$('#play').textContent='▶ Replay';return}seekT(t)},100)};
+    $('#play').textContent=t('fdet.pause');
+    tm=setInterval(()=>{const end=T[T.length-1][0],t0=(window.TNOW||0)+0.1*RATE;if(t0>=end){seekT(end);clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');return}seekT(t0)},100)};
 })();
 
 function renderFlightChart(){
@@ -1853,10 +1941,11 @@ function renderFlightChart(){
       {label:'Célula 2 (V)',data:T.map(p=>Array.isArray(p[14])&&p[14][4]?p[14][4]:null),borderColor:'#ec4899',backgroundColor:'#ec4899',borderWidth:1.5,pointRadius:0}
     ];
   }else{
+    const imp=IMP();
     datasets=[
-      {label:'Altura (m)',data:T.map(p=>p[3]),borderColor:'#00d2ff',backgroundColor:'#00d2ff',borderWidth:2,pointRadius:0},
-      {label:'Velocidade (km/h)',data:T.map(p=>p[4]*3.6),borderColor:'#f59e0b',backgroundColor:'#f59e0b',borderWidth:2,pointRadius:0},
-      {label:'Bateria (%)',data:T.map(p=>p[5]),borderColor:'#10b981',backgroundColor:'#10b981',borderWidth:2,pointRadius:0}
+      {label:imp?'Altitude (ft)':'Altura (m)',data:T.map(p=>imp?+(p[3]*3.28084).toFixed(1):p[3]),borderColor:'#00d2ff',backgroundColor:'#00d2ff',borderWidth:2,pointRadius:0},
+      {label:imp?'Speed (mph)':'Velocidade (km/h)',data:T.map(p=>+(p[4]*(imp?2.23694:3.6)).toFixed(1)),borderColor:'#f59e0b',backgroundColor:'#f59e0b',borderWidth:2,pointRadius:0},
+      {label:imp?'Battery (%)':'Bateria (%)',data:T.map(p=>p[5]),borderColor:'#10b981',backgroundColor:'#10b981',borderWidth:2,pointRadius:0}
     ];
   }
   ch=new Chart($('#fchart'),{type:'line',data:{labels,datasets},options:{animation:false,scales:{x:{ticks:{maxTicksLimit:8}}}},plugins:[cursor]});
@@ -1868,8 +1957,12 @@ function setChartMode(m){
   renderFlightChart();
 }
 
+let FSEQ=0;
 async function openFlight(id){
-  window.CURF=id;show('voos');const f=await api('/flights/'+id);T=f.track;FST=f.start_local;FEV=f.events;
+  const seq=++FSEQ;
+  window.CURF=id;show('voos');const f=await api('/flights/'+id);
+  if(seq!==FSEQ)return;
+  T=f.track||[];FST=f.start_local;FEV=f.events||[];
   const mt=f.meta||{};FHOME=mt.home||(T.length?{lat:T[0][1],lon:T[0][2],max_dist:0}:null);
   clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');
   $('#flist').classList.add('hide');$('#fdet').classList.remove('hide');
@@ -1901,22 +1994,32 @@ async function openFlight(id){
     L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
   }
   fg&&fm.removeLayer(fg);
-  const line=L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4});
-  mk=L.circleMarker([T[0][1],T[0][2]],{radius:8,color:'#fff',weight:2,fillColor:'#1890ff',fillOpacity:1});
-  const layers=[line,mk];
+  const layers=[];let line=null;
+  if(T.length){
+    line=L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4});
+    mk=L.circleMarker([T[0][1],T[0][2]],{radius:8,color:'#fff',weight:2,fillColor:'#1890ff',fillOpacity:1});
+    layers.push(line,mk);
+  }
   if(FHOME){
     homeMk=L.marker([FHOME.lat,FHOME.lon],{icon:HOMEI}).bindPopup(`<b>${t('fdet.home_point')}</b><br>${FHOME.lat.toFixed(5)}, ${FHOME.lon.toFixed(5)}${FHOME.rth_alt?'<br>'+t('fdet.rth_alt')+' '+fmt.alt(FHOME.rth_alt):''}`);
-    homeLine=L.polyline([[FHOME.lat,FHOME.lon],[T[0][1],T[0][2]]],{color:'#f59e0b',weight:1.8,dashArray:'5 5',opacity:0.85});
-    layers.push(homeLine,homeMk);
+    layers.push(homeMk);
+    if(T.length){
+      homeLine=L.polyline([[FHOME.lat,FHOME.lon],[T[0][1],T[0][2]]],{color:'#f59e0b',weight:1.8,dashArray:'5 5',opacity:0.85});
+      layers.push(homeLine);
+    }
   }
   fg=L.featureGroup(layers).addTo(fm);
-  const ms=await api('/media?flight_id='+id);window.FMED=ms;fotos2d(ms);
+  const ms=await api('/media?flight_id='+id);
+  if(seq!==FSEQ)return;
+  window.FMED=ms;fotos2d(ms);
   FV=ms.filter(m=>m.kind=='video').map(v=>{const b=vOff(v),a=v.sync_adj||0;return{...v,base:b,off:b+a}}).sort((a,b)=>a.off-b.off);CV=0;
   $('#fplayer').classList.toggle('one',!FV.length);$('#fvbox').classList.toggle('hide',!FV.length);
-  fm.invalidateSize();fm.fitBounds(line.getBounds());
+  fm.invalidateSize();
+  if(line)fm.fitBounds(line.getBounds());
+  else if(FHOME)fm.setView([FHOME.lat,FHOME.lon],15);
   window.CI=0;renderFlightChart();
-  const sl=$('#slider');sl.max=T.length-1;sl.value=0;sl.oninput=()=>{const i=+sl.value;seek(i);syncV(i)};
-  seek(0);
+  const sl=$('#slider');sl.max=Math.max(0,T.length-1);sl.value=0;sl.oninput=()=>{const i=+sl.value;seek(i);syncV(i)};
+  if(T.length)seek(0);else $('#rd').textContent='–';
   $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${e.t})">${fmt.t(e.t)} ${esc(trEvent(e.label))}</button>`).join('');
   const n=$('#fnotes');n.value=f.notes||'';n.onchange=async()=>{await api('/flights/'+id,J('PATCH',{notes:n.value}));toast(t('flights.note_saved'))};
   $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||`<span style="color:var(--mut)">${t('fdet.no_media')}</span>`;
@@ -2157,7 +2260,7 @@ async function build3d(){
       CUR3=Object.assign({p:a.p,q:Cesium.Cartesian3.fromRadians(c.longitude,c.latitude,a.g)},ATT3?frame3(a.p,a.yaw,a.gp):{});
       const now=performance.now();
       if(now-(window.S3T||0)>250){window.S3T=now;
-        $('#s3d').textContent=Math.round(c.height-a.g)+' m sobre o terreno'+(ATT3?' · câmera '+Math.round(a.gp)+'°':' · reimporte os logs para ver direção e câmera')}});
+        $('#s3d').textContent=fmt.alt(Math.round(c.height-a.g))+(IMP()?' AGL':' sobre o terreno')+(ATT3?(IMP()?' · cam ':' · câmera ')+Math.round(a.gp)+'°':' · reimporte os logs para ver direção e câmera')}});
     msg('');cam3d('free');
   }catch(e){
     msg('<div><b>Não foi possível carregar o 3D.</b><br>Confira a chave do Cesium no start.sh e a internet.<br><small>'+String(e&&e.message||e).replace(/[<>&]/g,'')+'</small></div>')}}
@@ -2185,10 +2288,10 @@ function fotos2d(ms){
       const d=havDist(ll[0],ll[1],phs[idx-1].lat,phs[idx-1].lon),pct=Math.max(0,Math.min(98,Math.round((1-d/Math.max(10,fp.gw))*100)));
       if(pct>0)ovl=` · Sobreposição: <b>${pct}%</b>`;
     }
-    const fpHtml=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · ${fp.gw}×${fp.gh} m${ovl}</div>`:'';
+    const fpHtml=fp?`<div style="font-size:11.5px;color:#38bdf8;margin:2px 0">GSD: <b>${fp.gsd} cm/px</b> · ${fmt.alt(fp.gw)}×${fmt.alt(fp.gh)}${ovl}</div>`:'';
     L.marker(ll,{icon:PHI}).addTo(FOTL).bindPopup('<div style="text-align:center"><img src="/api/media/'+m.id+'/thumb" style="width:260px;max-width:100%;cursor:zoom-in;border-radius:6px" onclick="openM2('+m.id+')"><div style="margin:4px 0">'+fmt.d(m.taken)+'</div>'+fpHtml+'<a href="#" onclick="openM2('+m.id+');return false">Abrir em tamanho grande</a></div>',{maxWidth:290});
     if(fp&&FOTFP)L.polygon(fp.corners,{color:'#00d2ff',weight:1.5,fillColor:'#1890ff',fillOpacity:0.2}).addTo(FOTFP)
-      .bindPopup(`<b>📐 Pegada da Foto #${m.id}</b><br>GSD: <b>${fp.gsd} cm/pixel</b><br>Cobertura: <b>${fp.gw} × ${fp.gh} m</b> (alt. ~${fp.alt} m)${ovl}`);
+      .bindPopup(`<b>📐 Pegada da Foto #${m.id}</b><br>GSD: <b>${fp.gsd} cm/pixel</b><br>Cobertura: <b>${fmt.alt(fp.gw)} × ${fmt.alt(fp.gh)}</b> (alt. ~${fmt.alt(fp.alt)})${ovl}`);
   })}
 /* ---------- velocidade do replay ---------- */
 let RATE=1;
@@ -2296,13 +2399,16 @@ function loadPannellum(){
     const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js';s.onload=ok;s.onerror=err;document.head.appendChild(s);
   });
 }
+let PANO=null;
 async function openPano360(url){
   const wrap=$('#mview');if(!wrap)return;
   wrap.innerHTML='<div id="pano360"></div>';
   try{
     await loadPannellum();
-    window.pannellum.viewer('pano360',{type:'equirectangular',panorama:url,autoLoad:true,compass:true,showZoomCtrl:true});
-  }catch(e){alert('Não foi possível carregar o visualizador 360°.')}
+    if(!$('#pano360'))return;
+    if(PANO){try{PANO.destroy()}catch(e){}PANO=null}
+    PANO=window.pannellum.viewer('pano360',{type:'equirectangular',panorama:url,autoLoad:true,compass:true,showZoomCtrl:true});
+  }catch(e){if($('#pano360'))alert('Não foi possível carregar o visualizador 360°.')}
 }
 let SHOW_BOXES=true;
 function drawDetBoxes(m){
@@ -2398,6 +2504,7 @@ async function openMedia(id){
     ${m.kind=='photo'&&hasDets?`<button id="btogbox" onclick="toggleDetBoxes()">${SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}</button>`:''}
     <button onclick="grabModalCoord(${id})">📍 Extrair coordenada${m.kind=='video'?' deste frame':''}</button>
     ${m.kind=='photo'?`<button onclick="openPano360('/api/media/${id}/file')">🌐 Ver em 360°</button>`:`<button onclick="exportHudVideo(${id})">🎬 Exportar clipe com HUD (MP4)</button>`}
+    ${m.kind=='photo'&&m.lat!=null&&m.lon!=null?`<button onclick="openCompareAuto(${id})">◫ ${t('media.compare_gps')}</button>`:''}
     ${m.flight_id?`<button onclick="closeM();openFlight(${m.flight_id})">Ver voo</button>`:''}
     <button onclick="deleteModalMedia(false)" title="Remove apenas da galeria (mantém o arquivo no HD)">🗑 Remover da galeria</button>
     <button onclick="deleteModalMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente este arquivo do HD e da galeria">⚠️ Apagar do HD</button>
@@ -2406,7 +2513,99 @@ async function openMedia(id){
   $('#modal').classList.remove('hide');fillFlightSel(m);
   if(m.orient==='pano')openPano360(`/api/media/${id}/file`);
 }
-function closeM(){$('#modal').classList.add('hide');$('#modal').innerHTML=''}
+function closeM(){if(PANO){try{PANO.destroy()}catch(e){}PANO=null}$('#modal').classList.add('hide');$('#modal').innerHTML='';CMP=null}
+let CMP=null;
+function setCmpPos(v){
+  const p=Math.max(0,Math.min(100,+v));
+  if(CMP)CMP.pos=p;
+  const bf=$('#cmpbefore'),ln=$('#cmpline'),hd=$('#cmphandle'),sl=$('#cmpsl');
+  if(bf)bf.style.clipPath=`inset(0 ${100-p}% 0 0)`;
+  if(ln)ln.style.left=p+'%';
+  if(hd)hd.style.left=p+'%';
+  if(sl&&+sl.value!==p)sl.value=p;
+}
+function _cmpAngDiff(a,b){
+  if(a==null||b==null)return null;
+  return Math.round(Math.abs(((+a-+b+180)%360+360)%360-180)*10)/10;
+}
+function renderCompare(st){
+  CMP=st;
+  const {left:L,right:R,baseId,candidates,radius,pos=50}=st;
+  const lm=L.meta||{},rm=R.meta||{};
+  const info=[];
+  if(L.lat!=null&&L.lon!=null&&R.lat!=null&&R.lon!=null){
+    const d=havDist(L.lat,L.lon,R.lat,R.lon);
+    info.push(`📍 ${d<1000?d.toFixed(1)+' m':(d/1000).toFixed(2)+' km'}`);
+  }
+  const dy=_cmpAngDiff(lm.gyaw,rm.gyaw);
+  if(dy!=null)info.push(`🧭 Δyaw ${dy}°`);
+  if(L.taken&&R.taken){
+    const days=Math.round(Math.abs(new Date(R.taken)-new Date(L.taken))/86400000);
+    info.push(`⏱ ${days} ${t('media.compare_days')}`);
+  }
+  const candOpts=candidates.length?`<select id="cmpsel" onchange="pickCmpCand(this.value)">${candidates.map(c=>`<option value="${c.id}" ${(c.id===L.id||c.id===R.id)?'selected':''}>${fmt.d(c.taken)} · ${c.dist_m} m${c.yaw_diff!=null?' · Δ'+c.yaw_diff+'°':''}</option>`).join('')}</select>`:'';
+  const radBtns=baseId?[50,150,500].map(r=>`<button class="${radius===r?'on':''}" onclick="openCompareAuto(${baseId},${r})">${r}m</button>`).join(''):'';
+  $('#modal').innerHTML=`
+    <div id="cmpwrap" class="cmp-wrap">
+      <img class="cmp-img cmp-after" src="/api/media/${R.id}/file" alt="">
+      <img id="cmpbefore" class="cmp-img cmp-before" src="/api/media/${L.id}/file" alt="">
+      <div id="cmpline" class="cmp-line"></div>
+      <div id="cmphandle" class="cmp-handle">⇆</div>
+      <div class="cmp-badge l">${t('media.compare_before')} · ${fmt.d(L.taken)}${lm.rel_alt!=null?' · '+lm.rel_alt+'m':''}</div>
+      <div class="cmp-badge r">${t('media.compare_after')} · ${fmt.d(R.taken)}${rm.rel_alt!=null?' · '+rm.rel_alt+'m':''}</div>
+    </div>
+    <div style="color:#94a3b8;font-size:12.5px;text-align:center">${info.join('  ·  ')||''}</div>
+    <div class="row" style="align-items:center;justify-content:center;gap:8px">
+      <input id="cmpsl" type="range" min="0" max="100" value="${pos}" oninput="setCmpPos(this.value)" style="width:200px;accent-color:var(--acc-cyan)">
+      ${candOpts}${radBtns}
+      <button onclick="swapCompare()">⇄ ${t('media.compare_swap')}</button>
+      ${baseId?`<button onclick="openMedia(${baseId})">← ${t('media.compare_back')}</button>`:''}
+      <button onclick="closeM()">${t('media.compare_close')}</button>
+    </div>`;
+  $('#modal').classList.remove('hide');
+  setCmpPos(pos);
+  const w=$('#cmpwrap');
+  if(w){
+    const upd=e=>{const r=w.getBoundingClientRect();if(r.width>0)setCmpPos(((e.clientX-r.left)/r.width)*100)};
+    w.onpointerdown=e=>{w.setPointerCapture(e.pointerId);upd(e);w.onpointermove=upd};
+    w.onpointerup=w.onpointercancel=()=>{w.onpointermove=null};
+  }
+}
+function swapCompare(){
+  if(!CMP)return;
+  renderCompare({...CMP,left:CMP.right,right:CMP.left});
+}
+function pickCmpCand(cid){
+  if(!CMP)return;
+  const cand=CMP.candidates.find(c=>c.id===+cid);
+  const base=(CMP.left.id===CMP.baseId?CMP.left:CMP.right);
+  if(!cand||!base)return;
+  const pair=[base,cand].sort((a,b)=>String(a.taken||'').localeCompare(String(b.taken||'')));
+  renderCompare({...CMP,left:pair[0],right:pair[1]});
+}
+async function openCompareAuto(id,radius=150){
+  try{
+    const r=await api(`/media/${id}/nearby?radius_m=${radius}&limit=40`);
+    if(!r.items||!r.items.length){
+      if(radius<500&&confirm(t('media.compare_none_retry',{r:radius})))return openCompareAuto(id,500);
+      if(!CMP)toast(t('media.compare_none',{r:radius}));
+      else alert(t('media.compare_none',{r:radius}));
+      return;
+    }
+    const pair=[r.base,r.items[0]].sort((a,b)=>String(a.taken||'').localeCompare(String(b.taken||'')));
+    renderCompare({left:pair[0],right:pair[1],baseId:id,candidates:r.items,radius,pos:50});
+  }catch(e){alert(e.message)}
+}
+async function compareSelected(){
+  if(sel.size!==2)return alert(t('media.compare_need2'));
+  const ids=[...sel];
+  try{
+    const ms=await Promise.all(ids.map(id=>api('/media/'+id)));
+    if(ms.some(m=>m.kind!=='photo'))return alert(t('media.compare_photos_only'));
+    ms.sort((a,b)=>String(a.taken||'').localeCompare(String(b.taken||'')));
+    renderCompare({left:ms[0],right:ms[1],baseId:null,candidates:[],radius:150,pos:50});
+  }catch(e){alert(e.message)}
+}
 async function favM(){await api('/media/'+curM.id,J('PATCH',{fav:curM.fav?0:1}));openMedia(curM.id)}
 async function tagsM(){const t=prompt('Tags separadas por vírgula (funcionam como álbuns):',curM.tags||'');
   if(t!==null){await api('/media/'+curM.id,J('PATCH',{tags:t}));openMedia(curM.id)}}
@@ -2422,7 +2621,7 @@ async function deleteModalMedia(disk){
     closeM();
     toast(disk?(r.disk_deleted?'✓ Arquivo apagado do HD e da galeria':'✓ Removido da galeria (arquivo estava offline)'):'✓ Removido apenas da galeria');
     if(!$('#midia').classList.contains('hide'))loadMedia();
-    if(!$('#voos').classList.contains('hide')&&!$('#fdet').classList.contains('hide')&&typeof curF!=='undefined'&&curF)openFlight(curF);
+    if(!$('#voos').classList.contains('hide')&&!$('#fdet').classList.contains('hide')&&window.CURF)openFlight(window.CURF);
   }catch(e){alert('Erro ao remover mídia: '+e.message)}
 }
 async function deleteSelectedMedia(disk){
@@ -2843,7 +3042,7 @@ async function sdDetect(silent=false){
   try{
     const r=await api('/sd/detect');const cs=r.candidates||[];
     if(!cs.length){box.innerHTML=silent?'':`<span style="color:var(--mut);font-size:12.5px">${t('config.sd_none')}</span>`;return}
-    box.innerHTML=cs.map(c=>`<button onclick="$('#sd-src').value='${esc(c.win).replace(/'/g,"&#39;")}';sdPreview()">💾 ${esc(c.win)}</button>`).join('');
+    box.innerHTML=cs.map(c=>`<button data-win="${esc(c.win)}" onclick="$('#sd-src').value=this.dataset.win;sdPreview()">💾 ${esc(c.win)}</button>`).join('');
     if(!$('#sd-src').value)$('#sd-src').value=cs[0].win;
   }catch(e){if(!silent)box.textContent=msgErr(e)}
 }
@@ -3068,7 +3267,10 @@ window.addEventListener('keydown',e=>{
   }
   const tag=(e.target&&e.target.tagName)||'';
   if(['INPUT','TEXTAREA','SELECT'].includes(tag))return;
-  if(!$('#fdet').classList.contains('hide')&&$('#modal').classList.contains('hide')){
+  if(CMP&&!$('#modal').classList.contains('hide')){
+    if(e.key==='ArrowLeft'){e.preventDefault();setCmpPos((CMP.pos||50)-5)}
+    else if(e.key==='ArrowRight'){e.preventDefault();setCmpPos((CMP.pos||50)+5)}
+  }else if(!$('#fdet').classList.contains('hide')&&$('#modal').classList.contains('hide')){
     if(e.code==='Space'){e.preventDefault();$('#play').click()}
     else if(e.key==='ArrowLeft'&&T.length){e.preventDefault();goT(Math.max(0,(window.TNOW||0)-5))}
     else if(e.key==='ArrowRight'&&T.length){e.preventDefault();goT(Math.min(T[T.length-1][0],(window.TNOW||0)+5))}
