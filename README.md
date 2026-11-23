@@ -183,15 +183,16 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 - **Busca Semântica Local em Fotos (`CLIP ViT-B/32 ONNX`):** Indexa fotos localmente em `512` dimensões no SQLite (`clip_emb`) e permite buscar imagens por descrição visual offline em português ou inglês (ex.: *"praia pôr do sol"*, *"barco"*, *"telhado"*, *"lagoa"*), exibindo a pontuação de similaridade.
 - **Galeria Inteligente, Comparação Temporal e Visualizador 360° (`Pannellum`):** Filtros para fotos/vídeos **Verticais `9:16` (Modo Retrato do Mini 3)**, **Horizontais**, **Panoramas `360°`** e **`4K`**, visualizador esférico 360° interativo no modal, **Comparação Temporal (*Before / After*)** com slider divisor (*split view*) entre 2 fotos da galeria ou fotos próximas no mesmo GPS/ângulo (`/api/media/{id}/nearby`) e opção de **remover mídias apenas da galeria** ou **apagar permanentemente do HD** (individualmente no modal ou em lote pelos itens marcados).
 - **Segurança Local-First:**
-  - Servidor restrito ao *loopback* local (`127.0.0.1`), protegido por `TrustedHostMiddleware`, validação de `Origin`/`Referer` contra CSRF, sanitização contra *CSV Injection* e bloqueio de diretórios sensíveis do sistema (`/mnt/c/Windows`, `/mnt/c/Users`, etc.).
+  - Servidor restrito ao *loopback* local (`127.0.0.1`), protegido por `TrustedHostMiddleware`, validação estrita de `Origin`/`Referer` e `Sec-Fetch-Site: cross-site` contra CSRF em métodos mutáveis (`POST`/`PUT`/`PATCH`/`DELETE`), cabeçalhos `Content-Security-Policy` (CSP), `X-Content-Type-Options: nosniff` e `X-Frame-Options: SAMEORIGIN`, hashes SRI (`SHA-384`) nas bibliotecas CDN, sanitização contra *CSV Injection* e XSS, e bloqueio *case-insensitive* de diretórios sensíveis do Windows no WSL2 (`/mnt/c/windows`, `/mnt/c/users`, `/mnt/c/program files`, `/mnt/c/programdata`).
+  - Banco SQLite em modo **WAL** (`journal_mode=WAL`, `busy_timeout=30000`) com fechamento explícito de conexões e proteção contra perda de status de backup quando o HD externo está desconectado.
 - **Suporte Multilíngue (i18n) e Unidades Imperiais:**
   - Seletor de idioma na barra lateral e em Configurações para **Português (BR)**, **English** e **Español** (`static/i18n/{pt-BR,en,es}.json`), com persistência em `localStorage` e no SQLite (`/api/lang`).
   - Em **English**, as medidas de telemetria, mapas, estatísticas e relatórios HTML/PDF são convertidas automaticamente para o **sistema imperial** (`ft`, `mi`, `mph`, `ft/s`, `°F`); em Português e Español, permanecem no sistema métrico (`m`, `km`, `km/h`, `m/s`, `°C`).
   - A busca em linguagem natural (`nlParse`) também reconhece expressões em português, inglês e espanhol (incluindo `ft`, `mi` e `mph`).
 - **Atalhos de Teclado:**
   - `Espaço`: Pausar / Reproduzir o replay na tela de detalhe do voo.
-  - `←` / `→`: Retroceder ou avançar 5 segundos no replay do voo.
-  - `Esc`: Fechar o modal de foto/vídeo/360° ou a barra de coordenada capturada.
+  - `←` / `→`: Retroceder ou avançar 5 segundos no replay do voo (ou deslizar o divisor *Before / After* no comparador de fotos).
+  - `Esc`: Fechar o modal de foto/vídeo/360°/comparador ou a barra de coordenada capturada.
 
 ---
 
@@ -209,6 +210,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KML/GPX/GeoJSON). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Previsão horária de janela de voo (Open-Meteo: vento em altitude, rajadas, chuva, visibilidade + índice Kp NOAA). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
+| `GET` | `/api/media/{mid}/nearby` | Lista fotos próximas à coordenada GPS de uma foto base (`radius_m`), ordenadas por distância e ângulo (`Δyaw`). |
 | `DELETE` / `POST` | `/api/media/{mid}?disk=0\|1` & `/api/media/delete-batch` | Remove mídia(s) apenas da galeria/banco ou também apaga o(s) arquivo(s) do HD (com validação de pasta permitida). |
 | `GET` | `/api/media/{mid}/srt` | Retorna a trilha segundo a segundo do arquivo `.SRT` do vídeo (GPS, altitude e câmera). |
 | `GET` | `/api/media/{mid}/hud-video` | Gera e baixa via `ffmpeg` um clipe `.mp4` com HUD de telemetria embutido. |
