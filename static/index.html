@@ -1018,7 +1018,7 @@ input[type=range] {
           <button class="on" onclick="saveDraftMission()" style="margin-left:auto;font-size:12px;padding:5px 12px" data-i18n="plan.save">💾 Salvar Missão</button>
         </div>
       </div>
-      <div id="mwx" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:685;width:min(470px,94vw);max-height:76vh;display:flex;flex-direction:column;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
+      <div id="mwx" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:685;width:min(700px,94vw);max-height:76vh;display:flex;flex-direction:column;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
         <div class="row" style="margin:0 0 6px;justify-content:space-between">
           <b style="color:var(--acc-cyan)" data-i18n="wx.title">🌤 Janela de Voo (Posso Voar?)</b>
           <div class="row" style="margin:0;gap:6px">
@@ -1032,7 +1032,7 @@ input[type=range] {
           </div>
         </div>
         <div id="wx-head" style="font-size:11.5px;color:#94a3b8;margin-bottom:6px" data-i18n="wx.hint">Clique em qualquer ponto do mapa para consultar vento em altitude, rajadas, chuva e índice Kp.</div>
-        <div id="wx-body" style="overflow-y:auto;font-size:12px"></div>
+        <div id="wx-body" style="overflow:auto;font-size:12px"></div>
       </div>
       <div class="maphint" data-i18n="map.hint">Botão direito no mapa: salvar local favorito</div>
     </div>
@@ -1555,6 +1555,8 @@ function toggleWx(on,pt){
   if(WX_ON){
     const target=pt||WX_PT||(PLAN_WPS.length?{lat:PLAN_WPS[0][0],lon:PLAN_WPS[0][1]}:null)||(map?{lat:map.getCenter().lat,lon:map.getCenter().lng}:null);
     if(target)loadWxForecast(target.lat,target.lon);
+  }else if(L_.wx){
+    L_.wx.clearLayers();
   }
 }
 async function menuWeather(){
@@ -1774,7 +1776,7 @@ async function loadMap(){
       const modeLbl=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
       const extra=mt.est_photos?`<br>${t('map.layer.photos')}: <b>${esc(mt.est_photos)}</b> · GSD: <b>${esc(mt.gsd_cm)} cm/px</b> · ${t('flights.col.battery')}: <b>${esc(m.batteries||1)}</b>`:'';
       all.push(L.polyline(pts,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.missoes)
-        .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · <b>${m.est_battery_pct}%</b>${extra}<br>${t('plan.alt_lbl')} ${fmt.alt(m.alt)} · VLOS ${t('map.max_alt_short')} ${fmt.alt(m.max_vlos)}<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
+        .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · <b>${m.est_battery_pct}%</b>${extra}<br>${t('plan.alt_lbl')} ${fmt.alt(m.alt)} · VLOS ${t('map.max_alt_short')} ${fmt.alt(m.max_vlos)}<br><a href="/api/missions/${m.id}/kmz" title="WPML DJI Fly / Pilot 2"><b>KMZ (DJI)</b></a> · <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
     }
   });
   ph.forEach((p,idx)=>{
@@ -3243,7 +3245,7 @@ async function loadSpots(){
     const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">${t('spots.wx_btn')}</button>`:'';
     const modeTag=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
     const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${esc(mt.est_photos)} ${t('map.layer.photos').toLowerCase()} · GSD ${esc(mt.gsd_cm)} cm/px${m.batteries>1?' · 🔋 '+esc(m.batteries):''}</span>`:'';
-    return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${fmt.alt(m.alt)})<td>${fmt.km(m.distance)}<td>${fmt.alt(m.max_vlos)} ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">${t('spots.view_map')}</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">${t('spots.check_air')}</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">${t('spots.remove')}</button></tr>`;
+    return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${fmt.alt(m.alt)})<td>${fmt.km(m.distance)}<td>${fmt.alt(m.max_vlos)} ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">${t('spots.view_map')}</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">${t('spots.check_air')}</button> <a href="/api/missions/${m.id}/kmz" title="WPML DJI Fly / Pilot 2"><b>KMZ (DJI)</b></a> · <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">${t('spots.remove')}</button></tr>`;
   }).join('');
   $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">${t('spots.missions_title')}</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">${t('spots.plan_new')}</button></div>`+
    (ms.length?`<table><tr><th>${t('spots.col.mission')}<th>${t('spots.col.wps')}<th>${t('spots.col.dist')}<th>${t('spots.col.vlos')}<th>${t('spots.col.dur')}<th>${t('spots.col.bat')}<th>${t('spots.col.air')}<th>${t('spots.col.actions')}</tr>${mRows}</table>`:`<p style="color:var(--mut)">${t('spots.no_missions')}</p>`)+

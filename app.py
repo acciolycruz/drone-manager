@@ -2216,6 +2216,164 @@ def mission_geojson(mid: int):
     feat = {"type": "FeatureCollection", "features": feats}
     return attach(json.dumps(feat, ensure_ascii=False, indent=2), f"missao_{mid}.geojson", "application/geo+json")
 
+_WPML_DRONES = {
+    "mini3": (91, 0, 81),
+    "mini4": (91, 0, 81),
+    "mavic3": (77, 0, 52),
+    "p4": (60, 0, 39),
+}
+
+def _bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calcula o azimute em graus [-180, 180] de (lat1, lon1) para (lat2, lon2)."""
+    p1, p2, dl = radians(lat1), radians(lat2), radians(lon2 - lon1)
+    b = degrees(atan2(sin(dl) * cos(p2), cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)))
+    return ((b + 180.0) % 360.0) - 180.0
+
+def _wpml_mission_config(drone_enum: int, drone_sub: int, payload_enum: int, spd: float) -> str:
+    return (
+        "<wpml:missionConfig>"
+        "<wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>"
+        "<wpml:finishAction>goHome</wpml:finishAction>"
+        "<wpml:exitOnRCLost>goContinue</wpml:exitOnRCLost>"
+        "<wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>"
+        "<wpml:takeOffSecurityHeight>20</wpml:takeOffSecurityHeight>"
+        f"<wpml:globalTransitionalSpeed>{spd:.1f}</wpml:globalTransitionalSpeed>"
+        f"<wpml:droneInfo><wpml:droneEnumValue>{drone_enum}</wpml:droneEnumValue>"
+        f"<wpml:droneSubEnumValue>{drone_sub}</wpml:droneSubEnumValue></wpml:droneInfo>"
+        f"<wpml:payloadInfo><wpml:payloadEnumValue>{payload_enum}</wpml:payloadEnumValue>"
+        "<wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:payloadInfo>"
+        "</wpml:missionConfig>"
+    )
+
+def _wpml_actions(idx: int, total: int, mode: str, gimbal_pitch: float) -> str:
+    """Gera actionGroup WPML (gimbal no WP0 + disparo de foto em grade/órbita)."""
+    acts = []
+    if idx == 0 or mode == "orbit":
+        acts.append(
+            f"<wpml:action><wpml:actionId>{len(acts)}</wpml:actionId>"
+            "<wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>"
+            "<wpml:actionActuatorFuncParam><wpml:gimbalHeadingYawBase>aircraft</wpml:gimbalHeadingYawBase>"
+            "<wpml:gimbalRotateMode>absoluteAngle</wpml:gimbalRotateMode>"
+            "<wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable>"
+            f"<wpml:gimbalPitchRotateAngle>{gimbal_pitch:.1f}</wpml:gimbalPitchRotateAngle>"
+            "<wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable><wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle>"
+            "<wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable><wpml:gimbalYawRotateAngle>0</wpml:gimbalYawRotateAngle>"
+            "<wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable><wpml:gimbalRotateTime>0</wpml:gimbalRotateTime>"
+            "<wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:actionActuatorFuncParam></wpml:action>"
+        )
+    if mode in ("grid", "double_grid", "orbit"):
+        acts.append(
+            f"<wpml:action><wpml:actionId>{len(acts)}</wpml:actionId>"
+            "<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>"
+            "<wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>"
+            "<wpml:useGlobalPayloadLensIndex>1</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>"
+        )
+    if not acts:
+        return ""
+    return (
+        f"<wpml:actionGroup><wpml:actionGroupId>{idx}</wpml:actionGroupId>"
+        f"<wpml:actionGroupStartIndex>{idx}</wpml:actionGroupStartIndex>"
+        f"<wpml:actionGroupEndIndex>{idx}</wpml:actionGroupEndIndex>"
+        "<wpml:actionGroupMode>sequence</wpml:actionGroupMode>"
+        "<wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>"
+        f"{''.join(acts)}</wpml:actionGroup>"
+    )
+
+def _build_wpml_kmz(m: dict) -> bytes:
+    """Empacota a missão em KMZ nativo DJI WPML (wpmz/template.kml + wpmz/waylines.wpml)."""
+    wps = m["waypoints"]
+    alt_def = float(m.get("alt") or 60.0)
+    spd = max(1.0, min(15.0, float(m.get("speed") or 8.0)))
+    meta = m.get("meta") or {}
+    mode = meta.get("mode") or "waypoints"
+    drone_enum, drone_sub, payload_enum = _WPML_DRONES.get(meta.get("drone_preset") or "mini3", (91, 0, 81))
+    center = meta.get("center") if isinstance(meta.get("center"), list) and len(meta.get("center")) >= 2 else None
+    turn_mode = "coordinateTurn" if mode == "orbit" else "toPointAndStopWithDiscontinuityCurvature"
+    now_ms = int(time.time() * 1000)
+    m_cfg = _wpml_mission_config(drone_enum, drone_sub, payload_enum, spd)
+
+    tpl_pms, wpl_pms = [], []
+    for i, w in enumerate(wps):
+        lat, lon = float(w[0]), float(w[1])
+        w_alt = float(w[2]) if len(w) > 2 else alt_def
+        if mode == "orbit" and center:
+            hdg = _bearing_deg(lat, lon, float(center[0]), float(center[1]))
+            d_poi = hav(lat, lon, float(center[0]), float(center[1]))
+            gp = max(-90.0, min(0.0, -degrees(atan2(w_alt, d_poi)))) if d_poi > 1.0 else -35.0
+            hdg_xml = (
+                "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>smoothTransition</wpml:waypointHeadingMode>"
+                f"<wpml:waypointHeadingAngle>{hdg:.1f}</wpml:waypointHeadingAngle>"
+                "<wpml:waypointPoiPoint>0.000000,0.000000,0.000000</wpml:waypointPoiPoint>"
+                "<wpml:waypointHeadingAngleEnable>1</wpml:waypointHeadingAngleEnable>"
+                "<wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
+            )
+        else:
+            gp = -90.0 if mode in ("grid", "double_grid") else -15.0
+            hdg_xml = (
+                "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode>"
+                "<wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>"
+                "<wpml:waypointPoiPoint>0.000000,0.000000,0.000000</wpml:waypointPoiPoint>"
+                "<wpml:waypointHeadingAngleEnable>0</wpml:waypointHeadingAngleEnable>"
+                "<wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
+            )
+
+        turn_xml = (
+            f"<wpml:waypointTurnParam><wpml:waypointTurnMode>{turn_mode}</wpml:waypointTurnMode>"
+            "<wpml:waypointTurnDampingDist>0.2</wpml:waypointTurnDampingDist></wpml:waypointTurnParam>"
+        )
+        acts_xml = _wpml_actions(i, len(wps), mode, gp)
+        pt_xml = f"<Point><coordinates>{lon:.6f},{lat:.6f}</coordinates></Point><wpml:index>{i}</wpml:index>"
+
+        tpl_pms.append(
+            f"<Placemark>{pt_xml}"
+            f"<wpml:ellipsoidHeight>{w_alt:.1f}</wpml:ellipsoidHeight><wpml:height>{w_alt:.1f}</wpml:height>"
+            "<wpml:useGlobalHeight>0</wpml:useGlobalHeight><wpml:useGlobalSpeed>1</wpml:useGlobalSpeed>"
+            f"<wpml:useGlobalHeadingParam>0</wpml:useGlobalHeadingParam>{hdg_xml}"
+            f"<wpml:useGlobalTurnParam>1</wpml:useGlobalTurnParam>"
+            f"<wpml:gimbalPitchAngle>{gp:.1f}</wpml:gimbalPitchAngle>"
+            f"{acts_xml}</Placemark>"
+        )
+        wpl_pms.append(
+            f"<Placemark>{pt_xml}"
+            f"<wpml:executeHeight>{w_alt:.1f}</wpml:executeHeight><wpml:waypointSpeed>{spd:.1f}</wpml:waypointSpeed>"
+            f"{hdg_xml}{turn_xml}<wpml:useStraightLine>1</wpml:useStraightLine>"
+            f"{acts_xml}</Placemark>"
+        )
+
+    ns = 'xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.2"'
+    tpl_xml = (
+        f'<?xml version="1.0" encoding="UTF-8"?><kml {ns}><Document>'
+        f"<wpml:author>Drone Manager</wpml:author><wpml:createTime>{now_ms}</wpml:createTime><wpml:updateTime>{now_ms}</wpml:updateTime>"
+        f"{m_cfg}<Folder><wpml:templateType>waypoint</wpml:templateType><wpml:templateId>0</wpml:templateId>"
+        "<wpml:waylineCoordinateSysParam><wpml:coordinateMode>WGS84</wpml:coordinateMode>"
+        "<wpml:heightMode>relativeToStartPoint</wpml:heightMode>"
+        f"<wpml:globalShootHeight>{alt_def:.1f}</wpml:globalShootHeight></wpml:waylineCoordinateSysParam>"
+        f"<wpml:autoFlightSpeed>{spd:.1f}</wpml:autoFlightSpeed>"
+        f"<wpml:globalWaypointTurnMode>{turn_mode}</wpml:globalWaypointTurnMode>"
+        "<wpml:globalUseStraightLine>1</wpml:globalUseStraightLine>"
+        "<wpml:gimbalPitchMode>usePointSetting</wpml:gimbalPitchMode>"
+        f"{''.join(tpl_pms)}</Folder></Document></kml>"
+    )
+    wpl_xml = (
+        f'<?xml version="1.0" encoding="UTF-8"?><kml {ns}><Document>'
+        f"{m_cfg}<Folder><wpml:templateId>0</wpml:templateId>"
+        "<wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode><wpml:waylineId>0</wpml:waylineId>"
+        f"<wpml:distance>{float(m.get('distance') or 0):.1f}</wpml:distance>"
+        f"<wpml:duration>{float(m.get('duration') or 0):.1f}</wpml:duration>"
+        f"<wpml:autoFlightSpeed>{spd:.1f}</wpml:autoFlightSpeed>"
+        f"{''.join(wpl_pms)}</Folder></Document></kml>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("wpmz/template.kml", tpl_xml.encode("utf-8"))
+        zf.writestr("wpmz/waylines.wpml", wpl_xml.encode("utf-8"))
+    return buf.getvalue()
+
+@app.get("/api/missions/{mid}/kmz")
+def mission_kmz(mid: int):
+    m = _get_mission(mid)
+    return attach(_build_wpml_kmz(m), f"missao_{mid}.kmz", "application/vnd.google-earth.kmz")
+
 class RootIn(BaseModel):
     name: str = ""
     path: str

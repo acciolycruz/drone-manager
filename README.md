@@ -166,7 +166,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 ## 7. Principais Funcionalidades e Atalhos
 
 - **Menu Lateral de Operações Rápidas:**
-  - **Planejar missão pré-voo (Rota Livre, Grade, Grade Dupla 3D e Órbita POI):** Desenhe rotas manuais ou polígonos/órbitas no mapa para gerar automaticamente *waypoints* em zigue-zague com cálculo de **GSD desejado** (sincronizado com a altitude), **sobreposição frontal/lateral**, ângulo automático, estimativa de fotos, **divisão por bateria**, alcance VLOS (`H`), checagem no DECEA e exportação em **KML**, **GPX** e **GeoJSON**.
+  - **Planejar missão pré-voo (Rota Livre, Grade, Grade Dupla 3D e Órbita POI):** Desenhe rotas manuais ou polígonos/órbitas no mapa para gerar automaticamente *waypoints* em zigue-zague com cálculo de **GSD desejado** (sincronizado com a altitude), **sobreposição frontal/lateral**, ângulo automático, estimativa de fotos, **divisão por bateria**, alcance VLOS (`H`), checagem no DECEA e exportação em **KMZ nativo DJI (WPML)**, **KML**, **GPX** e **GeoJSON**.
   - **Consultar espaço aéreo:** Ativa a mira de inspeção direta no GeoServer do DECEA/GEOAISWEB ao clicar em qualquer ponto do mapa geral ou do mapa de detalhe do voo.
   - **Previsão de janela de voo ("Posso Voar?"):** Consulta previsão horária de 1 a 7 dias via Open-Meteo (vento a 10m, 80m e 120m, rajadas, chuva, nuvens, visibilidade, nascer/pôr do sol) e índice geomagnético **Kp** (NOAA SWPC), gerando semáforo por hora (🟢/🟡/🔴/🌙) e resumo das melhores janelas diurnas a partir do mapa, do planejador pré-voo ou da aba Locais.
   - **Busca em Linguagem Natural (sem IA externa):** Interpreta consultas em português como *"voos acima de 80 m em 2025"*, *"fotos sem voo"* ou *"voos perto de aeroporto"*.
@@ -207,7 +207,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `POST` | `/api/flights/{fid}/airspace-check` | Consulta WFS no GeoServer do DECEA (GEOAISWEB) para o trajeto do voo. |
 | `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` | Exporta a rota do voo em KML, GPX, GeoJSON (RFC 7946) ou relatório HTML/PDF para impressão. |
 | `GET` | `/api/logbook.csv` | Exporta o livro de bordo completo em CSV (com proteção contra *CSV Injection*). |
-| `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KML/GPX/GeoJSON). |
+| `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KMZ WPML/KML/GPX/GeoJSON). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Previsão horária de janela de voo (Open-Meteo: vento em altitude, rajadas, chuva, visibilidade + índice Kp NOAA). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
 | `GET` | `/api/media/{mid}/nearby` | Lista fotos próximas à coordenada GPS de uma foto base (`radius_m`), ordenadas por distância e ângulo (`Δyaw`). |
