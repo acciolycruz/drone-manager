@@ -1,5 +1,5 @@
-fastapi>=0.115.0,<1.0.0
-uvicorn>=0.30.0,<1.0.0
-pillow>=11.0.0,<14.0.0
-onnxruntime>=1.19.0,<2.0.0
-numpy>=1.26.0,<3.0.0
+fastapi==0.162.2
+uvicorn==0.54.0
+pillow==13.0.0
+onnxruntime==1.32.0
+numpy==2.5.5

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DJI · Drone Manager</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" crossorigin="anonymous">
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" crossorigin="anonymous">
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+" crossorigin="anonymous">
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 <style>
 /* ========== DESIGN SYSTEM: DJI COCKPIT & TELEMETRY ========== */
 :root {
@@ -1164,7 +1164,7 @@ input[type=range] {
       <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)" data-i18n="media.del_gallery" data-i18n-title="media.del_gallery_title">🗑 Remover da galeria</button>
       <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria" data-i18n="media.del_disk" data-i18n-title="media.del_disk_title">⚠️ Apagar do HD</button>
       <button id="bdet-batch" onclick="detectBatchMedia()" data-i18n="media.detect_ai">🤖 Detectar objetos (IA)</button>
-      <a id="a-detrep" href="/api/detections/report" target="_blank" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
+      <a id="a-detrep" href="/api/detections/report" target="_blank" rel="noopener noreferrer" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
     </div>
     <div id="sembar" class="row" style="margin-top:6px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px">
@@ -1592,13 +1592,13 @@ async function loadWxForecast(lat,lon){
 function renderWxPanel(){
   const d=WX_DATA,hd=$('#wx-head'),bd=$('#wx-body');
   if(!d||!bd)return;
-  const kp=d.kp?` · <span style="padding:1px 6px;border-radius:4px;background:${d.kp.value>=5?'rgba(239,68,68,.25)':d.kp.value>=4?'rgba(245,158,11,.25)':'rgba(16,185,129,.2)'}">Kp ${d.kp.value} (${esc(d.kp.status)})</span>`:'';
-  if(hd)hd.innerHTML=`Ponto: <b>${d.lat}, ${d.lon}</b>${kp} · <span style="color:#64748b">Clique no mapa para mudar</span>`;
+  const kp=d.kp?` · <span style="padding:1px 6px;border-radius:4px;background:${d.kp.value>=5?'rgba(239,68,68,.25)':d.kp.value>=4?'rgba(245,158,11,.25)':'rgba(16,185,129,.2)'}">Kp ${esc(d.kp.value)} (${esc(d.kp.status)})</span>`:'';
+  if(hd)hd.innerHTML=`Ponto: <b>${esc(d.lat)}, ${esc(d.lon)}</b>${kp} · <span style="color:#64748b">Clique no mapa para mudar</span>`;
   const ico=s=>s>=2?'🔴':s===1?'🟡':'🟢';
   const lbl=s=>s>=2?'Não voar':s===1?'Atenção':'Ideal';
   const best=(d.best_windows||[]).map(w=>{
     const dt=w.date.slice(8,10)+'/'+w.date.slice(5,7);
-    return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 7px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid ${w.sev===0?'rgba(16,185,129,.45)':'rgba(245,158,11,.45)'}">${ico(w.sev)} <b>${dt} ${w.start}–${w.end}</b> · ${w.max_w10} m/s (raj. ${w.max_g10})</span>`;
+    return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:3px 7px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid ${w.sev===0?'rgba(16,185,129,.45)':'rgba(245,158,11,.45)'}">${ico(w.sev)} <b>${esc(dt)} ${esc(w.start)}–${esc(w.end)}</b> · ${esc(w.max_w10)} m/s (raj. ${esc(w.max_g10)})</span>`;
   }).join('');
   const bestHtml=`<div style="margin-bottom:8px"><div style="font-size:11px;color:#94a3b8;margin-bottom:3px">Melhores janelas diurnas:</div>${best||'<span style="color:#f87171">Nenhuma janela diurna favorável encontrada no período.</span>'}</div>`;
   const days=d.daily||[];
@@ -1606,15 +1606,15 @@ function renderWxPanel(){
   const tabs=days.map((dy,i)=>{
     const dt=dy.date.slice(8,10)+'/'+dy.date.slice(5,7);
     const act=i===WX_DAY;
-    return `<button onclick="WX_DAY=${i};renderWxPanel()" style="font-size:11.5px;padding:3px 8px;${act?'background:var(--acc);color:#fff;border-color:var(--acc)':''}">${dt}</button>`;
+    return `<button onclick="WX_DAY=${i};renderWxPanel()" style="font-size:11.5px;padding:3px 8px;${act?'background:var(--acc);color:#fff;border-color:var(--acc)':''}">${esc(dt)}</button>`;
   }).join(' ');
   const curDay=days[WX_DAY];
-  const sun=curDay?`<span style="font-size:11px;color:#94a3b8;margin-left:auto">🌅 ${curDay.sunrise||'—'} · 🌇 ${curDay.sunset||'—'}</span>`:'';
+  const sun=curDay?`<span style="font-size:11px;color:#94a3b8;margin-left:auto">🌅 ${esc(curDay.sunrise||'—')} · 🌇 ${esc(curDay.sunset||'—')}</span>`:'';
   const rows=(d.hours||[]).filter(h=>!curDay||h.time.startsWith(curDay.date)).map(h=>{
     const st=!h.is_day?'🌙':ico(h.sev);
     const title=h.reasons.length?h.reasons.join('; '):(h.is_day?lbl(h.sev):'Período noturno');
     const bg=h.sev>=2?'rgba(239,68,68,.12)':h.sev===1?'rgba(245,158,11,.10)':'';
-    return `<tr style="${bg?'background:'+bg:''}" title="${esc(title)}"><td><b>${h.time.slice(11,16)}</b></td><td>${st}</td><td>${h.wind10} ${h.dir10_txt}</td><td>${h.wind80}/${h.wind120}</td><td>${h.gust10}</td><td>${h.rain_prob}%${h.rain>0?' ('+h.rain+'mm)':''}</td><td>${h.temp}°</td><td style="font-size:11px;color:#cbd5e1">${esc(h.reasons[0]||(h.is_day?'Favorável':'Noite'))}</td></tr>`;
+    return `<tr style="${bg?'background:'+bg:''}" title="${esc(title)}"><td><b>${esc(h.time.slice(11,16))}</b></td><td>${st}</td><td>${esc(h.wind10)} ${esc(h.dir10_txt)}</td><td>${esc(h.wind80)}/${esc(h.wind120)}</td><td>${esc(h.gust10)}</td><td>${esc(h.rain_prob)}%${h.rain>0?' ('+esc(h.rain)+'mm)':''}</td><td>${esc(h.temp)}°</td><td style="font-size:11px;color:#cbd5e1">${esc(h.reasons[0]||(h.is_day?'Favorável':'Noite'))}</td></tr>`;
   }).join('');
   bd.innerHTML=bestHtml+`<div class="row" style="margin:6px 0;gap:4px">${tabs}${sun}</div>`+
     `<table style="width:100%;font-size:11.5px;border-collapse:collapse"><tr><th>Hora</th><th></th><th>V10m</th><th>V80/120</th><th>Raj.</th><th>Chuva</th><th>Temp</th><th>Condição</th></tr>${rows}</table>`;
@@ -1772,7 +1772,7 @@ async function loadMap(){
     }
     if(pts.length>=2){
       const modeLbl=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
-      const extra=mt.est_photos?`<br>${t('map.layer.photos')}: <b>${mt.est_photos}</b> · GSD: <b>${mt.gsd_cm} cm/px</b> · ${t('flights.col.battery')}: <b>${m.batteries||1}</b>`:'';
+      const extra=mt.est_photos?`<br>${t('map.layer.photos')}: <b>${esc(mt.est_photos)}</b> · GSD: <b>${esc(mt.gsd_cm)} cm/px</b> · ${t('flights.col.battery')}: <b>${esc(m.batteries||1)}</b>`:'';
       all.push(L.polyline(pts,{color:'#f59e0b',weight:3,dashArray:'8 6'}).addTo(L_.missoes)
         .bindPopup(`<b>🧭 ${modeLbl}: ${esc(m.name)}</b><br>${fmt.km(m.distance)} · ~${fmt.t(m.duration)} · <b>${m.est_battery_pct}%</b>${extra}<br>${t('plan.alt_lbl')} ${fmt.alt(m.alt)} · VLOS ${t('map.max_alt_short')} ${fmt.alt(m.max_vlos)}<br><a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a>`));
     }
@@ -1794,7 +1794,7 @@ async function loadMap(){
 }
 
 /* ---------- voos ---------- */
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let FS={k:'start',o:'desc'};
 function sortF(k){FS.o=(FS.k==k&&FS.o=='desc')?'asc':'desc';FS.k=k;loadFlights()}
 async function favF(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));loadFlights()}
@@ -1983,9 +1983,9 @@ async function openFlight(id){
     <div class=card>${t('fdet.home_dist')}<b>${fmt.alt(hmax)}${vlosBadge}</b>${FHOME&&FHOME.rth_alt?`<small>RTH: ${fmt.alt(FHOME.rth_alt)}</small>`:''}</div>
     <div class=card>${t('fdet.max_alt')}<b>${fmt.alt(f.max_alt)}</b></div><div class=card>${t('fdet.max_speed')}<b>${fmt.kmh(f.max_speed)}</b></div>
     <div class=card>${t('fdet.battery')}<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
-    <div class=card>${t('fdet.wind_air')}<b style="font-size:15px">${we?`${fmt.spd(we.spd)} (${we.card})`:'–'}</b>${we?`<small>${t('fdet.gust_est')} ${fmt.spd(we.max)} (${we.deg}°)</small>`:`<small>${t('fdet.reimport_hint')}</small>`}</div>
+    <div class=card>${t('fdet.wind_air')}<b style="font-size:15px">${we?`${fmt.spd(we.spd)} (${esc(we.card)})`:'–'}</b>${we?`<small>${t('fdet.gust_est')} ${fmt.spd(we.max)} (${esc(we.deg)}°)</small>`:`<small>${t('fdet.reimport_hint')}</small>`}</div>
     <div class=card>${t('fdet.weather_ground')}<b style="font-size:14px">${w?`${fmt.temp(w.temperature_2m)}, ${t('fdet.wind_lbl')} ${fmt.spd(w.wind_speed_10m)} (${t('fdet.gust_short')} ${fmt.spd(w.wind_gusts_10m)})`:t('fdet.unavail')}</b></div></div>
-   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target=_blank>${t('fdet.report_pdf')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target=_blank>${t('fdet.report_ai')}</a></div><div id="fair" style="margin:6px 0"></div>`;
+   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_pdf')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_ai')}</a></div><div id="fair" style="margin:6px 0"></div>`;
   if(!fm){
     fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
     FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
@@ -2020,7 +2020,7 @@ async function openFlight(id){
   window.CI=0;renderFlightChart();
   const sl=$('#slider');sl.max=Math.max(0,T.length-1);sl.value=0;sl.oninput=()=>{const i=+sl.value;seek(i);syncV(i)};
   if(T.length)seek(0);else $('#rd').textContent='–';
-  $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${e.t})">${fmt.t(e.t)} ${esc(trEvent(e.label))}</button>`).join('');
+  $('#fev').innerHTML=f.events.map(e=>`<button onclick="goT(${Number(e.t)||0})">${fmt.t(e.t)} ${esc(trEvent(e.label))}</button>`).join('');
   const n=$('#fnotes');n.value=f.notes||'';n.onchange=async()=>{await api('/flights/'+id,J('PATCH',{notes:n.value}));toast(t('flights.note_saved'))};
   $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||`<span style="color:var(--mut)">${t('fdet.no_media')}</span>`;
   const vid=$('#vid');vid.pause();vid.removeAttribute('src');$('#vcamhud').classList.add('hide');
@@ -2149,8 +2149,8 @@ function loadCesium(){
   if(window.Cesium)return Promise.resolve();
   const add=base=>new Promise((ok,err)=>{
     window.CESIUM_BASE_URL=base;
-    const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';document.head.appendChild(l);
-    const s=document.createElement('script');s.src=base+'Cesium.js';s.onload=ok;s.onerror=()=>err(new Error('não foi possível baixar o CesiumJS'));document.head.appendChild(s)});
+    const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';l.crossOrigin='anonymous';document.head.appendChild(l);
+    const s=document.createElement('script');s.src=base+'Cesium.js';s.crossOrigin='anonymous';s.onload=ok;s.onerror=()=>err(new Error('não foi possível baixar o CesiumJS'));document.head.appendChild(s)});
   return add('https://cesium.com/downloads/cesiumjs/releases/'+CES_VER+'/Build/Cesium/')
     .catch(()=>add('https://cdn.jsdelivr.net/npm/cesium@'+CES_VER+'.0/Build/Cesium/'))}
 function tnow(){const v=$('#vid');
@@ -2395,8 +2395,8 @@ let curM;
 function loadPannellum(){
   if(window.pannellum)return Promise.resolve();
   return new Promise((ok,err)=>{
-    const l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css';document.head.appendChild(l);
-    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js';s.onload=ok;s.onerror=err;document.head.appendChild(s);
+    const l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css';l.crossOrigin='anonymous';l.integrity='sha384-02yn80EH0cF+s23taAmuhEZ04p3CTbQvV0QZMr2reUxajpfvcLNKlzsPkZwx14mf';document.head.appendChild(l);
+    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js';s.crossOrigin='anonymous';s.integrity='sha384-S5+w/JlcNAOymqXGNrvzn2F++XsaHTJdex6KE5VbKryfFgqJiRUJOgOkUqaiOZTf';s.onload=ok;s.onerror=err;document.head.appendChild(s);
   });
 }
 let PANO=null;
@@ -2470,13 +2470,13 @@ function detSummaryHtml(m){
   const det=m.detections;if(!det||!det.items)return '';
   if(!det.items.length)return '<div style="color:var(--mut);font-size:12px">🤖 Nenhum objeto reconhecido nesta mídia.</div>';
   if(m.kind==='photo'){
-    const chips=Object.entries(det.summary||{}).map(([k,v])=>`<span style="background:rgba(0,210,255,0.14);border:1px solid rgba(0,210,255,0.35);padding:2px 8px;border-radius:12px;font-size:12px">${esc(k)}: <b>${v}</b></span>`).join(' ');
+    const chips=Object.entries(det.summary||{}).map(([k,v])=>`<span style="background:rgba(0,210,255,0.14);border:1px solid rgba(0,210,255,0.35);padding:2px 8px;border-radius:12px;font-size:12px">${esc(k)}: <b>${esc(v)}</b></span>`).join(' ');
     return `<div class="row" style="margin:0;gap:6px"><span style="color:var(--acc-cyan);font-size:12px">🤖 Detectado:</span>${chips}</div>`;
   }
   const byCls={};
   det.items.forEach(d=>{const k=d.label||d.cls;if(!byCls[k])byCls[k]=[];if(!byCls[k].some(x=>Math.abs(x.t-d.t)<2))byCls[k].push(d)});
   const chips=Object.entries(byCls).map(([k,arr])=>{
-    const ts=arr.slice(0,5).map(x=>`<a href="#" onclick="jumpVid(${x.t});return false" style="color:var(--acc-cyan)">${fmt.t(x.t)}</a>`).join(', ');
+    const ts=arr.slice(0,5).map(x=>`<a href="#" onclick="jumpVid(${Number(x.t)||0});return false" style="color:var(--acc-cyan)">${fmt.t(x.t)}</a>`).join(', ');
     return `<span style="background:rgba(0,210,255,0.12);border:1px solid rgba(0,210,255,0.3);padding:3px 9px;border-radius:12px;font-size:12px"><b>${esc(k)}</b> (${ts}${arr.length>5?'…':''})</span>`;
   }).join(' ');
   return `<div class="row" style="margin:0;gap:6px;max-width:92vw"><span style="color:var(--acc-cyan);font-size:12px">🤖 Avistamentos no vídeo:</span>${chips}</div>`;
@@ -2543,16 +2543,16 @@ function renderCompare(st){
     const days=Math.round(Math.abs(new Date(R.taken)-new Date(L.taken))/86400000);
     info.push(`⏱ ${days} ${t('media.compare_days')}`);
   }
-  const candOpts=candidates.length?`<select id="cmpsel" onchange="pickCmpCand(this.value)">${candidates.map(c=>`<option value="${c.id}" ${(c.id===L.id||c.id===R.id)?'selected':''}>${fmt.d(c.taken)} · ${c.dist_m} m${c.yaw_diff!=null?' · Δ'+c.yaw_diff+'°':''}</option>`).join('')}</select>`:'';
-  const radBtns=baseId?[50,150,500].map(r=>`<button class="${radius===r?'on':''}" onclick="openCompareAuto(${baseId},${r})">${r}m</button>`).join(''):'';
+  const candOpts=candidates.length?`<select id="cmpsel" onchange="pickCmpCand(this.value)">${candidates.map(c=>`<option value="${Number(c.id)||0}" ${(c.id===L.id||c.id===R.id)?'selected':''}>${fmt.d(c.taken)} · ${esc(c.dist_m)} m${c.yaw_diff!=null?' · Δ'+esc(c.yaw_diff)+'°':''}</option>`).join('')}</select>`:'';
+  const radBtns=baseId?[50,150,500].map(r=>`<button class="${radius===r?'on':''}" onclick="openCompareAuto(${Number(baseId)||0},${r})">${r}m</button>`).join(''):'';
   $('#modal').innerHTML=`
     <div id="cmpwrap" class="cmp-wrap">
       <img class="cmp-img cmp-after" src="/api/media/${R.id}/file" alt="">
       <img id="cmpbefore" class="cmp-img cmp-before" src="/api/media/${L.id}/file" alt="">
       <div id="cmpline" class="cmp-line"></div>
       <div id="cmphandle" class="cmp-handle">⇆</div>
-      <div class="cmp-badge l">${t('media.compare_before')} · ${fmt.d(L.taken)}${lm.rel_alt!=null?' · '+lm.rel_alt+'m':''}</div>
-      <div class="cmp-badge r">${t('media.compare_after')} · ${fmt.d(R.taken)}${rm.rel_alt!=null?' · '+rm.rel_alt+'m':''}</div>
+      <div class="cmp-badge l">${t('media.compare_before')} · ${fmt.d(L.taken)}${lm.rel_alt!=null?' · '+esc(lm.rel_alt)+'m':''}</div>
+      <div class="cmp-badge r">${t('media.compare_after')} · ${fmt.d(R.taken)}${rm.rel_alt!=null?' · '+esc(rm.rel_alt)+'m':''}</div>
     </div>
     <div style="color:#94a3b8;font-size:12.5px;text-align:center">${info.join('  ·  ')||''}</div>
     <div class="row" style="align-items:center;justify-content:center;gap:8px">
@@ -2693,7 +2693,7 @@ async function loadBatHealth(){
     if(tm!=null&&tm>50){why.push(fmt.temp(tm));lvl=Math.max(lvl,1)}
     const nodata=caps.length==0&&devs.length==0&&tm==null;
     const chip=nodata?`<span style="color:var(--mut)">${t('bat.nodata_chip')}</span>`:(lvl==2?t('bat.status_warn'):lvl==1?t('bat.status_obs'):t('bat.status_ok'))+why.join('; ');
-    return `<tr><td>${b.sn}<td>${fl.length}<td>${hours.toFixed(1)}<td>${last!=null?Math.round(last)+' mAh':'–'}<td>${drop!=null?drop.toFixed(1)+'%':'–'}<td>${maxdev!=null?maxdev.toFixed(0)+' mV':'–'}<td>${tm!=null?fmt.temp(tm):'–'}<td>${avg!=null?avg.toFixed(0)+'%':'–'}<td>${chip}</tr>`});
+    return `<tr><td>${esc(b.sn)}<td>${fl.length}<td>${hours.toFixed(1)}<td>${last!=null?Math.round(last)+' mAh':'–'}<td>${drop!=null?drop.toFixed(1)+'%':'–'}<td>${maxdev!=null?maxdev.toFixed(0)+' mV':'–'}<td>${tm!=null?fmt.temp(tm):'–'}<td>${avg!=null?avg.toFixed(0)+'%':'–'}<td>${chip}</tr>`});
   const sec=document.createElement('div');sec.id='bathealth';
   sec.innerHTML=`<h4>${t('bat.health_title')}</h4>
    <p style="color:var(--mut);font-size:12px">${t('bat.health_note')}</p>
@@ -2889,8 +2889,8 @@ function nlHelp(){alert(t('nl.help'))}
 /* ---------- painel geral (aba Estatísticas) ---------- */
 let PD={p:'all',fl:[],tr:[]},PDC=[],PM=null;
 const MS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-function loadScript(u){return new Promise((ok,err)=>{
-  const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>err(new Error('script'));document.head.appendChild(s)})}
+function loadScript(u,integrity){return new Promise((ok,err)=>{
+  const s=document.createElement('script');s.src=u;s.crossOrigin='anonymous';if(integrity)s.integrity=integrity;s.onload=ok;s.onerror=()=>err(new Error('script'));document.head.appendChild(s)})}
 function goDay(d){
   if(typeof NLF!='undefined')NLF=()=>true;
   const nb=$('#nlbar');if(nb)nb.classList.add('hide');
@@ -2920,7 +2920,7 @@ async function loadPanel(){
   sec.innerHTML=`<div class=row><h3 style="margin:0">${t('stats.panel_title')}</h3><label>${t('stats.period')} <select id="pp" onchange="PD.p=this.value;renderPanel()"></select></label><span id="pcount" style="color:var(--mut)"></span></div><div id="pbody"></div>`;
   root.prepend(sec);
   const years=[...new Set(PD.fl.map(f=>f.start_local.slice(0,4)))].sort().reverse(),sel=$('#pp');
-  sel.innerHTML=`<option value="all">${t('stats.all_period')}</option>`+years.map(y=>'<option value="'+y+'">'+y+'</option>').join('');
+  sel.innerHTML=`<option value="all">${t('stats.all_period')}</option>`+years.map(y=>'<option value="'+E(y)+'">'+E(y)+'</option>').join('');
   if(PD.p!='all'&&!years.includes(PD.p))PD.p='all';
   sel.value=PD.p;renderPanel()}
 async function renderPanel(){
@@ -2960,7 +2960,7 @@ async function renderPanel(){
   const mp=PM=L.map('pmap'),bases=makeBases();wireBases(mp,bases);L.control.layers(bases,null,{position:'topright'}).addTo(mp);
   const ll=fl.filter(f=>f.lat!=null&&f.lon!=null).map(f=>[f.lat,f.lon]);
   if(ll.length)mp.fitBounds(L.latLngBounds(ll).pad(0.4),{maxZoom:15});else mp.setView([-22.9,-43.2],10);
-  try{if(!L.heatLayer)await loadScript('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js')}catch(e){}
+  try{if(!L.heatLayer)await loadScript('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js','sha384-mFKkGiGvT5vo1fEyGCD3hshDdKmW3wzXW/x+fWriYJArD0R3gawT6lMvLboM22c0')}catch(e){}
   if(PM!==mp)return;
   if(L.heatLayer&&pts.length)L.heatLayer(pts,{radius:12,blur:16,maxZoom:17,gradient:{0.3:'#00d2ff',0.6:'#f59e0b',1:'#ef4444'}}).addTo(mp);
   else pts.forEach(p=>L.circleMarker([p[0],p[1]],{radius:3,stroke:false,fillColor:'#00d2ff',fillOpacity:0.35}).addTo(mp));
@@ -3242,7 +3242,7 @@ async function loadSpots(){
     const wp0=m.waypoints&&m.waypoints[0];
     const wxBtn=wp0?` <button onclick="viewWxAt(${wp0[0]},${wp0[1]})">${t('spots.wx_btn')}</button>`:'';
     const modeTag=mt.mode==='grid'?t('plan.mode.grid'):mt.mode==='double_grid'?t('plan.mode.double_grid'):mt.mode==='orbit'?t('plan.mode.orbit'):t('plan.mode.waypoints');
-    const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${mt.est_photos} ${t('map.layer.photos').toLowerCase()} · GSD ${mt.gsd_cm} cm/px${m.batteries>1?' · 🔋 '+m.batteries:''}</span>`:'';
+    const photoInfo=mt.est_photos?`<br><span style="font-size:11px;color:var(--mut)">${esc(mt.est_photos)} ${t('map.layer.photos').toLowerCase()} · GSD ${esc(mt.gsd_cm)} cm/px${m.batteries>1?' · 🔋 '+esc(m.batteries):''}</span>`:'';
     return `<tr><td><b>${esc(m.name)}</b> <span style="font-size:11px;color:var(--acc-cyan)">${modeTag}</span>${photoInfo}<td>${m.waypoints.length} pts (${fmt.alt(m.alt)})<td>${fmt.km(m.distance)}<td>${fmt.alt(m.max_vlos)} ${m.max_vlos>500?'🟡':'🟢'}<td>~${fmt.t(m.duration)}<td><b>${m.est_battery_pct}%</b>${m.batteries>1?` (${m.batteries}×)`:''}<td>${chip}<td><button onclick="viewMissionOnMap(${m.id})">${t('spots.view_map')}</button>${wxBtn} <button onclick="checkMissionAir(${m.id})">${t('spots.check_air')}</button> <a href="/api/missions/${m.id}/kml">KML</a> · <a href="/api/missions/${m.id}/gpx">GPX</a> · <a href="/api/missions/${m.id}/geojson">GeoJSON</a> <button onclick="delMission(${m.id})">${t('spots.remove')}</button></tr>`;
   }).join('');
   $('#locais').innerHTML=`<div class="row" style="justify-content:space-between;margin-top:0"><h3 style="margin:0">${t('spots.missions_title')}</h3><button class="on" onclick="show('mapa');setTimeout(()=>togglePlanner(true),150)">${t('spots.plan_new')}</button></div>`+

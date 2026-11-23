@@ -684,14 +684,18 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost
 
 @app.middleware("http")
 async def security_headers_and_csrf(request: Request, call_next):
-    if request.method in ("POST", "PATCH", "DELETE"):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        sec_site = (request.headers.get("sec-fetch-site") or "").lower()
+        if sec_site == "cross-site":
+            return Response("Origem não autorizada", status_code=403)
         origin = request.headers.get("origin") or request.headers.get("referer") or ""
-        if origin and not re.match(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?(/|$)", origin):
+        if not origin or not re.match(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?(/|$)", origin):
             return Response("Origem não autorizada", status_code=403)
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Content-Security-Policy"] = "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:;"
     return resp
 
 def fl_out(r, full=False):
@@ -2245,9 +2249,12 @@ def root_out(r, c):
 
 ALLOWED_FS_PREFIXES = ("/mnt", "/media", "/run/media", "/Volumes", os.path.abspath("data/media"), os.path.abspath(str(MEDIA_DIR)))
 
+_BLOCKED_WIN_PREFIXES = ("/mnt/c/windows", "/mnt/c/users", "/mnt/c/program files", "/mnt/c/program files (x86)", "/mnt/c/programdata")
+
 def _is_allowed_fs_path(p: str) -> bool:
     rp = os.path.realpath(p)
-    if rp.startswith(("/mnt/c/Windows", "/mnt/c/Users", "/mnt/c/Program Files", "/mnt/c/ProgramData")):
+    rpl = rp.lower()
+    if any(rpl == b or rpl.startswith(b + "/") for b in _BLOCKED_WIN_PREFIXES):
         return False
     return any(rp == pref.rstrip("/") or rp.startswith(pref.rstrip("/") + "/") for pref in ALLOWED_FS_PREFIXES)
 
