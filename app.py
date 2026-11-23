@@ -1,5 +1,5 @@
 """Drone Manager (DJI Mini 3) - app web local.  Rodar: uvicorn app:app --reload"""
-import os, re, json, csv, io, time, html, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
+import os, re, json, csv, io, time, html, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from math import radians, degrees, sin, cos, tan, asin, acos, atan2, sqrt, hypot
@@ -2263,6 +2263,238 @@ def run_backup():
     if res.returncode != 0:
         raise HTTPException(500, out or "Falha ao executar o backup")
     return {"ok": True, "output": out}
+
+# ---------- assistente de importação de cartão SD ----------
+class SdPreviewIn(BaseModel):
+    source_path: str
+
+class SdImportItem(BaseModel):
+    src: str
+    folder: str
+
+class SdImportIn(BaseModel):
+    dest_base: str
+    items: list[SdImportItem]
+    run_scan: bool = True
+
+def _safe_folder_name(name: str) -> str:
+    s = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
+    s = re.sub(r"\s+", "_", s).strip("._- ")
+    if not s or s in (".", ".."):
+        return "Importado"
+    return s[:80]
+
+def _find_sd_candidates() -> list[dict]:
+    out, seen = [], set()
+    roots = []
+    mnt = Path("/mnt")
+    if mnt.is_dir():
+        roots.extend(d for d in sorted(mnt.iterdir()) if len(d.name) == 1 and d.is_dir())
+    for base in (Path("/media"), Path("/run/media"), Path("/Volumes")):
+        if base.is_dir():
+            for d in sorted(base.iterdir(), key=lambda z: z.name.lower()):
+                if d.is_dir() and not d.name.startswith("."):
+                    roots.append(d)
+                    if base != Path("/Volumes"):
+                        try:
+                            roots.extend(sd for sd in sorted(d.iterdir(), key=lambda z: z.name.lower()) if sd.is_dir() and not sd.name.startswith("."))
+                        except OSError:
+                            pass
+    for rt in roots:
+        for sub in ("DCIM", "dcim"):
+            dcim = rt / sub
+            try:
+                if dcim.is_dir() and str(dcim) not in seen and _is_allowed_fs_path(str(dcim)):
+                    seen.add(str(dcim))
+                    out.append({"name": rt.name.upper() + ":\\" + sub if rt.parent == mnt else f"{rt.name}/{sub}",
+                                "path": str(dcim), "win": to_win(str(dcim))})
+            except OSError:
+                pass
+    return out
+
+def _resolve_place_for_sd(lat, lon, geo_cache: dict, known_places: list) -> str:
+    if not valid_gps(lat, lon):
+        return ""
+    key = (round(float(lat), 2), round(float(lon), 2))
+    if key in geo_cache:
+        return geo_cache[key]
+    best_name, best_d = "", 2.5
+    for plat, plon, pname in known_places:
+        d = hav(lat, lon, plat, plon)
+        if d < best_d:
+            best_d, best_name = d, pname
+    if not best_name:
+        if geo_cache:
+            time.sleep(1.0)
+        best_name = geocode(lat, lon)
+    geo_cache[key] = best_name
+    return best_name
+
+def _unique_dest_path(target_dir: Path, filename: str, src_hash: str) -> tuple[Path, bool]:
+    """Retorna (caminho_destino, ja_existe_identico)."""
+    dst = target_dir / filename
+    if not dst.exists():
+        return dst, False
+    try:
+        if sha1(dst) == src_hash:
+            return dst, True
+    except OSError:
+        pass
+    stem, ext = dst.stem, dst.suffix
+    idx = 1
+    while True:
+        cand = target_dir / f"{stem}_{idx}{ext}"
+        if not cand.exists():
+            return cand, False
+        try:
+            if sha1(cand) == src_hash:
+                return cand, True
+        except OSError:
+            pass
+        idx += 1
+
+@app.get("/api/sd/detect")
+def sd_detect():
+    return {"candidates": _find_sd_candidates()}
+
+@app.post("/api/sd/preview")
+def sd_preview(b: SdPreviewIn):
+    p = norm_path(b.source_path)
+    if not p or not _is_allowed_fs_path(p):
+        raise HTTPException(403, "Caminho não permitido. Use apenas pastas dentro de discos montados ou data/media.")
+    src_dir = Path(p)
+    if not src_dir.is_dir():
+        raise HTTPException(400, "Pasta de origem não encontrada: " + (p or "(vazio)"))
+    with db() as c:
+        known_hashes = {r[0]: r[1] for r in c.execute("SELECT sha1, path FROM media WHERE sha1 IS NOT NULL AND sha1 != ''").fetchall()}
+        known_places = [(r[0], r[1], r[2]) for r in c.execute(
+            "SELECT lat, lon, name FROM spots WHERE lat IS NOT NULL AND lon IS NOT NULL AND name != '' "
+            "UNION ALL SELECT lat, lon, place FROM flights WHERE lat IS NOT NULL AND lon IS NOT NULL AND place != ''"
+        ).fetchall()]
+
+    all_media = sorted(f for f in src_dir.rglob("*") if f.is_file() and f.suffix.lower() in (IMG | VID))
+    new_files, existing_count = [], 0
+    for f in all_media:
+        try:
+            h = sha1(f)
+        except OSError:
+            continue
+        if h in known_hashes:
+            existing_count += 1
+        else:
+            new_files.append((f, h))
+
+    ex = {}
+    for i in range(0, len(new_files), 200):
+        try:
+            ex.update(exif_batch([str(f) for f, _ in new_files[i:i + 200]]))
+        except Exception:
+            pass
+
+    geo_cache, items, groups = {}, [], {}
+    srt_count, new_bytes = 0, 0
+    for f, h in new_files:
+        x = ex.get(str(f), {})
+        kind = "photo" if f.suffix.lower() in IMG else "video"
+        taken = parse_dt(x.get("DateTimeOriginal") or x.get("CreateDate"))
+        lat, lon = x.get("GPSLatitude"), x.get("GPSLongitude")
+        has_srt = False
+        if kind == "video":
+            has_srt = any(f.with_suffix(ext).is_file() for ext in (".SRT", ".srt"))
+            s = read_srt(f) if has_srt else None
+            if s:
+                lat = s["lat"] or lat
+                lon = s["lon"] or lon
+                taken = s["taken"] or taken
+            elif taken:
+                taken += timedelta(hours=TZ_OFFSET)
+        if not valid_gps(lat, lon):
+            lat, lon = None, None
+        try:
+            st = f.stat()
+            size = st.st_size
+            taken = taken or datetime.fromtimestamp(st.st_mtime)
+        except OSError:
+            size = 0
+            taken = taken or datetime.now()
+        date_str = taken.strftime("%Y-%m-%d")
+        place = _resolve_place_for_sd(lat, lon, geo_cache, known_places)
+        folder = f"{date_str}_{_safe_folder_name(place)}" if place else date_str
+        new_bytes += size
+        if has_srt:
+            srt_count += 1
+        items.append({
+            "src": str(f), "name": f.name, "kind": kind, "size": size,
+            "taken": taken.isoformat(timespec="seconds"), "date": date_str,
+            "place": place, "folder": folder, "has_srt": has_srt, "sha1": h
+        })
+        g_ent = groups.setdefault(folder, {"folder": folder, "date": date_str, "place": place, "photos": 0, "videos": 0, "srts": 0, "bytes": 0})
+        g_ent["photos" if kind == "photo" else "videos"] += 1
+        if has_srt:
+            g_ent["srts"] += 1
+        g_ent["bytes"] += size
+
+    items.sort(key=lambda z: (z["taken"], z["name"]))
+    group_list = sorted(groups.values(), key=lambda z: z["folder"])
+    return {
+        "source": str(src_dir), "source_win": to_win(str(src_dir)),
+        "total_found": len(all_media), "new_count": len(items), "existing_count": existing_count,
+        "new_bytes": new_bytes, "srt_count": srt_count, "groups": group_list, "items": items
+    }
+
+@app.post("/api/sd/import")
+def sd_import(b: SdImportIn):
+    dst_p = norm_path(b.dest_base)
+    if not dst_p or not _is_allowed_fs_path(dst_p):
+        raise HTTPException(403, "Pasta de destino não permitida.")
+    dst_root = Path(dst_p)
+    if not dst_root.is_dir():
+        raise HTTPException(400, "Pasta de destino não encontrada: " + (dst_p or "(vazio)"))
+    if not b.items:
+        raise HTTPException(400, "Nenhum arquivo selecionado para importar.")
+
+    copied, skipped, srt_copied, copied_bytes = 0, 0, 0, 0
+    folders_used, errors = set(), []
+    for it in b.items:
+        sp = norm_path(it.src)
+        if not sp or not _is_allowed_fs_path(sp):
+            errors.append(f"Caminho ignorado (não permitido): {it.src}")
+            continue
+        src_f = Path(sp)
+        if not src_f.is_file() or src_f.suffix.lower() not in (IMG | VID):
+            errors.append(f"Arquivo inválido ou ausente: {src_f.name}")
+            continue
+        folder_name = _safe_folder_name(it.folder)
+        target_dir = dst_root / folder_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+        folders_used.add(folder_name)
+        try:
+            src_hash = sha1(src_f)
+            out_f, same = _unique_dest_path(target_dir, src_f.name, src_hash)
+            if same:
+                skipped += 1
+            else:
+                shutil.copy2(src_f, out_f)
+                copied += 1
+                copied_bytes += out_f.stat().st_size
+            if src_f.suffix.lower() in VID:
+                for ext in (".SRT", ".srt"):
+                    srt_src = src_f.with_suffix(ext)
+                    if srt_src.is_file():
+                        srt_dst = out_f.with_suffix(ext)
+                        if not srt_dst.exists() or srt_dst.stat().st_size != srt_src.stat().st_size:
+                            shutil.copy2(srt_src, srt_dst)
+                            srt_copied += 1
+                        break
+        except Exception as e:
+            errors.append(f"{src_f.name}: {e}")
+
+    scan_res = scan(force=0) if b.run_scan else None
+    return {
+        "ok": True, "copied": copied, "skipped": skipped, "srt_copied": srt_copied,
+        "copied_bytes": copied_bytes, "folders": sorted(folders_used),
+        "errors": errors, "scan": scan_res
+    }
 
 _KP_CACHE = {"ts": 0.0, "val": None}
 

@@ -2821,10 +2821,117 @@ async function loadConfig(){
      `<td><button onclick="rootForm(${r.id})">${t('config.edit')}</button> <button onclick="rootDel(${r.id})">${t('config.remove')}</button></tr>`).join('')||`<tr><td colspan=7>${t('config.no_roots')}</tr>`)+'</table>'+
    `<div class=row><button onclick="rootForm(0)">${t('config.add_root')}</button><button class="on" onclick="scan()">${t('config.scan_now')}</button><button onclick="rescanLogs()">${t('config.reimport_logs')}</button></div><div id="rootform"></div>`+
    '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
+   `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;max-width:860px">`+
+   `<h4 style="margin-top:0">${t('config.sd_title')}</h4>`+
+   `<p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('config.sd_desc')}</p>`+
+   `<div class=row><button onclick="sdDetect()">${t('config.sd_detect')}</button><span id="sd-cands" class=row style="margin:0"></span></div>`+
+   `<div class=row><label style="flex:1;min-width:240px">${t('config.sd_src')} <input id="sd-src" placeholder="F:\\DCIM  /mnt/f/DCIM" style="width:100%"></label><button onclick="sdBrowse()">${t('config.browse')}</button>`+
+   `<label style="flex:1;min-width:240px">${t('config.sd_dst')} <select id="sd-dst" style="width:100%">`+
+   (roots.filter(r=>r.enabled&&r.online).map(r=>`<option value="${E(r.path)}">${E(r.name)} (${E(r.win)})</option>`).join('')||`<option value="">${t('config.sd_no_dst')}</option>`)+
+   `</select></label><button id="sd-btn-prev" class="on" onclick="sdPreview()">${t('config.sd_analyze')}</button></div>`+
+   '<div id="sd-br"></div><div id="sd-prev"></div><div id="sd-res"></div></div>'+
+   '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
    `<h4>${t('config.backup_title')}</h4>`+
    `<p style="color:var(--mut);margin-top:0">${t('config.backup_desc')}</p>`+
    `<div class=row><button id="btn-backup" class="on" onclick="runBackup()">${t('config.backup_btn')}</button></div>`+
-   '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>'}
+   '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>';
+  sdDetect(true)}
+let SD_DATA=null;
+const fmtBytes=b=>b>=1073741824?(b/1073741824).toFixed(2)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':Math.round(b/1024)+' KB';
+async function sdDetect(silent=false){
+  const box=$('#sd-cands');if(!box)return;
+  try{
+    const r=await api('/sd/detect');const cs=r.candidates||[];
+    if(!cs.length){box.innerHTML=silent?'':`<span style="color:var(--mut);font-size:12.5px">${t('config.sd_none')}</span>`;return}
+    box.innerHTML=cs.map(c=>`<button onclick="$('#sd-src').value='${esc(c.win).replace(/'/g,"&#39;")}';sdPreview()">💾 ${esc(c.win)}</button>`).join('');
+    if(!$('#sd-src').value)$('#sd-src').value=cs[0].win;
+  }catch(e){if(!silent)box.textContent=msgErr(e)}
+}
+async function sdBrowse(path){
+  const box=$('#sd-br');let r;
+  try{r=await api('/fs/list?path='+encodeURIComponent(path==null?$('#sd-src').value:path))}
+  catch(e){try{r=await api('/fs/list?path=')}catch(x){box.textContent='Error';return}}
+  box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='border:1px solid var(--border-strong);background:var(--bg-elev);border-radius:8px;padding:8px;margin:6px 0;max-height:220px;overflow:auto';
+  const head=document.createElement('div');head.className='row';head.style.margin='0 0 6px';
+  const tt=document.createElement('b');tt.textContent=r.path?r.win:t('config.drives');head.appendChild(tt);
+  const mkb=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.onclick=fn;head.appendChild(b)};
+  if(r.path){mkb(t('config.use_folder'),()=>{$('#sd-src').value=r.win;box.innerHTML=''});mkb(t('config.up'),()=>sdBrowse(r.parent||''))}
+  wrap.appendChild(head);
+  r.dirs.forEach(d=>{const x=document.createElement('div');x.style.cssText='padding:4px 8px;cursor:pointer;border-radius:4px';x.textContent='📁 '+d.name;x.onclick=()=>sdBrowse(d.path);wrap.appendChild(x)});
+  if(!r.dirs.length){const i=document.createElement('i');i.textContent=t('config.no_subfolders');wrap.appendChild(i)}
+  box.appendChild(wrap);
+}
+async function sdPreview(){
+  const src=$('#sd-src').value.trim(),btn=$('#sd-btn-prev'),prev=$('#sd-prev'),res=$('#sd-res');
+  if(!src){sdBrowse('');return}
+  res.innerHTML='';btn.disabled=true;btn.textContent=t('config.sd_analyzing');
+  prev.innerHTML=`<p style="color:var(--mut);font-size:12.5px">${t('config.sd_analyzing')}</p>`;
+  try{
+    SD_DATA=await api('/sd/preview',J('POST',{source_path:src}));
+    sdRenderPreview();
+  }catch(e){
+    SD_DATA=null;prev.innerHTML=`<p style="color:#fca5a5">Error: ${esc(msgErr(e))}</p>`;
+  }finally{
+    btn.disabled=false;btn.textContent=t('config.sd_analyze');
+  }
+}
+function sdRenderPreview(){
+  const prev=$('#sd-prev'),d=SD_DATA;if(!d)return;
+  const stats=`<div class=row style="margin:10px 0;gap:8px">`+
+    `<span class=chip>${t('config.sd_found',{total:d.total_found})}</span>`+
+    `<span class=chip style="border-color:var(--acc);color:var(--acc)">${t('config.sd_new',{n:d.new_count,size:fmtBytes(d.new_bytes)})}</span>`+
+    `<span class=chip>${t('config.sd_existing',{n:d.existing_count})}</span>`+
+    (d.srt_count?`<span class=chip>${t('config.sd_srt',{n:d.srt_count})}</span>`:'')+`</div>`;
+  if(!d.new_count){prev.innerHTML=stats+`<p style="color:var(--ok);margin-bottom:0">${t('config.sd_nothing_new')}</p>`;return}
+  const rows=d.groups.map((g,i)=>`<tr><td><input type=checkbox class="sd-gchk" data-gi="${i}" checked onchange="sdUpdateCopyBtn()">`+
+    `<td><input class="sd-gdir" data-gi="${i}" value="${esc(g.folder)}" style="width:100%;min-width:220px">`+
+    `<td>${g.photos?`📷 ${g.photos} `:''}${g.videos?`🎬 ${g.videos} `:''}${g.srts?`<span style="color:var(--mut)">(+${g.srts} SRT)</span>`:''}`+
+    `<td>${fmtBytes(g.bytes)}</tr>`).join('');
+  prev.innerHTML=stats+
+    `<table style="margin-top:6px"><tr><th><th>${t('config.sd_folder_col')}<th>${t('config.sd_files_col')}<th>Tamanho</tr>${rows}</table>`+
+    `<div class=row style="margin-top:10px"><label><input id="sd-rscan" type=checkbox checked> ${t('config.sd_run_scan')}</label></div>`+
+    `<div class=row style="margin-top:6px"><button id="sd-btn-imp" class="on" onclick="sdImport()">${t('config.sd_copy_btn',{n:d.new_count})}</button></div>`;
+}
+function sdUpdateCopyBtn(){
+  if(!SD_DATA)return;
+  let n=0;
+  document.querySelectorAll('.sd-gchk').forEach(chk=>{
+    if(!chk.checked)return;
+    const g=SD_DATA.groups[Number(chk.dataset.gi)];
+    if(g)n+=g.photos+g.videos;
+  });
+  const b=$('#sd-btn-imp');if(b){b.disabled=!n;b.textContent=t('config.sd_copy_btn',{n})}
+}
+async function sdImport(){
+  if(!SD_DATA)return;
+  const dst=$('#sd-dst').value;
+  if(!dst){alert(t('config.sd_no_dst'));return}
+  const folderMap={};
+  document.querySelectorAll('.sd-gchk').forEach(chk=>{
+    const gi=Number(chk.dataset.gi),orig=SD_DATA.groups[gi]?.folder;
+    const inp=document.querySelector(`.sd-gdir[data-gi="${gi}"]`);
+    if(orig&&chk.checked)folderMap[orig]=(inp?inp.value.trim():orig)||orig;
+  });
+  const items=SD_DATA.items.filter(it=>folderMap[it.folder]).map(it=>({src:it.src,folder:folderMap[it.folder]}));
+  if(!items.length)return;
+  const btn=$('#sd-btn-imp'),res=$('#sd-res'),runScan=$('#sd-rscan')?.checked!==false;
+  btn.disabled=true;btn.textContent=t('config.sd_copying');
+  res.innerHTML=`<p style="color:var(--mut);font-size:12.5px">${t('config.sd_copying')}</p>`;
+  try{
+    const r=await api('/sd/import',J('POST',{dest_base:dst,items,run_scan:runScan}));
+    let msg=t('config.sd_done',{copied:r.copied,srt:r.srt_copied,skipped:r.skipped});
+    if(r.folders&&r.folders.length)msg+=`\n📁 ${r.folders.join(', ')}`;
+    if(r.scan)msg+=`\nScan: Logs ${r.scan.logs}, Mídias ${r.scan.media}, Voos reconstruídos ${r.scan.reconstruidos}`;
+    if(r.errors&&r.errors.length)msg+=`\n⚠️ ${r.errors.slice(0,5).join('; ')}`;
+    res.innerHTML=`<pre style="background:var(--bg-elev);border:1px solid var(--ok);color:var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px;white-space:pre-wrap;font-size:12.5px">${esc(msg)}</pre>`;
+    await sdPreview();
+  }catch(e){
+    res.innerHTML=`<p style="color:#fca5a5">Error: ${esc(msgErr(e))}</p>`;
+  }finally{
+    if($('#sd-btn-imp')){$('#sd-btn-imp').disabled=false;sdUpdateCopyBtn()}
+  }
+}
 async function runBackup(){
   const btn=$('#btn-backup'),out=$('#backup-out');
   btn.disabled=true;btn.textContent=t('config.backup_running');
