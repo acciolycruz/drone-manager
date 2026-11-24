@@ -1495,19 +1495,21 @@ const AIR_L=[['Aeródromos e helipontos','ICA:airport_heliport'],['CTR (zonas de
   ['ATZ e FIZ (zonas de tráfego de aeródromo)','ICA:ATZ,ICA:fiz'],['Áreas proibidas, restritas e perigosas','ICA:eac_p,ICA:eac_r,ICA:eac_d']];
 function _faaLayerGroup(){
   const g=L.layerGroup();
-  let lastB='';
+  let lastB='',reqSeq=0;
   const load=async()=>{
     const mp=g._map;if(!mp)return;
     const b=mp.getBounds(),bb=[b.getWest().toFixed(3),b.getSouth().toFixed(3),b.getEast().toFixed(3),b.getNorth().toFixed(3)].join(',');
-    if(bb===lastB)return;lastB=bb;
-    // Só consulta FAA se o centro do mapa estiver próximo da América do Norte
+    if(bb===lastB)return;
     const c=mp.getCenter();if(c.lng>-60||c.lat<15)return;
-    g.clearLayers();
+    lastB=bb;
+    const seq=++reqSeq;
     try{
       const [u,n]=await Promise.all([
         api('/faa/layer?service=FAA_UAS_FacilityMap_Data&bbox='+encodeURIComponent(bb)),
         api('/faa/layer?service=DoD_Mar_13&bbox='+encodeURIComponent(bb))
       ]);
+      if(seq!==reqSeq||!g._map)return;
+      g.clearLayers();
       if(u&&u.features&&u.features.length){
         L.geoJSON(u,{style:f=>{
           const cl=f.properties&&f.properties.CEILING;
@@ -1515,26 +1517,26 @@ function _faaLayerGroup(){
           return {color:col,weight:1.2,fillColor:col,fillOpacity:0.22};
         },onEachFeature:(f,ly)=>{
           const p=f.properties||{};
-          ly.bindPopup(`<b>FAA UASFM (LAANC)</b><br>Teto: <b>${p.CEILING!=null?p.CEILING+' ft':'—'}</b><br>${esc(p.APT1_NAME||p.APT1_ICAO||'')}`);
+          ly.bindPopup(`<b>FAA UASFM (LAANC)</b><br>${esc(t('air.faa_ceiling'))}: <b>${p.CEILING!=null?p.CEILING+' ft':'—'}</b><br>${esc(p.APT1_NAME||p.APT1_ICAO||'')}`);
         }}).addTo(g);
       }
       if(n&&n.features&&n.features.length){
         L.geoJSON(n,{style:{color:'#ef4444',weight:2,fillColor:'#ef4444',fillOpacity:0.32},onEachFeature:(f,ly)=>{
           const p=f.properties||{};
-          ly.bindPopup(`<b>FAA NSUFR (Restrito)</b><br>${esc(p.Base||p.FACILITY||p.NAME||'Restrição de Segurança Nacional')}`);
+          ly.bindPopup(`<b>FAA NSUFR</b><br>${esc(p.Base||p.FACILITY||p.NAME||'National Security UAS Restriction')}`);
         }}).addTo(g);
       }
     }catch(e){}
   };
-  g.on('add',()=>{const mp=g._map;if(mp){mp.on('moveend',load);load()}});
-  g.on('remove',()=>{const mp=g._map;if(mp)mp.off('moveend',load)});
+  g.on('add',()=>{lastB='';const mp=g._map;if(mp){mp.on('moveend',load);load()}});
+  g.on('remove',()=>{reqSeq++;const mp=g._map;if(mp)mp.off('moveend',load)});
   return g;
 }
 function airLayers(){const o={};
   AIR_L.forEach(([n,l])=>{
-    const t=L.tileLayer.wms('https://geoaisweb.decea.mil.br/geoserver/ows?',{layers:l,format:'image/png',transparent:true,version:'1.1.1',opacity:0.7,attribution:'Espaço aéreo: DECEA/GEOAISWEB'});
+    const t=L.tileLayer.wms('https://geoaisweb.decea.mil.br/geoserver/ows?',{layers:l,format:'image/png',transparent:true,version:'1.1.1',opacity:0.7,attribution:'DECEA/GEOAISWEB'});
     t._air=l;o['✈ '+n]=t});
-  o['🇺🇸 FAA UASFM / Espaço Aéreo (EUA)']=_faaLayerGroup();
+  o[t('air.faa_layer')]=_faaLayerGroup();
   return o}
 function toggleAirQuery(on){
   AIRQ_ON=!!on;
@@ -1543,7 +1545,7 @@ function toggleAirQuery(on){
   const b=$('#b-airq');if(b)b.classList.toggle('on',AIRQ_ON);
   if(map)map.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
   if(fm)fm.getContainer().style.cursor=AIRQ_ON?'crosshair':'';
-  if(AIRQ_ON)toast('✈ Consulta DECEA ativa: clique em um ponto do mapa');
+  if(AIRQ_ON)toast(t('air.query_toast'));
 }
 async function menuAirQuery(){
   const inFlight=!$('#voos').classList.contains('hide')&&!$('#fdet').classList.contains('hide');
@@ -1563,16 +1565,16 @@ function airQuery(m){
     const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
     let r;try{r=await api('/airspace/info?lat='+e.latlng.lat+'&lon='+e.latlng.lng+'&layers='+encodeURIComponent(ls))}catch(x){r={error:String(x)}}
     const fs=r.features||[];
-    const body=r.error?'Não foi possível consultar o espaço aéreo agora.':fs.length?
+    const body=r.error?esc(t('air.query_err')):fs.length?
       fs.map(f=>{
         const pr=f.properties||{};
         const title=pr._faa_layer||String(f.id||'').split('.')[0];
         const rows=Object.entries(pr).filter(([k,v])=>k!=='_faa_layer'&&v!==null&&v!==''&&typeof v!='object').slice(0,8).map(([k,v])=>E(k)+': '+E(v)).join('<br>');
         return '<b>'+E(title)+'</b><br>'+rows;
       }).join('<hr>')
-      :'Nenhuma área das camadas consultadas neste ponto.';
-    const disc=r.region==='US'?'Referência visual FAA/UDDS. Confirme via LAANC / B4UFLY antes de voar.':'Referência visual, não é autorização de voo. Confirme no SARPAS/DECEA antes de voar.';
-    L.popup({maxWidth:320}).setLatLng(e.latlng).setContent(body+'<hr><small>'+disc+'</small>').openOn(m)})}
+      :esc(t('air.query_none'));
+    const disc=t(r.region==='US'?'air.disc_us':'air.disc_br');
+    L.popup({maxWidth:320}).setLatLng(e.latlng).setContent(body+'<hr><small>'+esc(disc)+'</small>').openOn(m)})}
 
 /* ---------- cálculo de Pegada de Fotos no Solo (Footprint) e GSD (Fotogrametria) ---------- */
 function havDist(a,b,c,d){
@@ -2349,8 +2351,9 @@ function seek(i){
 }
 function seekT(t){let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;seek(i);window.TNOW=t}
 function vOff(v){ /* início do vídeo em segundos de voo; encaixa no evento "Início de gravação" do log */
-  let off=(new Date(v.taken)-new Date(FST))/1000,b=null;
-  FEV.filter(e=>e.label.startsWith('Início de gravação')&&e.t>0).forEach(e=>{
+  const raw=(new Date(v.taken)-new Date(FST))/1000;
+  let off=Number.isFinite(raw)?raw:0,b=null;
+  FEV.filter(e=>(e.label||'').startsWith('Início de gravação')&&e.t>0).forEach(e=>{
     if(Math.abs(e.t-off)<=30&&(b==null||Math.abs(e.t-off)<Math.abs(b-off)))b=e.t});
   return b==null?off:b}
 let CONT_TL=true;
@@ -2433,26 +2436,32 @@ function startGapTimer(){
     }
   },100);
 }
+let VSEQ=0;
 async function loadV(i,play,t){
   stopGapTimer();
-  CV=i;const v=FV[i],el=$('#vid');$('#sadj').textContent=((v.sync_adj||0)>0?'+':'')+(v.sync_adj||0)+' s';
+  const vseq=++VSEQ;
+  CV=i;const v=FV[i],el=$('#vid');if(!v||!el)return;
+  $('#sadj').textContent=((v.sync_adj||0)>0?'+':'')+(v.sync_adj||0)+' s';
   $('#vgap')?.classList.add('hide');
   document.querySelectorAll('.vb').forEach((b,k)=>b.classList.toggle('on',k==i));
   document.querySelectorAll('.fvseg').forEach((b,k)=>b.classList.toggle('on',+b.dataset.idx===i));
   scrubUntil=performance.now()+500;
   if(t===undefined)seekT(Math.max(0,v.off));
   el.onloadedmetadata=()=>{
+    if(vseq!==VSEQ||$('#fdet').classList.contains('hide'))return;
     if(isFinite(el.duration)&&el.duration>0&&!vDur(v)){
       v.dur=Math.round(el.duration*100)/100;
       renderClipButtons();renderClipTimeline();
     }
-    el.currentTime=t===undefined?0:Math.max(0,Math.min(t-v.off,el.duration-0.05));
+    const durOk=isFinite(el.duration)&&el.duration>0.05;
+    el.currentTime=(t===undefined||!durOk)?0:Math.max(0,Math.min(t-v.off,el.duration-0.05));
     el.defaultPlaybackRate=RATE;el.playbackRate=RATE;
     if(play)el.play().catch(()=>{});
   };
   el.src='/api/media/'+v.id+'/file';el.load();
   /* Carrega trilha .SRT do vídeo para mostrar parâmetros da câmera em tempo real */
   if(!VSRT[v.id]){try{VSRT[v.id]=await api('/media/'+v.id+'/srt')}catch(e){VSRT[v.id]=[]}}
+  if(vseq!==VSEQ||$('#fdet').classList.contains('hide'))return;
   updateVideoCamHud(0);
 }
 function updateVideoCamHud(sec){
@@ -3705,7 +3714,10 @@ async function adjV(d,reset){
   v.sync_adj=reset?0:Math.max(-120,Math.min(120,(v.sync_adj||0)+d));
   v.off=v.base+v.sync_adj;
   await api('/media/'+v.id,J('PATCH',{sync_adj:v.sync_adj}));
+  FV.sort((a,b)=>a.off-b.off);
+  CV=Math.max(0,FV.indexOf(v));
   $('#sadj').textContent=(v.sync_adj>0?'+':'')+v.sync_adj+' s';
+  renderClipButtons();
   renderClipTimeline();
   syncV(+$('#slider').value);
 }
@@ -3783,11 +3795,11 @@ function airChip(f){
 function compChip(f){
   const c=f.compliance;if(!c)return `<span style="color:var(--mut)">—</span>`;
   const ico=c.status==='crit'?'🔴':c.status==='warn'?'🟡':'🟢';
-  const tips=[];
+  const isUS=c.region==='US',tips=[];
   if(c.air_hit)tips.push(t('comp.air_hit'));
-  if(c.alt_120)tips.push(t('comp.alt_120',{val:fmt.alt(c.max_alt_m)}));
+  if(c.alt_120)tips.push(t(isUS?'comp.alt_400ft':'comp.alt_120',{val:fmt.alt(c.max_alt_m)}));
   if(c.vlos_500)tips.push(t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}));
-  if(c.night)tips.push(t('comp.night'));
+  if(c.night)tips.push(t(isUS?'comp.night_us':'comp.night'));
   if(c.aero_9km)tips.push(t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}));
   return `<span title="${esc(tips.length?tips.join(' · '):t('comp.all_ok'))}">${ico}</span>`;
 }
@@ -3806,7 +3818,7 @@ function renderCompliance(f){
   const dayP=pill(!c.night,(c.night?t(isUS?'comp.night_us':'comp.night'):t('comp.day_ok'))+sunS,isUS?'info':'warn');
   const vlosP=pill(!c.vlos_500,c.vlos_500?t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}):t('comp.vlos_ok'));
   const aeroP=!c.air_checked?pill(false,t(isUS?'comp.air_unchecked_us':'comp.air_unchecked'),'info'):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
-  const uasfmP=(isUS&&c.uasfm_min_ft!=null)?pill((c.max_alt_m*3.28084)<=c.uasfm_min_ft,`UASFM ${c.uasfm_min_ft} ft`,'crit'):'';
+  const uasfmP=(isUS&&c.uasfm_min_ft!=null)?pill(c.uasfm_min_ft>0&&(c.max_alt_m*3.28084)<=c.uasfm_min_ft,`UASFM ${c.uasfm_min_ft} ft`,'crit'):'';
   el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px"><strong style="font-size:13px">${esc(t(isUS?'comp.title_us':'comp.title'))}:</strong>${altP}${dayP}${vlosP}${aeroP}${uasfmP}</div>`;
 }
 function renderWindAnalysis(f){
@@ -3815,7 +3827,8 @@ function renderWindAnalysis(f){
   const wa=f.wind_analysis;
   if(!wa||(!wa.points.length&&!wa.eff)){
     if((f.source||'log')==='log'){
-      el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:12.5px;color:var(--mut)"><b>${esc(t('wind.panel_title'))}:</b> ${esc(t('wind.reimport_needed'))}</div>`;
+      const hasNew=!!(f.meta&&f.meta.log_format);
+      el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:12.5px;color:var(--mut)"><b>${esc(t('wind.panel_title'))}:</b> ${esc(t(hasNew?'wind.no_data':'wind.reimport_needed'))}</div>`;
     }else{
       el.innerHTML='';
     }

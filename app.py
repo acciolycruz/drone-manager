@@ -497,9 +497,9 @@ def weather(lat, lon, start):
         d = start[:10]
         j = http_json("https://archive-api.open-meteo.com/v1/archive?"
                       f"latitude={lat}&longitude={lon}&start_date={d}&end_date={d}&timezone=UTC&wind_speed_unit=ms"
-                      "&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,precipitation")
+                      "&hourly=temperature_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation")
         h, i = j["hourly"], int(start[11:13])
-        return {k: h[k][i] for k in ("temperature_2m", "wind_speed_10m", "wind_gusts_10m", "precipitation")}
+        return {k: h[k][i] for k in ("temperature_2m", "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m", "precipitation") if k in h}
     except Exception: return None
 
 # ---------- importação de logs de voo ----------
@@ -522,7 +522,7 @@ def _stk(v):
 
 def _cardinal(deg):
     if deg is None: return ""
-    dirs = ("N", "NE", "L", "SE", "S", "SO", "O", "NO")
+    dirs = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     return dirs[int(((deg % 360) + 22.5) // 45) % 8]
 
 STATE_PT = {"GPSAtti": "Modo normal (GPS)", "GPSNovice": "Modo iniciante", "GPSSport": "Modo esportivo",
@@ -1520,7 +1520,7 @@ def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
     if air_obj:
         hits = air_obj.get("hits") or []
         air_hit = any((h.get("sev") or 0) >= 3 for h in hits)
-        if uasfm_min_ft is not None and (max_alt * 3.28084) > uasfm_min_ft:
+        if uasfm_min_ft is not None and (uasfm_min_ft == 0 or (max_alt * 3.28084) > uasfm_min_ft):
             air_hit = True
         near = air_obj.get("near") or []
         kms = [float(n["km"]) for n in near if isinstance(n.get("km"), (int, float))]
@@ -1592,7 +1592,7 @@ def _calc_wind_analysis(track: list, meta: dict, weather_obj: Optional[dict] = N
         pts = pts[::step][:36]
 
     # Rosa dos ventos (8 setores)
-    dirs = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"]
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
     rose_acc = {k: [] for k in dirs}
     for s in samples:
         idx = int((s["deg"] + 22.5) // 45) % 8
@@ -1686,8 +1686,8 @@ def fl_out(r, full=False):
     d["compliance"] = _calc_compliance(d, d["meta"], tr)
     if full:
         if tr is None:
-            tr = json.loads(d["track"])
-        d["track"], d["events"] = tr, json.loads(d["events"])
+            tr = json.loads(d.get("track") or "[]")
+        d["track"], d["events"] = tr, json.loads(d.get("events") or "[]")
         # Fallback automático para Ponto Home (H) e distância máxima VLOS caso o log ainda não tenha sido reimportado
         if "home" not in d["meta"] and tr:
             h0 = (tr[0][1], tr[0][2])
@@ -1845,7 +1845,7 @@ def tracks(bbox: str = ""):
         else:
             rows = c.execute("SELECT id,start,place,distance,max_alt,track,source,name,fav FROM flights").fetchall()
     return [{**{k: r[k] for k in ("id", "start", "place", "distance", "max_alt", "source", "name", "fav")},
-             "pts": simplify_track_rdp([[p[1], p[2]] for p in json.loads(r["track"]) if valid_gps(p[1], p[2])], 2.0)} for r in rows]
+             "pts": simplify_track_rdp([[p[1], p[2]] for p in json.loads(r["track"] or "[]") if valid_gps(p[1], p[2])], 2.0)} for r in rows]
 
 @app.get("/api/flights/{fid}")
 def flight(fid: int): return fl_out(get_flight(fid), True)
@@ -1868,7 +1868,7 @@ def attach(data, name, mt):
 
 @app.get("/api/flights/{fid}/kml")
 def kml(fid: int):
-    r = get_flight(fid); co = " ".join(f"{float(p[2])},{float(p[1])},{float(p[3])}" for p in json.loads(r["track"]))
+    r = get_flight(fid); co = " ".join(f"{float(p[2])},{float(p[1])},{float(p[3])}" for p in json.loads(r["track"] or "[]"))
     return attach('<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Placemark>'
                   f'<name>{html.escape(str(r["start"] or ""))}</name><LineString><altitudeMode>relativeToGround</altitudeMode><coordinates>{co}</coordinates>'
                   '</LineString></Placemark></kml>', f"voo{fid}.kml", "application/vnd.google-earth.kml+xml")
@@ -1876,7 +1876,7 @@ def kml(fid: int):
 @app.get("/api/flights/{fid}/gpx")
 def gpx(fid: int):
     r = get_flight(fid)
-    pts = "".join(f'<trkpt lat="{float(p[1])}" lon="{float(p[2])}"><ele>{float(p[3])}</ele></trkpt>' for p in json.loads(r["track"]))
+    pts = "".join(f'<trkpt lat="{float(p[1])}" lon="{float(p[2])}"><ele>{float(p[3])}</ele></trkpt>' for p in json.loads(r["track"] or "[]"))
     return attach(f'<?xml version="1.0"?><gpx version="1.1" creator="drone-manager"><trk><name>{html.escape(str(r["start"] or ""))}</name><trkseg>{pts}</trkseg></trk></gpx>',
                   f"voo{fid}.gpx", "application/gpx+xml")
 
@@ -1990,7 +1990,7 @@ def flight_package(fid: int, lang: str = ""):
         sev = air.get("sev", 0)
         badge = "🟢 Livre" if sev == 0 else ("🟡 Atenção (aeródromo próximo)" if sev == 2 else "🔴 Restrito / Proibido")
         items = [f"{z.get('layer','')}: {z.get('name') or z.get('id') or ''}" for z in (air.get("hits") or [])]
-        items += [f"Aeródromo próximo: {z.get('name','')} ({z.get('dist_km','?')} km)" for z in (air.get("near") or [])]
+        items += [f"Aeródromo próximo: {z.get('name','')} ({z.get('km', z.get('dist_km', '?'))} km)" for z in (air.get("near") or [])]
         air_html = f"<b>{badge}</b>" + (" — " + html.escape("; ".join(items[:5])) if items else "")
 
     wx_html = (f"{py_fmt_temp(w['temperature_2m'], L)}, {tr(L, 'fdet.wind_lbl')} {py_fmt_spd(w['wind_speed_10m'], L)} "
@@ -2049,13 +2049,15 @@ def report(fid: int, lang: str = ""):
     hl = f.get("health")
     hl_s = f" · {tr(L, 'fdet.health_title')}: <b>{hl['score']}/100</b> ({tr(L, 'fdet.health_' + hl['status'])})" if hl else ""
     cp = f.get("compliance") or {}
+    is_us = cp.get("region") == "US"
     cp_tags = []
     if cp.get("air_hit"): cp_tags.append(tr(L, "comp.air_hit"))
-    if cp.get("alt_120"): cp_tags.append(tr(L, "comp.alt_120"))
-    if cp.get("vlos_500"): cp_tags.append(tr(L, "comp.vlos_500"))
-    if cp.get("night"): cp_tags.append(tr(L, "comp.night"))
+    if cp.get("alt_120"): cp_tags.append(tr(L, "comp.alt_400ft" if is_us else "comp.alt_120", val=py_fmt_alt(cp.get("max_alt_m") or 0, L)))
+    if cp.get("vlos_500"): cp_tags.append(tr(L, "comp.vlos_500", val=py_fmt_alt(cp.get("max_vlos_m") or 0, L)))
+    if cp.get("night"): cp_tags.append(tr(L, "comp.night_us" if is_us else "comp.night"))
     if cp.get("aero_9km"): cp_tags.append(tr(L, "comp.aero_9km", km=cp.get("aero_km") or "≤9"))
-    cp_s = f"<p><b>{tr(L, 'comp.title')}:</b> " + (", ".join(cp_tags) if cp_tags else tr(L, "comp.all_ok")) + "</p>"
+    cp_title = tr(L, "comp.title_us" if is_us else "comp.title")
+    cp_s = f"<p><b>{cp_title}:</b> " + (", ".join(cp_tags) if cp_tags else tr(L, "comp.all_ok")) + "</p>"
     th = "".join(f'<img src="/api/media/{m["id"]}/thumb" width=170>' for m in ms)
     return f"""<!doctype html><html lang="{L}"><meta charset=utf-8><title>{tr(L, 'report.flight_title', id=fid)}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
 <button onclick=print() style="float:right">{tr(L, 'report.print_pdf')}</button>
@@ -4406,7 +4408,7 @@ def air_check_pts(pts):
     return res
 
 def air_check(fid):
-    r = get_flight(fid); tr = json.loads(r["track"])
+    r = get_flight(fid); tr = json.loads(r["track"] or "[]")
     pts = (tr[::3] + [tr[-1]]) if len(tr) > 300 else tr
     return air_check_pts(pts)
 

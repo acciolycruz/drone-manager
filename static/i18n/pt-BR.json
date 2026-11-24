@@ -546,5 +546,12 @@
   "comp.air_unchecked_us": "FAA não verificado",
   "air.checking_us": "Consultando FAA (UDDS/ADDS)… (pode levar alguns segundos)",
   "air.err_now_us": "Não foi possível consultar a FAA agora.",
-  "air.disclaimer_us": "Verificado em {dt}. Referência visual FAA/UDDS: confirme via LAANC / B4UFLY antes de voar."
+  "air.disclaimer_us": "Verificado em {dt}. Referência visual FAA/UDDS: confirme via LAANC / B4UFLY antes de voar.",
+  "air.faa_layer": "🇺🇸 FAA UASFM / Espaço Aéreo (EUA)",
+  "air.faa_ceiling": "Teto",
+  "air.query_toast": "✈ Consulta de espaço aéreo ativa (DECEA/FAA): clique em um ponto do mapa",
+  "air.query_err": "Não foi possível consultar o espaço aéreo agora.",
+  "air.query_none": "Nenhuma área das camadas consultadas neste ponto.",
+  "air.disc_us": "Referência visual FAA/UDDS. Confirme via LAANC / B4UFLY antes de voar.",
+  "air.disc_br": "Referência visual, não é autorização de voo. Confirme no SARPAS/DECEA antes de voar."
 }

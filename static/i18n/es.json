@@ -546,5 +546,12 @@
   "comp.air_unchecked_us": "FAA sin verificar",
   "air.checking_us": "Consultando FAA (UDDS/ADDS)… (puede tardar unos segundos)",
   "air.err_now_us": "No se pudo consultar la FAA ahora.",
-  "air.disclaimer_us": "Verificado el {dt}. Referencia visual FAA/UDDS: confirme vía LAANC / B4UFLY antes de volar."
+  "air.disclaimer_us": "Verificado el {dt}. Referencia visual FAA/UDDS: confirme vía LAANC / B4UFLY antes de volar.",
+  "air.faa_layer": "🇺🇸 FAA UASFM / Espacio Aéreo (EE. UU.)",
+  "air.faa_ceiling": "Techo",
+  "air.query_toast": "✈ Consulta de espacio aéreo activa (DECEA/FAA): haz clic en un punto del mapa",
+  "air.query_err": "No se pudo consultar el espacio aéreo ahora.",
+  "air.query_none": "Ninguna zona encontrada en este punto.",
+  "air.disc_us": "Referencia visual FAA/UDDS. Confirme vía LAANC / B4UFLY antes de volar.",
+  "air.disc_br": "Referencia visual, no es autorización de vuelo. Confirme en SARPAS/DECEA antes de volar."
 }

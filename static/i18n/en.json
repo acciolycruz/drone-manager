@@ -546,5 +546,12 @@
   "comp.air_unchecked_us": "FAA unchecked",
   "air.checking_us": "Querying FAA (UDDS/ADDS)… (may take a few seconds)",
   "air.err_now_us": "Could not query FAA right now.",
-  "air.disclaimer_us": "Checked on {dt}. Visual reference only (FAA/UDDS): verify via LAANC / B4UFLY before flying."
+  "air.disclaimer_us": "Checked on {dt}. Visual reference only (FAA/UDDS): verify via LAANC / B4UFLY before flying.",
+  "air.faa_layer": "🇺🇸 FAA UASFM / Airspace (USA)",
+  "air.faa_ceiling": "Ceiling",
+  "air.query_toast": "✈ Airspace query active (DECEA/FAA): click any point on the map",
+  "air.query_err": "Could not query airspace right now.",
+  "air.query_none": "No airspace zones found at this point.",
+  "air.disc_us": "Visual reference only (FAA/UDDS). Verify via LAANC / B4UFLY before flying.",
+  "air.disc_br": "Visual reference only, not flight authorization. Verify with SARPAS/DECEA before flying."
 }
