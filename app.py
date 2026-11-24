@@ -1452,10 +1452,28 @@ def _solar_times_utc(lat: float, lon: float, dt_utc: datetime) -> tuple[Optional
     except Exception:
         return None, None
 
+def _is_usa(lat, lon) -> bool:
+    """Detecta se a coordenada está nos EUA (Continental, Alasca, Havaí ou Porto Rico/USVI)."""
+    if not valid_gps(lat, lon):
+        return False
+    la, lo = float(lat), float(lon)
+    return (
+        (24.0 <= la <= 49.5 and -125.5 <= lo <= -66.5) or
+        (51.0 <= la <= 71.5 and -179.5 <= lo <= -129.0) or
+        (18.5 <= la <= 22.5 and -161.0 <= lo <= -154.5) or
+        (17.5 <= la <= 18.6 and -68.0 <= lo <= -64.5)
+    )
+
 def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
-    """Resumo automático de conformidade ANAC/DECEA por voo."""
+    """Resumo automático de conformidade ANAC/DECEA (BR) ou FAA Part 107 (EUA) por voo."""
+    lat, lon = d.get("lat"), d.get("lon")
+    if not valid_gps(lat, lon) and track:
+        lat, lon = track[0][1], track[0][2]
+    region = "US" if _is_usa(lat, lon) else "BR"
+    alt_limit_m = 121.92 if region == "US" else 120.0  # 400 ft (FAA) vs 120 m (ANAC)
+
     max_alt = float(d.get("max_alt") or 0.0)
-    alt_120 = max_alt > 120.0
+    alt_120 = max_alt > alt_limit_m
     max_vlos = float((meta.get("home") or {}).get("max_dist") or 0.0)
     if not max_vlos and track:
         h0 = (track[0][1], track[0][2])
@@ -1464,7 +1482,6 @@ def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
 
     night = False
     sunrise_s, sunset_s = None, None
-    lat, lon = d.get("lat"), d.get("lon")
     start_iso = d.get("start")
     if start_iso and valid_gps(lat, lon):
         try:
@@ -1480,8 +1497,10 @@ def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
                 # Ajusta dia se o voo começou após meia-noite UTC antes do nascer do sol do dia anterior
                 if dt_s < sr - timedelta(hours=12):
                     sr -= timedelta(days=1); ss -= timedelta(days=1)
-                sunrise_s = (sr + timedelta(hours=TZ_OFFSET)).strftime("%H:%M")
-                sunset_s = (ss + timedelta(hours=TZ_OFFSET)).strftime("%H:%M")
+                # Para voos nos EUA sem TZ_OFFSET local, exibe UTC ou TZ_OFFSET configurado
+                tz_h = -5 if (region == "US" and TZ_OFFSET == -3) else TZ_OFFSET
+                sunrise_s = (sr + timedelta(hours=tz_h)).strftime("%H:%M")
+                sunset_s = (ss + timedelta(hours=tz_h)).strftime("%H:%M")
                 night = (dt_s < sr) or (dt_e > ss)
         except Exception:
             pass
@@ -1497,9 +1516,12 @@ def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
     air_hit = False
     aero_9km = False
     aero_km = None
+    uasfm_min_ft = air_obj.get("uasfm_min_ft") if air_obj else None
     if air_obj:
         hits = air_obj.get("hits") or []
         air_hit = any((h.get("sev") or 0) >= 3 for h in hits)
+        if uasfm_min_ft is not None and (max_alt * 3.28084) > uasfm_min_ft:
+            air_hit = True
         near = air_obj.get("near") or []
         kms = [float(n["km"]) for n in near if isinstance(n.get("km"), (int, float))]
         if kms:
@@ -1516,18 +1538,22 @@ def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
     if vlos_500:
         alerts.append({"code": "vlos_500", "sev": "warn", "val": round(max_vlos, 1)})
     if night:
-        alerts.append({"code": "night", "sev": "warn"})
+        # Nos EUA (Part 107) voo noturno é permitido com luz anticolisão (aviso informativo)
+        alerts.append({"code": "night", "sev": "info" if region == "US" else "warn"})
     if aero_9km:
         alerts.append({"code": "aero_9km", "sev": "warn", "val": aero_km})
 
-    status = "crit" if air_hit else ("warn" if (alt_120 or vlos_500 or night or aero_9km) else "ok")
+    night_warn = night and region != "US"
+    status = "crit" if air_hit else ("warn" if (alt_120 or vlos_500 or night_warn or aero_9km) else "ok")
     return {
+        "region": region,
         "status": status,
         "alt_120": alt_120,
         "max_alt_m": round(max_alt, 1),
         "vlos_500": vlos_500,
         "max_vlos_m": round(max_vlos, 1),
         "night": night,
+        "uasfm_min_ft": uasfm_min_ft,
         "sunrise": sunrise_s,
         "sunset": sunset_s,
         "air_checked": air_checked,
@@ -4159,10 +4185,60 @@ def battery_health():
     return list(out.values())
 
 AIR_WMS = "https://geoaisweb.decea.mil.br/geoserver/ows"
+FAA_REST = "https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/arcgis/rest/services"
+FAA_ALLOWED = ("FAA_UAS_FacilityMap_Data", "DoD_Mar_13", "Prohibited_Areas", "Class_Airspace", "Special_Use_Airspace", "US_Airport")
+
+def _faa_query(service: str, bb: tuple, where: str = "1=1", limit: int = 300) -> list:
+    if service not in FAA_ALLOWED:
+        return []
+    q = urllib.parse.urlencode({
+        "where": where,
+        "geometry": f"{bb[0]:.6f},{bb[1]:.6f},{bb[2]:.6f},{bb[3]:.6f}",
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+        "outFields": "*",
+        "returnGeometry": "true",
+        "f": "geojson",
+        "resultRecordCount": limit,
+    })
+    return http_json(f"{FAA_REST}/{service}/FeatureServer/0/query?{q}").get("features", [])
+
+@app.get("/api/faa/layer")
+def faa_layer(service: str, bbox: str):
+    """Proxy GeoJSON seguro para camadas oficiais da FAA (UDDS / ADDS) no mapa."""
+    if service not in FAA_ALLOWED:
+        raise HTTPException(400, "camada FAA inválida")
+    bb = _parse_bbox_param(bbox)
+    if not bb:
+        raise HTTPException(400, "bbox inválido")
+    where = "LOCAL_TYPE<>'MODE C'" if service == "Class_Airspace" else "1=1"
+    try:
+        return {"type": "FeatureCollection", "features": _faa_query(service, bb, where=where, limit=250)}
+    except Exception as e:
+        return {"type": "FeatureCollection", "features": [], "error": str(e)}
 
 @app.get("/api/airspace/info")
-def airspace_info(lat: float, lon: float, layers: str):
-    """Pergunta ao GeoServer do DECEA (GEOAISWEB) quais áreas de espaço aéreo existem no ponto clicado."""
+def airspace_info(lat: float, lon: float, layers: str = ""):
+    """Pergunta ao DECEA (Brasil) ou à FAA (EUA) quais áreas de espaço aéreo existem no ponto clicado."""
+    if _is_usa(lat, lon):
+        d = 0.0025
+        bb = (lon - d, lat - d, lon + d, lat + d)
+        feats = []
+        for svc, lbl in (("FAA_UAS_FacilityMap_Data", "FAA UASFM (LAANC)"),
+                         ("DoD_Mar_13", "FAA NSUFR (Segurança Nacional)"),
+                         ("Prohibited_Areas", "FAA Prohibited Area"),
+                         ("Class_Airspace", "FAA Class Airspace"),
+                         ("Special_Use_Airspace", "FAA Special Use Airspace")):
+            try:
+                for f in _faa_query(svc, bb, where=("LOCAL_TYPE<>'MODE C'" if svc == "Class_Airspace" else "1=1"), limit=10):
+                    pr = f.get("properties") or {}
+                    pr["_faa_layer"] = lbl
+                    f["properties"] = pr
+                    feats.append(f)
+            except Exception:
+                pass
+        return {"region": "US", "features": feats}
     if not re.fullmatch(r"ICA:[A-Za-z0-9_]+(,ICA:[A-Za-z0-9_]+)*", layers):
         raise HTTPException(400, "camadas inválidas")
     d = 0.0006
@@ -4226,12 +4302,79 @@ def _label(props):
 def _props(p):
     return dict([(k, v) for k, v in p.items() if isinstance(v, (str, int, float)) and not isinstance(v, bool) and v != ""][:8])
 
+def _faa_air_check_pts(pts):
+    """Verifica intersecção de pontos [[t, lat, lon, alt], ...] contra camadas oficiais da FAA (UDDS/ADDS)."""
+    res = {"checked": datetime.now().isoformat(timespec="seconds"), "region": "US", "hits": [], "near": [], "errors": [], "sev": 0, "uasfm_min_ft": None}
+    lats, lons = [p[1] for p in pts], [p[2] for p in pts]; pad = 0.15
+    bb = (min(lons) - pad, min(lats) - pad, max(lons) + pad, max(lats) + pad)
+    ok = 0
+    checks = [
+        ("DoD_Mar_13", "FAA NSUFR (National Security)", 3, "1=1"),
+        ("Prohibited_Areas", "FAA Prohibited Area", 3, "1=1"),
+        ("FAA_UAS_FacilityMap_Data", "FAA UASFM (LAANC)", 2, "1=1"),
+        ("Class_Airspace", "FAA Controlled Airspace", 2, "LOCAL_TYPE<>'MODE C' AND (LOWER_CODE='SFC' OR LOWER_VAL=0)"),
+        ("Special_Use_Airspace", "FAA Special Use Airspace", 2, "1=1"),
+    ]
+    min_ceil_ft = None
+    for svc, label, base_sev, where in checks:
+        try:
+            feats = _faa_query(svc, bb, where=where, limit=250); ok += 1
+        except Exception as e:
+            res["errors"].append(svc + ": " + str(e)[:80]); continue
+        for f in feats:
+            props = f.get("properties") or {}; ts = []; hit_pts = []
+            for poly in _polys(f.get("geometry")):
+                if not poly or not poly[0]: continue
+                x0, y0, x1, y1 = _ring_bbox(poly[0])
+                for p in pts:
+                    if x0 <= p[2] <= x1 and y0 <= p[1] <= y1 and _pip(p[2], p[1], poly[0]) and not any(_pip(p[2], p[1], h) for h in poly[1:]):
+                        ts.append(p[0]); hit_pts.append(p)
+            if ts:
+                sev = base_sev
+                nm = _label(props)
+                lbl = label
+                if svc == "FAA_UAS_FacilityMap_Data":
+                    ceil_ft = props.get("CEILING")
+                    apt = props.get("APT1_NAME") or props.get("APT1_ICAO") or ""
+                    if isinstance(ceil_ft, (int, float)):
+                        if min_ceil_ft is None or ceil_ft < min_ceil_ft:
+                            min_ceil_ft = int(ceil_ft)
+                        max_ft_here = max(((p[3] or 0) * 3.28084 for p in hit_pts), default=0.0)
+                        lbl = f"FAA UASFM · teto {int(ceil_ft)} ft"
+                        nm = apt or nm
+                        if ceil_ft == 0 or max_ft_here > ceil_ft:
+                            sev = 3
+                elif svc == "Class_Airspace":
+                    cls = props.get("CLASS") or props.get("LOCAL_TYPE") or props.get("TYPE_CODE") or ""
+                    if cls:
+                        lbl = f"FAA Class {cls}"
+                    if str(cls).upper() in ("B", "C", "D", "CLASS_B", "CLASS_C", "CLASS_D"):
+                        sev = max(sev, 2)
+                res["hits"].append({"layer": svc, "label": lbl, "name": nm, "first_t": min(ts), "last_t": max(ts), "props": _props(props), "sev": sev})
+                res["sev"] = max(res["sev"], sev)
+    res["uasfm_min_ft"] = min_ceil_ft
+    try:
+        near = []
+        for f in _faa_query("US_Airport", bb, where="1=1", limit=200):
+            props = f.get("properties") or {}
+            for lo, la in _centers(f.get("geometry")):
+                near.append({"name": _label(props), "km": round(min(hav(p[1], p[2], la, lo) for p in pts) / 1000, 1)})
+        ok += 1
+        res["near"] = [n for n in sorted(near, key=lambda n: n["km"])[:3] if n["km"] <= 20]
+        if res["near"] and res["near"][0]["km"] <= AIR_NEAR_KM:
+            res["sev"] = max(res["sev"], 2)
+    except Exception as e:
+        res["errors"].append("US_Airport: " + str(e)[:80])
+    res["failed"] = ok == 0
+    return res
+
 def air_check_pts(pts):
-    """Verifica intersecção de uma lista de pontos [[t, lat, lon, alt], ...] contra camadas WFS do DECEA."""
-    res = {"checked": datetime.now().isoformat(timespec="seconds"), "hits": [], "near": [], "errors": [], "sev": 0}
+    """Verifica intersecção de uma lista de pontos [[t, lat, lon, alt], ...] contra DECEA (BR) ou FAA (EUA)."""
     if not pts:
-        res["failed"] = True
-        return res
+        return {"checked": datetime.now().isoformat(timespec="seconds"), "hits": [], "near": [], "errors": [], "sev": 0, "failed": True}
+    if _is_usa(pts[0][1], pts[0][2]):
+        return _faa_air_check_pts(pts)
+    res = {"checked": datetime.now().isoformat(timespec="seconds"), "region": "BR", "hits": [], "near": [], "errors": [], "sev": 0}
     lats, lons = [p[1] for p in pts], [p[2] for p in pts]; pad = 0.15
     bb = (min(lons) - pad, min(lats) - pad, max(lons) + pad, max(lats) + pad)
     ok = 0

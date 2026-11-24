@@ -538,5 +538,13 @@
   "wind.diff_more": "+{pct}% draw in headwind",
   "wind.diff_less": "{pct}% draw in headwind",
   "wind.no_data": "Not enough hover or power (W) samples for wind analysis.",
-  "wind.reimport_needed": "Wind/attitude telemetry not yet extracted for this flight. Click \"⟳ Refresh log telemetry\" in the Flights tab to show wind arrows on the map and efficiency (Wh/km)."
+  "wind.reimport_needed": "Wind/attitude telemetry not yet extracted for this flight. Click \"⟳ Refresh log telemetry\" in the Flights tab to show wind arrows on the map and efficiency (Wh/km).",
+  "comp.title_us": "FAA Part 107 Compliance (USA)",
+  "comp.alt_ok_us": "Alt ≤ 400 ft",
+  "comp.alt_400ft": "Alt > 400 ft ({val})",
+  "comp.night_us": "Night flight (Part 107: anti-collision light)",
+  "comp.air_unchecked_us": "FAA unchecked",
+  "air.checking_us": "Querying FAA (UDDS/ADDS)… (may take a few seconds)",
+  "air.err_now_us": "Could not query FAA right now.",
+  "air.disclaimer_us": "Checked on {dt}. Visual reference only (FAA/UDDS): verify via LAANC / B4UFLY before flying."
 }

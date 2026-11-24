@@ -1493,10 +1493,48 @@ async function uploadLogs(files){
 let AIRQ_ON=false;
 const AIR_L=[['Aeródromos e helipontos','ICA:airport_heliport'],['CTR (zonas de controle)','ICA:CTR'],
   ['ATZ e FIZ (zonas de tráfego de aeródromo)','ICA:ATZ,ICA:fiz'],['Áreas proibidas, restritas e perigosas','ICA:eac_p,ICA:eac_r,ICA:eac_d']];
+function _faaLayerGroup(){
+  const g=L.layerGroup();
+  let lastB='';
+  const load=async()=>{
+    const mp=g._map;if(!mp)return;
+    const b=mp.getBounds(),bb=[b.getWest().toFixed(3),b.getSouth().toFixed(3),b.getEast().toFixed(3),b.getNorth().toFixed(3)].join(',');
+    if(bb===lastB)return;lastB=bb;
+    // Só consulta FAA se o centro do mapa estiver próximo da América do Norte
+    const c=mp.getCenter();if(c.lng>-60||c.lat<15)return;
+    g.clearLayers();
+    try{
+      const [u,n]=await Promise.all([
+        api('/faa/layer?service=FAA_UAS_FacilityMap_Data&bbox='+encodeURIComponent(bb)),
+        api('/faa/layer?service=DoD_Mar_13&bbox='+encodeURIComponent(bb))
+      ]);
+      if(u&&u.features&&u.features.length){
+        L.geoJSON(u,{style:f=>{
+          const cl=f.properties&&f.properties.CEILING;
+          const col=cl===0?'#ef4444':(cl<=100?'#f97316':(cl<=200?'#eab308':'#38bdf8'));
+          return {color:col,weight:1.2,fillColor:col,fillOpacity:0.22};
+        },onEachFeature:(f,ly)=>{
+          const p=f.properties||{};
+          ly.bindPopup(`<b>FAA UASFM (LAANC)</b><br>Teto: <b>${p.CEILING!=null?p.CEILING+' ft':'—'}</b><br>${esc(p.APT1_NAME||p.APT1_ICAO||'')}`);
+        }}).addTo(g);
+      }
+      if(n&&n.features&&n.features.length){
+        L.geoJSON(n,{style:{color:'#ef4444',weight:2,fillColor:'#ef4444',fillOpacity:0.32},onEachFeature:(f,ly)=>{
+          const p=f.properties||{};
+          ly.bindPopup(`<b>FAA NSUFR (Restrito)</b><br>${esc(p.Base||p.FACILITY||p.NAME||'Restrição de Segurança Nacional')}`);
+        }}).addTo(g);
+      }
+    }catch(e){}
+  };
+  g.on('add',()=>{const mp=g._map;if(mp){mp.on('moveend',load);load()}});
+  g.on('remove',()=>{const mp=g._map;if(mp)mp.off('moveend',load)});
+  return g;
+}
 function airLayers(){const o={};
   AIR_L.forEach(([n,l])=>{
     const t=L.tileLayer.wms('https://geoaisweb.decea.mil.br/geoserver/ows?',{layers:l,format:'image/png',transparent:true,version:'1.1.1',opacity:0.7,attribution:'Espaço aéreo: DECEA/GEOAISWEB'});
     t._air=l;o['✈ '+n]=t});
+  o['🇺🇸 FAA UASFM / Espaço Aéreo (EUA)']=_faaLayerGroup();
   return o}
 function toggleAirQuery(on){
   AIRQ_ON=!!on;
@@ -1525,10 +1563,16 @@ function airQuery(m){
     const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
     let r;try{r=await api('/airspace/info?lat='+e.latlng.lat+'&lon='+e.latlng.lng+'&layers='+encodeURIComponent(ls))}catch(x){r={error:String(x)}}
     const fs=r.features||[];
-    const body=r.error?'Não foi possível consultar o DECEA agora.':fs.length?
-      fs.map(f=>'<b>'+E(String(f.id||'').split('.')[0])+'</b><br>'+Object.entries(f.properties||{}).filter(([k,v])=>v!==null&&v!==''&&typeof v!='object').slice(0,8).map(([k,v])=>E(k)+': '+E(v)).join('<br>')).join('<hr>')
+    const body=r.error?'Não foi possível consultar o espaço aéreo agora.':fs.length?
+      fs.map(f=>{
+        const pr=f.properties||{};
+        const title=pr._faa_layer||String(f.id||'').split('.')[0];
+        const rows=Object.entries(pr).filter(([k,v])=>k!=='_faa_layer'&&v!==null&&v!==''&&typeof v!='object').slice(0,8).map(([k,v])=>E(k)+': '+E(v)).join('<br>');
+        return '<b>'+E(title)+'</b><br>'+rows;
+      }).join('<hr>')
       :'Nenhuma área das camadas consultadas neste ponto.';
-    L.popup({maxWidth:320}).setLatLng(e.latlng).setContent(body+'<hr><small>Referência visual, não é autorização de voo. Confirme no SARPAS/DECEA antes de voar.</small>').openOn(m)})}
+    const disc=r.region==='US'?'Referência visual FAA/UDDS. Confirme via LAANC / B4UFLY antes de voar.':'Referência visual, não é autorização de voo. Confirme no SARPAS/DECEA antes de voar.';
+    L.popup({maxWidth:320}).setLatLng(e.latlng).setContent(body+'<hr><small>'+disc+'</small>').openOn(m)})}
 
 /* ---------- cálculo de Pegada de Fotos no Solo (Footprint) e GSD (Fotogrametria) ---------- */
 function havDist(a,b,c,d){
@@ -3756,12 +3800,14 @@ function renderCompliance(f){
     const ico=ok?'🟢':(sev==='crit'?'🔴':(sev==='info'?'⚪':'🟡'));
     return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:12px;border:1px solid ${col}55;background:${bg};color:${col}">${ico} ${esc(lbl)}</span>`;
   };
-  const altP=pill(!c.alt_120,c.alt_120?t('comp.alt_120',{val:fmt.alt(c.max_alt_m)}):t('comp.alt_ok'));
+  const isUS=c.region==='US';
+  const altP=pill(!c.alt_120,c.alt_120?t(isUS?'comp.alt_400ft':'comp.alt_120',{val:fmt.alt(c.max_alt_m)}):t(isUS?'comp.alt_ok_us':'comp.alt_ok'));
   const sunS=(c.sunrise&&c.sunset)?` (${c.sunrise}–${c.sunset})`:'';
-  const dayP=pill(!c.night,(c.night?t('comp.night'):t('comp.day_ok'))+sunS);
+  const dayP=pill(!c.night,(c.night?t(isUS?'comp.night_us':'comp.night'):t('comp.day_ok'))+sunS,isUS?'info':'warn');
   const vlosP=pill(!c.vlos_500,c.vlos_500?t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}):t('comp.vlos_ok'));
-  const aeroP=!c.air_checked?pill(false,t('comp.air_unchecked'),'info'):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
-  el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px"><strong style="font-size:13px">${esc(t('comp.title'))}:</strong>${altP}${dayP}${vlosP}${aeroP}</div>`;
+  const aeroP=!c.air_checked?pill(false,t(isUS?'comp.air_unchecked_us':'comp.air_unchecked'),'info'):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
+  const uasfmP=(isUS&&c.uasfm_min_ft!=null)?pill((c.max_alt_m*3.28084)<=c.uasfm_min_ft,`UASFM ${c.uasfm_min_ft} ft`,'crit'):'';
+  el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px"><strong style="font-size:13px">${esc(t(isUS?'comp.title_us':'comp.title'))}:</strong>${altP}${dayP}${vlosP}${aeroP}${uasfmP}</div>`;
 }
 function renderWindAnalysis(f){
   if(WINDL)WINDL.clearLayers();
@@ -3820,6 +3866,8 @@ function renderWindAnalysis(f){
 function renderAir(f){
   const el=$('#fair');if(!el)return;
   let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
+  const isUS=(a&&a.region==='US')||(f.compliance&&f.compliance.region==='US');
+  window.CUR_AIR_US=!!isUS;
   const btn=`<button onclick="airCheck(${f.id})">${a?t('air.recheck'):t('air.check')}</button>`;
   if(!a){el.innerHTML=t('air.unverified_html')+' '+btn;return}
   const E=s=>String(s==null?'':s).replace(/[&<>"]/g,'');
@@ -3830,11 +3878,11 @@ function renderAir(f){
   el.innerHTML='<div style="background:var(--card);border:1px solid var(--border);padding:10px 14px;border-radius:8px"><strong style="font-size:14px">'+head+'</strong> '+btn+
     '<ul style="margin:6px 0 0 18px">'+hits+near+'</ul>'+
     (a.errors&&a.errors.length?'<small style="color:var(--mut)">'+t('air.partial',{n:a.errors.length})+'</small><br>':'')+
-    '<small style="color:var(--mut)">'+t('air.disclaimer',{dt:E(a.checked.replace('T',' '))})+'</small></div>'}
+    '<small style="color:var(--mut)">'+t(isUS?'air.disclaimer_us':'air.disclaimer',{dt:E(a.checked.replace('T',' '))})+'</small></div>'}
 async function airCheck(id){
-  const el=$('#fair');el.textContent=t('air.checking');
+  const el=$('#fair');el.textContent=t(window.CUR_AIR_US?'air.checking_us':'air.checking');
   try{await api('/flights/'+id+'/airspace-check',{method:'POST'});const uf=await api('/flights/'+id);renderAir(uf);renderCompliance(uf)}
-  catch(e){el.innerHTML=t('air.err_now')+' <button onclick="airCheck('+id+')">'+t('air.retry')+'</button>'}}
+  catch(e){el.innerHTML=t(window.CUR_AIR_US?'air.err_now_us':'air.err_now')+' <button onclick="airCheck('+id+')">'+t('air.retry')+'</button>'}}
 async function airCheckAll(){
   const fl=(await api('/flights')).filter(f=>f.source!='photos'&&!f.air);
   if(!fl.length){alert(t('air.all_done'));return}

@@ -538,5 +538,13 @@
   "wind.diff_more": "+{pct}% consumo contra o vento",
   "wind.diff_less": "{pct}% consumo contra o vento",
   "wind.no_data": "Sem amostras suficientes de pairado ou potência (W) para análise de vento.",
-  "wind.reimport_needed": "Telemetria de vento/atitude não extraída neste voo. Clique em \"⟳ Atualizar telemetria dos logs\" na aba Voos para exibir as setas de vento no mapa e a eficiência (Wh/km)."
+  "wind.reimport_needed": "Telemetria de vento/atitude não extraída neste voo. Clique em \"⟳ Atualizar telemetria dos logs\" na aba Voos para exibir as setas de vento no mapa e a eficiência (Wh/km).",
+  "comp.title_us": "Conformidade FAA (Part 107 · EUA)",
+  "comp.alt_ok_us": "Altura ≤ 400 ft",
+  "comp.alt_400ft": "Altura > 400 ft ({val})",
+  "comp.night_us": "Voo noturno (Part 107: luz anticolisão)",
+  "comp.air_unchecked_us": "FAA não verificado",
+  "air.checking_us": "Consultando FAA (UDDS/ADDS)… (pode levar alguns segundos)",
+  "air.err_now_us": "Não foi possível consultar a FAA agora.",
+  "air.disclaimer_us": "Verificado em {dt}. Referência visual FAA/UDDS: confirme via LAANC / B4UFLY antes de voar."
 }
