@@ -3,7 +3,7 @@ import os, re, json, csv, io, time, html, ctypes, ctypes.util, shutil, sqlite3, 
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from math import radians, degrees, sin, cos, tan, asin, acos, atan, atan2, exp, pi, sqrt, hypot, ceil
+from math import radians, degrees, sin, cos, tan, asin, acos, atan, atan2, exp, pi, sqrt, hypot, ceil, floor
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -1424,6 +1424,223 @@ def _calc_flight_health(track: list, bat: dict, meta: dict, source: str = "log")
         "issues": issues,
     }
 
+def _solar_times_utc(lat: float, lon: float, dt_utc: datetime) -> tuple[Optional[datetime], Optional[datetime]]:
+    """Calcula nascer e pôr do sol em UTC (algoritmo NOAA simplificado, sem rede)."""
+    try:
+        doy = dt_utc.timetuple().tm_yday
+        def _calc(is_rise: bool) -> Optional[datetime]:
+            lng_h = lon / 15.0
+            t = doy + ((6.0 - lng_h) / 24.0 if is_rise else (18.0 - lng_h) / 24.0)
+            M = 0.9856 * t - 3.289
+            L = (M + 1.916 * sin(radians(M)) + 0.020 * sin(radians(2 * M)) + 282.634) % 360.0
+            RA = degrees(atan(0.91764 * tan(radians(L)))) % 360.0
+            RA += (floor(L / 90.0) * 90.0 - floor(RA / 90.0) * 90.0)
+            RA /= 15.0
+            sin_dec = 0.39782 * sin(radians(L))
+            cos_dec = cos(asin(sin_dec))
+            cos_h = (cos(radians(90.833)) - sin_dec * sin(radians(lat))) / (cos_dec * cos(radians(lat)))
+            if cos_h > 1.0 or cos_h < -1.0:
+                return None
+            H = (360.0 - degrees(acos(cos_h))) / 15.0 if is_rise else degrees(acos(cos_h)) / 15.0
+            ut = (H + RA - 0.06571 * t - 6.622 - lng_h) % 24.0
+            base = dt_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            return base + timedelta(hours=ut)
+        sr, ss = _calc(True), _calc(False)
+        if sr and ss and ss < sr:
+            ss += timedelta(days=1)
+        return sr, ss
+    except Exception:
+        return None, None
+
+def _calc_compliance(d: dict, meta: dict, track: Optional[list] = None) -> dict:
+    """Resumo automático de conformidade ANAC/DECEA por voo."""
+    max_alt = float(d.get("max_alt") or 0.0)
+    alt_120 = max_alt > 120.0
+    max_vlos = float((meta.get("home") or {}).get("max_dist") or 0.0)
+    if not max_vlos and track:
+        h0 = (track[0][1], track[0][2])
+        max_vlos = max((hav(h0[0], h0[1], p[1], p[2]) for p in track), default=0.0)
+    vlos_500 = max_vlos > 500.0
+
+    night = False
+    sunrise_s, sunset_s = None, None
+    lat, lon = d.get("lat"), d.get("lon")
+    start_iso = d.get("start")
+    if start_iso and valid_gps(lat, lon):
+        try:
+            dt_s = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+            if dt_s.tzinfo is None:
+                dt_s = dt_s.replace(tzinfo=timezone.utc)
+            else:
+                dt_s = dt_s.astimezone(timezone.utc)
+            dur_s = float(d.get("duration") or 0.0)
+            dt_e = dt_s + timedelta(seconds=dur_s)
+            sr, ss = _solar_times_utc(float(lat), float(lon), dt_s)
+            if sr and ss:
+                # Ajusta dia se o voo começou após meia-noite UTC antes do nascer do sol do dia anterior
+                if dt_s < sr - timedelta(hours=12):
+                    sr -= timedelta(days=1); ss -= timedelta(days=1)
+                sunrise_s = (sr + timedelta(hours=TZ_OFFSET)).strftime("%H:%M")
+                sunset_s = (ss + timedelta(hours=TZ_OFFSET)).strftime("%H:%M")
+                night = (dt_s < sr) or (dt_e > ss)
+        except Exception:
+            pass
+
+    air_raw = d.get("air")
+    air_obj = None
+    if air_raw:
+        try:
+            air_obj = json.loads(air_raw) if isinstance(air_raw, str) else air_raw
+        except Exception:
+            air_obj = None
+    air_checked = bool(air_obj)
+    air_hit = False
+    aero_9km = False
+    aero_km = None
+    if air_obj:
+        hits = air_obj.get("hits") or []
+        air_hit = any((h.get("sev") or 0) >= 3 for h in hits)
+        near = air_obj.get("near") or []
+        kms = [float(n["km"]) for n in near if isinstance(n.get("km"), (int, float))]
+        if kms:
+            aero_km = round(min(kms), 1)
+            aero_9km = aero_km <= 9.0
+        elif any((h.get("sev") or 0) == 2 for h in hits):
+            aero_9km = True
+
+    alerts = []
+    if air_hit:
+        alerts.append({"code": "air_hit", "sev": "crit"})
+    if alt_120:
+        alerts.append({"code": "alt_120", "sev": "warn", "val": round(max_alt, 1)})
+    if vlos_500:
+        alerts.append({"code": "vlos_500", "sev": "warn", "val": round(max_vlos, 1)})
+    if night:
+        alerts.append({"code": "night", "sev": "warn"})
+    if aero_9km:
+        alerts.append({"code": "aero_9km", "sev": "warn", "val": aero_km})
+
+    status = "crit" if air_hit else ("warn" if (alt_120 or vlos_500 or night or aero_9km) else "ok")
+    return {
+        "status": status,
+        "alt_120": alt_120,
+        "max_alt_m": round(max_alt, 1),
+        "vlos_500": vlos_500,
+        "max_vlos_m": round(max_vlos, 1),
+        "night": night,
+        "sunrise": sunrise_s,
+        "sunset": sunset_s,
+        "air_checked": air_checked,
+        "air_hit": air_hit,
+        "aero_9km": aero_9km,
+        "aero_km": aero_km,
+        "alerts": alerts,
+    }
+
+def _calc_wind_analysis(track: list, meta: dict, weather_obj: Optional[dict] = None) -> Optional[dict]:
+    """Extrai setas de vento ao longo da rota, rosa dos ventos e eficiência Wh/km a favor vs. contra o vento."""
+    if not track:
+        return None
+    samples = []
+    for p in track:
+        if len(p) >= 12:
+            alt_v, spd_v, yw, pt, rl, zspd_v = p[3], p[4], p[7], p[9], p[10], p[11]
+            if (isinstance(alt_v, (int, float)) and alt_v >= 5 and
+                isinstance(spd_v, (int, float)) and spd_v < 1.5 and
+                isinstance(zspd_v, (int, float)) and abs(zspd_v) < 0.8 and
+                all(isinstance(v, (int, float)) for v in (pt, rl, yw))):
+                tilt = degrees(acos(max(-1.0, min(1.0, cos(radians(pt)) * cos(radians(rl))))))
+                if 1.0 <= tilt <= 35.0:
+                    w_spd = round(12.0 * sqrt(tan(radians(tilt))), 1)
+                    w_dir = round((yw + degrees(atan2(rl, -pt))) % 360)
+                    samples.append({"t": p[0], "lat": p[1], "lon": p[2], "alt": round(alt_v, 1),
+                                    "spd": w_spd, "deg": w_dir, "card": _cardinal(w_dir)})
+
+    # Subamostragem para manter setas limpas no mapa (mín. 12s ou 20m entre setas, máx. 36)
+    pts = []
+    for s in samples:
+        if not pts or (s["t"] - pts[-1]["t"] >= 12 and hav(pts[-1]["lat"], pts[-1]["lon"], s["lat"], s["lon"]) >= 20):
+            pts.append(s)
+    if len(pts) > 36:
+        step = max(1, len(pts) // 36)
+        pts = pts[::step][:36]
+
+    # Rosa dos ventos (8 setores)
+    dirs = ["N", "NE", "L", "SE", "S", "SO", "O", "NO"]
+    rose_acc = {k: [] for k in dirs}
+    for s in samples:
+        idx = int((s["deg"] + 22.5) // 45) % 8
+        rose_acc[dirs[idx]].append(s["spd"])
+    rose = [{"dir": k, "count": len(v), "avg_spd": round(sum(v) / len(v), 1) if v else 0.0} for k, v in rose_acc.items()]
+
+    # Direção de referência do vento (de onde sopra)
+    wind_est = meta.get("wind_est")
+    ref_deg = None
+    ref_spd = None
+    if wind_est and isinstance(wind_est.get("deg"), (int, float)):
+        ref_deg = float(wind_est["deg"])
+        ref_spd = wind_est.get("spd")
+    elif samples:
+        sx = sum(cos(radians(s["deg"])) for s in samples)
+        sy = sum(sin(radians(s["deg"])) for s in samples)
+        ref_deg = degrees(atan2(sy, sx)) % 360.0
+        ref_spd = round(sum(s["spd"] for s in samples) / len(samples), 1)
+    elif weather_obj and isinstance(weather_obj.get("wind_direction_10m"), (int, float)):
+        ref_deg = float(weather_obj["wind_direction_10m"])
+        ref_spd = weather_obj.get("wind_speed_10m")
+
+    eff = None
+    if ref_deg is not None and len(track) >= 2:
+        w_to = (ref_deg + 180.0) % 360.0
+        buckets = {"tailwind": [0.0, 0.0, 0.0, 0], "headwind": [0.0, 0.0, 0.0, 0], "crosswind": [0.0, 0.0, 0.0, 0]}
+        for i in range(len(track) - 1):
+            p0, p1 = track[i], track[i + 1]
+            dt = (p1[0] - p0[0]) if (p1[0] is not None and p0[0] is not None) else 0
+            if dt <= 0 or dt > 5:
+                continue
+            ds = hav(p0[1], p0[2], p1[1], p1[2])
+            if ds < 2.0 or (p0[4] or 0) < 1.5:
+                continue
+            pwr = p0[14] if len(p0) > 14 else None
+            w_val = pwr[2] if (isinstance(pwr, list) and len(pwr) > 2 and isinstance(pwr[2], (int, float)) and pwr[2] > 0) else None
+            if w_val is None:
+                continue
+            brg = _bearing_deg(p0[1], p0[2], p1[1], p1[2])
+            diff = abs((brg - w_to + 180.0) % 360.0 - 180.0)
+            bkey = "tailwind" if diff <= 60.0 else ("headwind" if diff >= 120.0 else "crosswind")
+            b = buckets[bkey]
+            b[0] += w_val * (dt / 3600.0)  # Wh
+            b[1] += ds / 1000.0            # km
+            b[2] += w_val * dt             # W*s
+            b[3] += dt                     # s
+
+        eff_out = {}
+        for k, (wh_sum, km_sum, ws_sum, s_sum) in buckets.items():
+            if km_sum >= 0.05 and s_sum > 0:
+                eff_out[k] = {
+                    "wh_km": round(wh_sum / km_sum, 1),
+                    "avg_w": round(ws_sum / s_sum, 1),
+                    "dist_m": round(km_sum * 1000.0),
+                }
+        if eff_out:
+            tw = eff_out.get("tailwind")
+            hw = eff_out.get("headwind")
+            if tw and hw and tw["wh_km"] > 0:
+                eff_out["diff_pct"] = round(((hw["wh_km"] - tw["wh_km"]) / tw["wh_km"]) * 100.0, 1)
+            eff = eff_out
+
+    if not pts and eff is None and ref_deg is None:
+        return None
+    return {
+        "ref_deg": round(ref_deg) if ref_deg is not None else None,
+        "ref_card": _cardinal(ref_deg) if ref_deg is not None else None,
+        "ref_spd": ref_spd,
+        "sample_count": len(samples),
+        "points": pts,
+        "rose": rose,
+        "eff": eff,
+    }
+
 def fl_out(r, full=False):
     d = dict(r)
     d["weather"] = json.loads(d["weather"]) if d["weather"] else None
@@ -1440,6 +1657,7 @@ def fl_out(r, full=False):
         except Exception:
             pass
     d["health"] = d["meta"].get("health")
+    d["compliance"] = _calc_compliance(d, d["meta"], tr)
     if full:
         if tr is None:
             tr = json.loads(d["track"])
@@ -1449,6 +1667,8 @@ def fl_out(r, full=False):
             h0 = (tr[0][1], tr[0][2])
             md = max((hav(h0[0], h0[1], p[1], p[2]) for p in tr), default=0.0)
             d["meta"]["home"] = {"lat": h0[0], "lon": h0[1], "rth_alt": None, "max_dist": round(md, 1)}
+            d["compliance"] = _calc_compliance(d, d["meta"], tr)
+        d["wind_analysis"] = _calc_wind_analysis(tr, d["meta"], d["weather"])
     else:
         d.pop("track", None); d.pop("events", None)
     return d
@@ -1802,13 +2022,21 @@ def report(fid: int, lang: str = ""):
           f"({tr(L, 'fdet.gust_short')} {py_fmt_spd(w['wind_gusts_10m'], L)}), {w['precipitation']} mm") if w else tr(L, "report.no_data")
     hl = f.get("health")
     hl_s = f" · {tr(L, 'fdet.health_title')}: <b>{hl['score']}/100</b> ({tr(L, 'fdet.health_' + hl['status'])})" if hl else ""
+    cp = f.get("compliance") or {}
+    cp_tags = []
+    if cp.get("air_hit"): cp_tags.append(tr(L, "comp.air_hit"))
+    if cp.get("alt_120"): cp_tags.append(tr(L, "comp.alt_120"))
+    if cp.get("vlos_500"): cp_tags.append(tr(L, "comp.vlos_500"))
+    if cp.get("night"): cp_tags.append(tr(L, "comp.night"))
+    if cp.get("aero_9km"): cp_tags.append(tr(L, "comp.aero_9km", km=cp.get("aero_km") or "≤9"))
+    cp_s = f"<p><b>{tr(L, 'comp.title')}:</b> " + (", ".join(cp_tags) if cp_tags else tr(L, "comp.all_ok")) + "</p>"
     th = "".join(f'<img src="/api/media/{m["id"]}/thumb" width=170>' for m in ms)
     return f"""<!doctype html><html lang="{L}"><meta charset=utf-8><title>{tr(L, 'report.flight_title', id=fid)}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
 <button onclick=print() style="float:right">{tr(L, 'report.print_pdf')}</button>
 <h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {(f.get('start_local') or '')[:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
 <p>{tr(L, 'report.duration')} {int(f['duration'] or 0)//60} min {int(f['duration'] or 0)%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'] or 0, L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'] or 0, L)} ·
 {tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'] or 0, L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}{hl_s}</p>
-<p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
+{cp_s}<p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
 
 def _csv_safe(v):
     s = str(v if v is not None else "")

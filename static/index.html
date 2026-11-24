@@ -2151,9 +2151,9 @@ async function loadFlights(){
   const th=(k,l)=>`<th onclick="sortF('${k}')">${l}${ar(k)}`;
   const filtered=[...p.entries()].some(([k,v])=>!['sort','order'].includes(k)&&v!==''&&v!=='0');
   const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">'+t('flights.src_photos')+'</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">'+t('flights.src_srt')+'</span>':'';
-  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}`+th('health',t('flights.col.health'))+`<th>${t('flights.col.airspace')}</tr>`+
-    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${healthChip(f)}<td>${airChip(f)}</tr>`).join('')
-    ||`<tr><td colspan=11>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
+  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}`+th('health',t('flights.col.health'))+`<th>${t('flights.col.compliance')}<th>${t('flights.col.airspace')}</tr>`+
+    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${healthChip(f)}<td>${compChip(f)}<td>${airChip(f)}</tr>`).join('')
+    ||`<tr><td colspan=12>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
   $('#fcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
 }
 let fm,fg,trkGrp,mk,homeMk,homeLine,ch,CH_MODE='fl',TRK_COLOR='solid',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
@@ -2545,12 +2545,13 @@ async function openFlight(id){
     <div class=card>${t('fdet.battery')}<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
     <div class=card>${t('fdet.wind_air')}<b style="font-size:15px">${we?`${fmt.spd(we.spd)} (${esc(we.card)})`:'–'}</b>${we?`<small>${t('fdet.gust_est')} ${fmt.spd(we.max)} (${esc(we.deg)}°)</small>`:`<small>${t('fdet.reimport_hint')}</small>`}</div>
     <div class=card>${t('fdet.weather_ground')}<b style="font-size:14px">${w?`${fmt.temp(w.temperature_2m)}, ${t('fdet.wind_lbl')} ${fmt.spd(w.wind_speed_10m)} (${t('fdet.gust_short')} ${fmt.spd(w.wind_gusts_10m)})`:t('fdet.unavail')}</b></div></div>
-   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_pdf')}</a> · <a href="/api/flights/${id}/package?lang=${LANG}" title="Baixar pacote HTML portátil 100% offline para enviar a clientes ou auditoria">${t('fdet.package_html')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_ai')}</a> · <button onclick="openOdmModalFromFlight(${id})" style="padding:3px 9px;font-size:12px">🛰 Ortomosaico (ODM)</button></div><div id="fair" style="margin:6px 0"></div>`;
+   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_pdf')}</a> · <a href="/api/flights/${id}/package?lang=${LANG}" title="Baixar pacote HTML portátil 100% offline para enviar a clientes ou auditoria">${t('fdet.package_html')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_ai')}</a> · <button onclick="openOdmModalFromFlight(${id})" style="padding:3px 9px;font-size:12px">🛰 Ortomosaico (ODM)</button></div><div id="fcomp" style="margin:6px 0"></div><div id="fair" style="margin:6px 0"></div><div id="fwind" style="margin:6px 0"></div>`;
   if(!fm){
     fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
     FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
     FOTFP=L.layerGroup();
-    const OV=airLayers();OV[t('map.layer.flight_photos')]=FOTL;OV[t('map.layer.flight_footprints')]=FOTFP;
+    WINDL=L.layerGroup().addTo(fm);
+    const OV=airLayers();OV[t('map.layer.flight_photos')]=FOTL;OV[t('map.layer.flight_footprints')]=FOTFP;OV[t('wind.layer')]=WINDL;
     L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
   }
   fg&&fm.removeLayer(fg);
@@ -2591,7 +2592,7 @@ async function openFlight(id){
   const cb=$('#fcoordbar');if(cb){cb.classList.add('hide');cb.innerHTML=''}
   renderClipButtons();
   renderClipTimeline();
-  if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderAir(f);
+  if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderCompliance(f);renderAir(f);renderWindAnalysis(f);
 }
 
 function openMergeModal(){
@@ -2913,7 +2914,7 @@ function cam3d(m){
   else V3.flyTo(TR3,{duration:1.2,offset:new Cesium.HeadingPitchRange(0,m=='top'?-Cesium.Math.PI_OVER_TWO:-0.55,0)})}
 
 /* ---------- fotos e pegadas (Footprint/GSD) no mapa 2D do voo ---------- */
-let FOTL=null,FOTFP=null;
+let FOTL=null,FOTFP=null,WINDL=null;
 function openM2(id){
   if(document.fullscreenElement)Promise.resolve(document.exitFullscreen()).then(()=>setTimeout(()=>openMedia(id),250));
   else openMedia(id)}
@@ -3735,6 +3736,87 @@ function airChip(f){
   const s=a.sev>=3?'🔴':a.sev>=2?'🟡':'🟢';
   const t_=a.hits.length?a.hits.map(h=>h.label+(h.name?' '+h.name:'')).join('; '):(a.near&&a.near[0]?a.near[0].name+' ('+fmt.km(a.near[0].km*1000)+')':t('air.hit_ok'));
   return '<span title="'+t_.replace(/[&<>"]/g,'')+'">'+s+'</span>'}
+function compChip(f){
+  const c=f.compliance;if(!c)return `<span style="color:var(--mut)">—</span>`;
+  const ico=c.status==='crit'?'🔴':c.status==='warn'?'🟡':'🟢';
+  const tips=[];
+  if(c.air_hit)tips.push(t('comp.air_hit'));
+  if(c.alt_120)tips.push(t('comp.alt_120',{val:fmt.alt(c.max_alt_m)}));
+  if(c.vlos_500)tips.push(t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}));
+  if(c.night)tips.push(t('comp.night'));
+  if(c.aero_9km)tips.push(t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}));
+  return `<span title="${esc(tips.length?tips.join(' · '):t('comp.all_ok'))}">${ico}</span>`;
+}
+function renderCompliance(f){
+  const el=$('#fcomp');if(!el)return;
+  const c=f.compliance;if(!c){el.innerHTML='';return}
+  const pill=(ok,lbl,sev='warn')=>{
+    const col=ok?'#10b981':(sev==='crit'?'#ef4444':(sev==='info'?'#94a3b8':'#f59e0b'));
+    const bg=ok?'rgba(16,185,129,0.12)':(sev==='crit'?'rgba(239,68,68,0.14)':(sev==='info'?'rgba(148,163,184,0.12)':'rgba(245,158,11,0.14)'));
+    const ico=ok?'🟢':(sev==='crit'?'🔴':(sev==='info'?'⚪':'🟡'));
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:12px;border:1px solid ${col}55;background:${bg};color:${col}">${ico} ${esc(lbl)}</span>`;
+  };
+  const altP=pill(!c.alt_120,c.alt_120?t('comp.alt_120',{val:fmt.alt(c.max_alt_m)}):t('comp.alt_ok'));
+  const sunS=(c.sunrise&&c.sunset)?` (${c.sunrise}–${c.sunset})`:'';
+  const dayP=pill(!c.night,(c.night?t('comp.night'):t('comp.day_ok'))+sunS);
+  const vlosP=pill(!c.vlos_500,c.vlos_500?t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}):t('comp.vlos_ok'));
+  const aeroP=!c.air_checked?pill(false,t('comp.air_unchecked'),'info'):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
+  el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px"><strong style="font-size:13px">${esc(t('comp.title'))}:</strong>${altP}${dayP}${vlosP}${aeroP}</div>`;
+}
+function renderWindAnalysis(f){
+  if(WINDL)WINDL.clearLayers();
+  const el=$('#fwind');if(!el)return;
+  const wa=f.wind_analysis;
+  if(!wa||(!wa.points.length&&!wa.eff)){
+    if((f.source||'log')==='log'){
+      el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:12.5px;color:var(--mut)"><b>${esc(t('wind.panel_title'))}:</b> ${esc(t('wind.reimport_needed'))}</div>`;
+    }else{
+      el.innerHTML='';
+    }
+    return;
+  }
+  if(WINDL&&wa.points&&wa.points.length){
+    wa.points.forEach(p=>{
+      const toDeg=(p.deg+180)%360;
+      const col=p.spd>=9?'#ef4444':(p.spd>=5?'#f59e0b':'#38bdf8');
+      const svg=`<svg viewBox="0 0 28 28" width="28" height="28" style="transform:rotate(${toDeg}deg);filter:drop-shadow(0 1px 3px rgba(0,0,0,0.85))"><path d="M14 2 L21 23 L14 18 L7 23 Z" fill="${col}" stroke="#ffffff" stroke-width="1.6"/></svg>`;
+      const ic=L.divIcon({html:svg,className:'',iconSize:[28,28],iconAnchor:[14,14]});
+      const m=L.marker([p.lat,p.lon],{icon:ic}).bindTooltip(`${fmt.t(p.t)} · ${fmt.spd(p.spd)} (${esc(p.card)} ${p.deg}°) · ${fmt.alt(p.alt)}`,{direction:'top'});
+      m.on('click',()=>goT(p.t));
+      m.addTo(WINDL);
+    });
+  }
+  const rose=wa.rose||[];
+  const maxC=Math.max(1,...rose.map(r=>r.count));
+  const rSvg=wa.sample_count?`<svg viewBox="0 0 130 130" width="118" height="118" style="flex:none">
+    <circle cx="65" cy="65" r="46" fill="none" stroke="var(--border)" stroke-width="1"/>
+    <circle cx="65" cy="65" r="24" fill="none" stroke="var(--border)" stroke-dasharray="2 3" stroke-width="1"/>
+    ${rose.map((r,i)=>{
+      const a=(i*45-90)*Math.PI/180,len=r.count?Math.max(10,(r.count/maxC)*44):0;
+      const x2=65+Math.cos(a)*len,y2=65+Math.sin(a)*len;
+      const lx=65+Math.cos(a)*56,ly=65+Math.sin(a)*56+3;
+      const col=r.avg_spd>=9?'#ef4444':(r.avg_spd>=5?'#f59e0b':'#38bdf8');
+      return (len?`<line x1="65" y1="65" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`:'')+
+        `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--mut)">${esc(r.dir)}</text>`;
+    }).join('')}
+    <circle cx="65" cy="65" r="3" fill="var(--fg)"/>
+  </svg>`:'';
+  const eff=wa.eff;
+  let effHtml='';
+  if(eff){
+    const row=(k,ico,col)=>eff[k]?`<div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:2px 0"><span>${ico} ${esc(t('wind.'+k))} <small style="color:var(--mut)">(${fmt.dist(eff[k].dist_m)})</small></span><b style="color:${col}">${eff[k].wh_km} Wh/km <small style="color:var(--mut);font-weight:400">(${eff[k].avg_w} W)</small></b></div>`:'';
+    const diff=eff.diff_pct!=null?`<div style="margin-top:4px;font-size:12px;color:${eff.diff_pct>0?'#f59e0b':'#10b981'}">${esc(t(eff.diff_pct>=0?'wind.diff_more':'wind.diff_less',{pct:Math.abs(eff.diff_pct)}))}</div>`:'';
+    effHtml=`<div style="flex:1;min-width:220px"><div style="font-size:12.5px;font-weight:600;margin-bottom:4px">${esc(t('wind.eff_title'))}</div>${row('tailwind','🟢','#10b981')}${row('crosswind','🟡','#f59e0b')}${row('headwind','🔴','#ef4444')}${diff}</div>`;
+  }
+  el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:10px 14px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:14px">
+    ${rSvg}
+    <div style="flex:1;min-width:220px">
+      <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${esc(t('wind.panel_title'))} ${wa.ref_spd!=null?`<small style="color:var(--mut);font-weight:400">· ${fmt.spd(wa.ref_spd)} (${esc(wa.ref_card||'')})</small>`:''}</div>
+      ${wa.sample_count?`<div style="font-size:12px;color:var(--mut);margin-bottom:6px">${esc(t('wind.rose_title',{n:wa.sample_count}))}</div>`:''}
+      ${effHtml||(!wa.sample_count?`<div style="font-size:12px;color:var(--mut)">${esc(t('wind.no_data'))}</div>`:'')}
+    </div>
+  </div>`;
+}
 function renderAir(f){
   const el=$('#fair');if(!el)return;
   let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
@@ -3751,7 +3833,7 @@ function renderAir(f){
     '<small style="color:var(--mut)">'+t('air.disclaimer',{dt:E(a.checked.replace('T',' '))})+'</small></div>'}
 async function airCheck(id){
   const el=$('#fair');el.textContent=t('air.checking');
-  try{await api('/flights/'+id+'/airspace-check',{method:'POST'});renderAir(await api('/flights/'+id))}
+  try{await api('/flights/'+id+'/airspace-check',{method:'POST'});const uf=await api('/flights/'+id);renderAir(uf);renderCompliance(uf)}
   catch(e){el.innerHTML=t('air.err_now')+' <button onclick="airCheck('+id+')">'+t('air.retry')+'</button>'}}
 async function airCheckAll(){
   const fl=(await api('/flights')).filter(f=>f.source!='photos'&&!f.air);
