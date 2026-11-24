@@ -276,3 +276,22 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
    - **[microsoft/onnxruntime](https://github.com/microsoft/onnxruntime)** & **[numpy/numpy](https://github.com/numpy/numpy)**
 4. **CLI Tools & External Services:**
    - **[exiftool/exiftool](https://github.com/exiftool/exiftool)** · **[FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg)** · **[osm-search/Nominatim](https://github.com/osm-search/Nominatim)** · **[open-meteo/open-meteo](https://github.com/open-meteo/open-meteo)** · **NOAA SWPC** (Kp geomagnetic index) · **[geoserver/geoserver](https://github.com/geoserver/geoserver)** (DECEA / GEOAISWEB) · **FAA UDDS & ADDS** (ArcGIS REST Airspace & UASFM).
+
+
+---
+
+## 10. License & Disclaimers
+
+**Drone Manager** is free software licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** — see the [`LICENSE`](LICENSE) file.
+
+Copyright (C) 2026 acciolycruz
+
+- **You are free to** use, study, modify, and share this software.
+- **If you modify it and run it as a network service (SaaS) or distribute it**, you must make the complete corresponding source code of your modified version available to its users under the same AGPL-3.0 license.
+- This program comes with **ABSOLUTELY NO WARRANTY**; see sections 15–16 of the license.
+
+### Aviation Disclaimer (not for certified flight navigation)
+Airspace data (DECEA / GEOAISWEB in Brazil, FAA UDDS / ADDS in the USA), weather (Open-Meteo, NOAA SWPC Kp index), compliance alerts, and mission plans are provided **for situational reference only**. They **do not replace** official authorizations (**SARPAS / DECEA**, **LAANC / FAA DroneZone**) or local regulations. Flight safety is the sole responsibility of the Pilot in Command.
+
+### Trademarks & Third-Party Components
+*DJI*, *DJI Mini 3*, *Phantom*, *Cesium*, *DECEA*, and *FAA* are trademarks of their respective owners; this project is independent and not affiliated with or endorsed by them. Third-party libraries keep their own licenses (MIT / BSD / Apache-2.0). Optional AI models downloaded on demand by the user (e.g., `yolo11s_visdrone.onnx`, CLIP ViT-B/32) are **not** distributed in this repository and remain under their authors' licenses.
