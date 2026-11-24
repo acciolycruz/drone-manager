@@ -2116,7 +2116,7 @@ async function openFlight(id){
   if(!fm){
     fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
     FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
-    FOTFP=L.layerGroup().addTo(fm);
+    FOTFP=L.layerGroup();
     const OV=airLayers();OV[t('map.layer.flight_photos')]=FOTL;OV[t('map.layer.flight_footprints')]=FOTFP;
     L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
   }
