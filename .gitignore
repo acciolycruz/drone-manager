@@ -1,14 +1,55 @@
+# Variáveis de ambiente e segredos locais
 .env
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+config.json
+*.pem
+*.key
+
+# Ambientes virtuais e cache Python
 .venv/
+venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Backups incrementais e arquivos temporários
 *.bak*
+*.tmp
+*.swp
+
+# Banco de dados SQLite, logs de voo, mídias, miniaturas e modelos IA
 data/drone.db*
+*.db
+*.sqlite*
 data/thumbs/
 data/models/
 data/logs/
 data/logs_ignorados/
 data/media/
+*.onnx
+*.pt
+
+# Arquivos de telemetria, GIS e mídias soltas fora de samples/
+*.srt
+*.SRT
+*.csv
+*.geojson
+*.kml
+*.kmz
+*.gpx
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.dng
+*.DNG
+!samples/**
+!data/example/**
+
+# Instruções e arquivos internos de agentes IA
 TODO.md
 .agent/
 .gemini/
