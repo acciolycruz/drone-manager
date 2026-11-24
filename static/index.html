@@ -1572,12 +1572,16 @@ function calcFootprint(p,tr,fst){
 function makeBases(){return {
   'Mapa':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}),
   'Satélite':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxNativeZoom:19,maxZoom:20}),
+  'Híbrido':L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:['0','1','2','3'],attribution:'© Google',maxNativeZoom:20,maxZoom:21}),
+  'Google Satélite':L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{subdomains:['0','1','2','3'],attribution:'© Google',maxNativeZoom:20,maxZoom:21}),
+  'Google Mapa':L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['0','1','2','3'],attribution:'© Google',maxNativeZoom:20,maxZoom:21}),
+  'Esri Topo':L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxNativeZoom:19,maxZoom:20}),
   'Relevo':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap, SRTM | © OpenTopoMap',maxNativeZoom:17,maxZoom:20}),
   'Claro':L.layerGroup([L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri, HERE, DeLorme, © OpenStreetMap',maxNativeZoom:16,maxZoom:20}),
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:20})]),
   'Escuro':L.layerGroup([L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri, HERE, DeLorme, © OpenStreetMap',maxNativeZoom:16,maxZoom:20}),
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{maxNativeZoom:16,maxZoom:20})])}}
-function savedBase(B){let c='Satélite';try{c=localStorage.getItem('basemap')||'Satélite'}catch(e){}return B[c]?c:'Satélite'}
+function savedBase(B){return B['Satélite']?'Satélite':Object.keys(B)[0]}
 function setBase(m,n){if(!m||!m._bases||m._cur===n)return;m.removeLayer(m._bases[m._cur]);m._cur=n;m._bases[n].addTo(m)}
 function saveBase(n){try{localStorage.setItem('basemap',n)}catch(e){}setBase(map,n);setBase(fm,n)}
 function wireBases(m,B){const c=savedBase(B);m._bases=B;m._cur=c;B[c].addTo(m);m.on('baselayerchange',e=>{m._cur=e.name;saveBase(e.name)})}
@@ -2060,8 +2064,9 @@ async function viewMissionOnMap(mid){
   setTimeout(()=>map.fitBounds(L.latLngBounds(m.waypoints.map(w=>[w[0],w[1]])).pad(0.25)),150);
 }
 async function loadMap(keepBounds=false){
+  const firstLoad=!map;
   if(!map){
-    map=L.map('map').setView([-22.9,-43.2],10);
+    map=L.map('map',{worldCopyJump:false,minZoom:3,maxBounds:[[-85,-180],[85,180]],maxBoundsViscosity:1.0}).setView([15,-10],3);
     const bases=makeBases();wireBases(map,bases);
     L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),wx:L.layerGroup().addTo(map),
         annotations:L.layerGroup().addTo(map),measDraft:L.layerGroup().addTo(map),
@@ -2119,7 +2124,7 @@ async function loadMap(keepBounds=false){
       .bindPopup(`<b>${t('map.footprint_title',{id:p.id})}</b><br>${t('map.gsd_est')} <b>${fp.gsd} cm/pixel</b><br>${t('map.ground_cov')} <b>${fmt.alt(fp.gw)} × ${fmt.alt(fp.gh)}</b> (${t('plan.alt_lbl')} ~${fmt.alt(fp.alt)})${ovl}<br><a href="#" onclick="openMedia(${p.id});return false">${t('map.view_photo')}</a>`);
   });
   sp.forEach(s=>L.marker([s.lat,s.lon]).addTo(L_.spots).bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.notes||'')}`));
-  if(all.length&&!keepBounds&&!ACTIVE_BBOX)map.fitBounds(L.featureGroup(all).getBounds());
+  if(all.length&&!keepBounds&&!ACTIVE_BBOX&&!firstLoad)map.fitBounds(L.featureGroup(all).getBounds());
 }
 
 /* ---------- voos ---------- */
