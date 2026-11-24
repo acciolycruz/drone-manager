@@ -1404,24 +1404,38 @@ let LANG='pt-BR',I18N={};
 const IMP=()=>LANG==='en';
 const t=(k,v={})=>{let s=I18N[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll('{'+a+'}',b);return s};
 const EV_TRANS={
-  en:{'Modo normal (GPS)':'Normal mode (GPS)','Modo iniciante':'Beginner mode','Modo esportivo':'Sport mode','Modo Cine (tripé)':'Cine mode (tripod)',
+  en:{'Decolagem':'Takeoff','Pouso':'Landing','Modo normal (GPS)':'Normal mode (GPS)','Modo iniciante':'Beginner mode','Modo esportivo':'Sport mode','Modo Cine (tripé)':'Cine mode (tripod)',
     'Retorno automático (RTH)':'Return to Home (RTH)','Pouso automático':'Auto landing','Aguardando confirmação de pouso':'Waiting landing confirmation',
     'Pouso avançado':'Advanced landing','Decolagem automática (app)':'Auto takeoff (app)','Pouso automático pedido pelo app':'Auto landing requested by app',
     'Retorno automático por bateria baixa':'Low battery RTH','Pouso automático por bateria crítica':'Critical battery auto landing',
     'Retorno automático concluído':'RTH finished','Pouso por limite vertical baixo':'Low vertical limit landing',
-    'Bateria em 20%':'Battery at 20%','Bateria em 10%':'Battery at 10%','Início de gravação de vídeo':'Video recording started',
-    'Fim de gravação de vídeo':'Video recording stopped','Foto tirada':'Photo taken','GPS fraco (<8 satélites)':'Weak GPS (<8 satellites)',
-    'Sinal RC fraco (<=20%)':'Weak RC signal (<=20%)','Aviso de tensão baixa':'Low voltage warning'},
-  es:{'Modo normal (GPS)':'Modo normal (GPS)','Modo iniciante':'Modo principiante','Modo esportivo':'Modo deportivo','Modo Cine (trípode)':'Modo Cine (trípode)',
+    'Bateria em 20%':'Battery at 20%','Bateria em 10%':'Battery at 10%','Aviso de bateria baixa (nível 1)':'Low battery warning (level 1)','Aviso de bateria crítica (nível 2)':'Critical battery warning (level 2)',
+    'Início de gravação de vídeo':'Video recording started','Fim de gravação de vídeo':'Video recording stopped','Fim da gravação de vídeo':'Video recording stopped',
+    'Foto':'Photo taken','Foto tirada':'Photo taken','Ponto Home atualizado':'Home Point updated','Distância > 500 m do Ponto Home (VLOS)':'Distance > 500 m from Home Point (VLOS)',
+    'Alerta: Vibração nas hélices detectada':'Alert: Propeller vibration detected','Alerta: Força de propulsão insuficiente':'Alert: Insufficient propulsion force',
+    'Alerta: Interferência na bússola':'Alert: Compass interference','Alerta: Motor bloqueado':'Alert: Motor blocked','Alerta: Gimbal travado':'Alert: Gimbal stuck',
+    'GPS fraco (<8 satélites)':'Weak GPS (<8 satellites)','Sinal RC fraco (<=20%)':'Weak RC signal (<=20%)','Aviso de tensão baixa':'Low voltage warning'},
+  es:{'Decolagem':'Despegue','Pouso':'Aterrizaje','Modo normal (GPS)':'Modo normal (GPS)','Modo iniciante':'Modo principiante','Modo esportivo':'Modo deportivo','Modo Cine (tripé)':'Modo Cine (trípode)',
     'Retorno automático (RTH)':'Retorno automático (RTH)','Pouso automático':'Aterrizaje automático','Aguardando confirmação de pouso':'Esperando confirmación de aterrizaje',
     'Pouso avançado':'Aterrizaje avanzado','Decolagem automática (app)':'Despegue automático (app)','Pouso automático pedido pelo app':'Aterrizaje automático (app)',
     'Retorno automático por bateria baixa':'RTH por batería baja','Pouso automático por bateria crítica':'Aterrizaje por batería crítica',
     'Retorno automático concluído':'RTH completado','Pouso por limite vertical baixo':'Aterrizaje por límite vertical bajo',
-    'Bateria em 20%':'Batería al 20%','Bateria em 10%':'Batería al 10%','Início de gravação de vídeo':'Inicio de grabación de video',
-    'Fim de gravação de vídeo':'Fin de grabación de video','Foto tirada':'Foto tomada','GPS fraco (<8 satélites)':'GPS débil (<8 satélites)',
-    'Sinal RC fraco (<=20%)':'Señal RC débil (<=20%)','Aviso de tensão baixa':'Alerta de voltaje bajo'}
+    'Bateria em 20%':'Batería al 20%','Bateria em 10%':'Batería al 10%','Aviso de bateria baixa (nível 1)':'Alerta de batería baja (nivel 1)','Aviso de bateria crítica (nível 2)':'Alerta de batería crítica (nivel 2)',
+    'Início de gravação de vídeo':'Inicio de grabación de video','Fim de gravação de vídeo':'Fin de grabación de video','Fim da gravação de vídeo':'Fin de grabación de video',
+    'Foto':'Foto tomada','Foto tirada':'Foto tomada','Ponto Home atualizado':'Punto Home actualizado','Distância > 500 m do Ponto Home (VLOS)':'Distancia > 500 m del Punto Home (VLOS)',
+    'Alerta: Vibração nas hélices detectada':'Alerta: Vibración en hélices detectada','Alerta: Força de propulsão insuficiente':'Alerta: Fuerza de propulsión insuficiente',
+    'Alerta: Interferência na bússola':'Alerta: Interferencia en la brújula','Alerta: Motor bloqueado':'Alerta: Motor bloqueado','Alerta: Gimbal travado':'Alerta: Gimbal bloqueado',
+    'GPS fraco (<8 satélites)':'GPS débil (<8 satélites)','Sinal RC fraco (<=20%)':'Señal RC débil (<=20%)','Aviso de tensão baixa':'Alerta de voltaje bajo'}
 };
-function trEvent(lbl){return LANG==='pt-BR'?lbl:(EV_TRANS[LANG]&&EV_TRANS[LANG][lbl])||lbl}
+function trEvent(lbl){
+  if(!lbl||LANG==='pt-BR')return lbl;
+  const ex=EV_TRANS[LANG]&&EV_TRANS[LANG][lbl];if(ex)return ex;
+  if(lbl.startsWith('Altura máxima ('))return lbl.replace('Altura máxima',LANG==='en'?'Max altitude':'Altura máxima');
+  if(lbl.startsWith('Sinal GPS fraco ('))return lbl.replace('Sinal GPS fraco',LANG==='en'?'Weak GPS signal':'Señal GPS débil').replace('satélites',LANG==='en'?'satellites':'satélites');
+  if(lbl.startsWith('Sinal do controle fraco ('))return lbl.replace('Sinal do controle fraco',LANG==='en'?'Weak RC signal':'Señal RC débil');
+  if(lbl.startsWith('Aviso do app:'))return lbl.replace('Aviso do app:',LANG==='en'?'App warning:':'Aviso de la app:');
+  return lbl;
+}
 async function loadI18n(lang){
   LANG=['pt-BR','en','es'].includes(lang)?lang:'pt-BR';
   try{const r=await fetch('/i18n/'+LANG+'.json');if(r.ok)I18N=await r.json();}catch(e){}
@@ -1470,7 +1484,7 @@ function show(t){
 }
 async function scan(force=0){
   const b=$('#scan');b.disabled=true;b.textContent=t('nav.scanning');
-  try{const r=await api('/scan?force='+(force?1:0),{method:'POST'});
+  try{const r=await api('/scan?force='+(force?1:0),{method:'POST'});FLS=null;
     alert(`Logs: ${r.logs}\nMedia: ${r.media}\nReconstructed: ${r.reconstruidos}`+(r.errors.length?`\n\nWarnings:\n${r.errors.slice(0,8).join('\n')}`:''));}
   catch(e){alert('Error: '+e.message)}
   b.disabled=false;b.textContent=t('nav.scan');
@@ -1609,15 +1623,22 @@ function calcFootprint(p,tr,fst){
   if(yaw==null)yaw=0;
   if(gp==null)gp=-75;
   const w=p.w||4000,h=p.h||3000,f35=mt.focal35||24;
-  const hfov=2*Math.atan(18/f35),vfov=2*Math.atan((18*(h/w))/f35);
-  /* Calcula cobertura no solo (m) e GSD (cm/pixel) */
-  const nadirDist=alt/Math.max(0.25,Math.sin(Math.min(Math.PI/2,Math.max(0.25,Math.abs(gp)*Math.PI/180))));
-  const gw=Math.min(600,2*nadirDist*Math.tan(hfov/2)),gh=Math.min(600,2*nadirDist*Math.tan(vfov/2));
+  const tanH=18/f35,tanV=(18*(h/w))/f35;
+  /* Calcula cobertura trapezoidal/retangular no solo (m) e GSD central (cm/pixel) */
+  const dep=Math.min(Math.PI/2,Math.max(0.20,Math.abs(gp)*Math.PI/180));
+  const vfovHalf=Math.atan(tanV);
+  const depNear=Math.min(Math.PI/2-0.01,dep+vfovHalf);
+  const depFar=Math.max(0.15,dep-vfovHalf);
+  const nadirDist=alt/Math.sin(dep);
+  let gw=2*nadirDist*tanH,gh=2*nadirDist*tanV;
+  if(Math.max(gw,gh)>600){const sc=600/Math.max(gw,gh);gw*=sc;gh*=sc}
   const gsd=(gw*100)/w;
-  const fwd=(gp>-75)?Math.min(250,alt/Math.tan(Math.max(0.25,Math.abs(gp)*Math.PI/180))):0;
+  const yNear=Math.min(350,alt/Math.tan(depNear)),yFar=Math.min(450,alt/Math.tan(depFar));
+  const wNear=Math.min(600,2*Math.hypot(alt,yNear)*tanH),wFar=Math.min(600,2*Math.hypot(alt,yFar)*tanH);
   const Y=yaw*Math.PI/180,cosY=Math.cos(Y),sinY=Math.sin(Y);
-  const mLat=111320,mLon=111320*Math.cos(p.lat*Math.PI/180);
-  const corners=[[-gw/2,fwd+gh/2],[gw/2,fwd+gh/2],[gw/2,fwd-gh/2],[-gw/2,fwd-gh/2]].map(([rx,ry])=>{
+  const mLat=111132.92-559.82*Math.cos(2*p.lat*Math.PI/180),mLon=111412.84*Math.cos(p.lat*Math.PI/180);
+  const polyPts=(dep<Math.PI/2-0.08)?[[-wFar/2,yFar],[wFar/2,yFar],[wNear/2,yNear],[-wNear/2,yNear]]:[[-gw/2,gh/2],[gw/2,gh/2],[gw/2,-gh/2],[-gw/2,-gh/2]];
+  const corners=polyPts.map(([rx,ry])=>{
     const east=rx*cosY+ry*sinY,north=-rx*sinY+ry*cosY;
     return [p.lat+north/mLat,p.lon+east/mLon];
   });
@@ -1763,7 +1784,7 @@ function buildPlanGeometry(alt,spd){
     const [lat0,lon0]=PLAN_CENTER;
     const kx=111320*Math.cos(lat0*Math.PI/180),ky=111320;
     const wps=[];
-    for(let i=0;i<=pts;i++){
+    for(let i=0;i<pts;i++){
       const a=dir*(i*2*Math.PI/pts);
       wps.push([+(lat0+(rad*Math.cos(a))/ky).toFixed(6),+(lon0+(rad*Math.sin(a))/kx).toFixed(6)]);
     }
@@ -1940,7 +1961,9 @@ function renderDraftMission(){
   PLAN_WPS.forEach((w,i)=>{
     vlos=Math.max(vlos,havDist(h0[0],h0[1],w[0],w[1]));
     if(i>0){
-      const d=havDist(PLAN_WPS[i-1][0],PLAN_WPS[i-1][1],w[0],w[1]);
+      const d2d=havDist(PLAN_WPS[i-1][0],PLAN_WPS[i-1][1],w[0],w[1]);
+      const dz=((w[2]!=null?w[2]:alt)-(PLAN_WPS[i-1][2]!=null?PLAN_WPS[i-1][2]:alt));
+      const d=Math.hypot(d2d,dz);
       dist+=d;accDur+=d/spd+2.5;
       if(accDur>batSafeSec&&segPts[segPts.length-1].length>=2){
         splits.push(i);curBat++;accDur=(alt*2)/2.5+d/spd+2.5;
@@ -2190,7 +2213,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 let FS={k:'start',o:'desc'};
 function sortF(k){FS.o=(FS.k==k&&FS.o=='desc')?'asc':'desc';FS.k=k;loadFlights()}
 async function favF(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));loadFlights()}
-async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));toast(t('flights.name_saved'))}
+async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));FLS=null;toast(t('flights.name_saved'))}
 async function favDetail(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));const b=$('#favbtn');b.textContent=v?'★':'☆';b.style.color=v?'#f59e0b':'var(--fg)';b.setAttribute('onclick','favDetail('+id+','+(v?0:1)+')');toast(v?t('flights.fav_added'):t('flights.fav_removed'))}
 function clearFlightFilters(){['fq','fd1','fd2','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});$('#ffav').checked=false;ACTIVE_BBOX='';const b=$('#b-bbox'),c=$('#b-bbox-clr');if(b){b.classList.remove('on');b.textContent=t('map.bbox_filter')}if(c)c.classList.add('hide');loadFlights()}
 async function loadFlights(){
@@ -2835,7 +2858,6 @@ function exportHudVideo(mid){
 /* ---------- replay 3D (CesiumJS) ---------- */
 let V3=null,SAMP3=null,P3=[],G3=[],YW3=[],GP3=[],ATT3=false,CUR3=null,DR3=null,TR3=null,PRE3=null,B3=0,CONE3=[],FOT3=[],FSON=false;
 window.VM='2d';
-const CES_VER='1.145';
 const DRONE_ICO='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="48" height="48"><path d="M32 32L12 12M32 32L52 12M32 32L12 52M32 32L52 52" stroke="#102a43" stroke-width="3" stroke-linecap="round" fill="none"/><g fill="#fff" stroke="#102a43" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="52" cy="12" r="9"/><circle cx="12" cy="52" r="9"/><circle cx="52" cy="52" r="9"/></g><rect x="22" y="20" width="20" height="24" rx="7" fill="#1890ff" stroke="#102a43" stroke-width="2"/><circle cx="32" cy="48" r="4" fill="#00d2ff"/></svg>');
 function loadCesium(){
   if(window.Cesium&&window.Cesium.Ion)return Promise.resolve();
@@ -2887,7 +2909,7 @@ function frame3(p,yaw,gp){
   const m=Cesium.Transforms.eastNorthUpToFixedFrame(p),Y=Cesium.Math.toRadians(yaw),Q=Cesium.Math.toRadians(gp);
   const W=(x,y,z)=>Cesium.Matrix4.multiplyByPoint(m,new Cesium.Cartesian3(x,y,z),new Cesium.Cartesian3());
   const f=[Math.cos(Q)*Math.sin(Y),Math.cos(Q)*Math.cos(Y),Math.sin(Q)],r=[Math.cos(Y),-Math.sin(Y),0];
-  const u=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]],L=70,th=0.649,tv=0.466;
+  const u=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]],L=70,th=0.75,tv=0.5625;
   const c=[[-1,1],[1,1],[1,-1],[-1,-1]].map(([h,v])=>W(L*(f[0]+h*th*r[0]+v*tv*u[0]),L*(f[1]+h*th*r[1]+v*tv*u[1]),L*(f[2]+h*th*r[2]+v*tv*u[2])));
   return{nose:[p,W(14*Math.sin(Y),14*Math.cos(Y),0)],edges:[p,c[0],p,c[1],p,c[2],p,c[3]],rect:[c[0],c[1],c[2],c[3],c[0]]}}
 async function build3d(){
@@ -3075,17 +3097,16 @@ async function onMeasureMapClick(ll){
   MEAS_PTS.push(pt);
   renderMeasureDraft();
 }
-function _havM(a,b){
-  const R=6371000,dLat=(b[0]-a[0])*Math.PI/180,dLon=(b[1]-a[1])*Math.PI/180;
-  const s=Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLon/2)**2;
-  return 2*R*Math.asin(Math.sqrt(s));
-}
+function _havM(a,b){return havDist(a[0],a[1],b[0],b[1]);}
 function _areaM2(pts){
   if(pts.length<3)return 0;
-  const lat0=pts.reduce((s,p)=>s+p[0],0)/pts.length;
-  const kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+  const lat0=pts.reduce((s,p)=>s+p[0],0)/pts.length,lon0=pts.reduce((s,p)=>s+p[1],0)/pts.length;
+  const phi=lat0*Math.PI/180,kx=111412.84*Math.cos(phi),ky=111132.92-559.82*Math.cos(2*phi);
   let acc=0;
-  for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;acc+=pts[i][1]*kx*pts[j][0]*ky-pts[j][1]*kx*pts[i][0]*ky}
+  for(let i=0;i<pts.length;i++){
+    const j=(i+1)%pts.length,x0=(pts[i][1]-lon0)*kx,y0=(pts[i][0]-lat0)*ky,x1=(pts[j][1]-lon0)*kx,y1=(pts[j][0]-lat0)*ky;
+    acc+=x0*y1-x1*y0;
+  }
   return Math.abs(acc)*0.5;
 }
 function renderMeasureDraft(){
@@ -4080,7 +4101,6 @@ function nlClear(){
 function nlHelp(){alert(t('nl.help'))}
 /* ---------- painel geral (aba Estatísticas) ---------- */
 let PD={p:'all',fl:[],tr:[]},PDC=[],PM=null;
-const MS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 function loadScript(u,integrity){return new Promise((ok,err)=>{
   const s=document.createElement('script');s.src=u;s.crossOrigin='anonymous';if(integrity)s.integrity=integrity;s.onload=ok;s.onerror=()=>err(new Error('script'));document.head.appendChild(s)})}
 function goDay(d){
@@ -4112,7 +4132,7 @@ async function loadPanel(){
   sec.innerHTML=`<div class=row><h3 style="margin:0">${t('stats.panel_title')}</h3><label>${t('stats.period')} <select id="pp" onchange="PD.p=this.value;renderPanel()"></select></label><span id="pcount" style="color:var(--mut)"></span></div><div id="pbody"></div>`;
   root.prepend(sec);
   const years=[...new Set(PD.fl.map(f=>f.start_local.slice(0,4)))].sort().reverse(),sel=$('#pp');
-  sel.innerHTML=`<option value="all">${t('stats.all_period')}</option>`+years.map(y=>'<option value="'+E(y)+'">'+E(y)+'</option>').join('');
+  sel.innerHTML=`<option value="all">${t('stats.all_period')}</option>`+years.map(y=>'<option value="'+esc(y)+'">'+esc(y)+'</option>').join('');
   if(PD.p!='all'&&!years.includes(PD.p))PD.p='all';
   sel.value=PD.p;renderPanel()}
 async function renderPanel(){

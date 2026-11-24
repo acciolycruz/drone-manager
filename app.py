@@ -391,6 +391,7 @@ def tr(lang: str, key: str, **kw) -> str:
 
 _EVENT_TRANS = {
     "en": {
+        "Decolagem": "Takeoff", "Pouso": "Landing",
         "Modo normal (GPS)": "Normal mode (GPS)", "Modo iniciante": "Beginner mode",
         "Modo esportivo": "Sport mode", "Modo Cine (tripé)": "Cine mode (tripod)",
         "Retorno automático (RTH)": "Return to Home (RTH)", "Pouso automático": "Auto landing",
@@ -399,11 +400,20 @@ _EVENT_TRANS = {
         "Retorno automático por bateria baixa": "Low battery RTH", "Pouso automático por bateria crítica": "Critical battery auto landing",
         "Retorno automático concluído": "RTH finished", "Pouso por limite vertical baixo": "Low vertical limit landing",
         "Bateria em 20%": "Battery at 20%", "Bateria em 10%": "Battery at 10%",
+        "Aviso de bateria baixa (nível 1)": "Low battery warning (level 1)", "Aviso de bateria crítica (nível 2)": "Critical battery warning (level 2)",
         "Início de gravação de vídeo": "Video recording started", "Fim de gravação de vídeo": "Video recording stopped",
-        "Foto tirada": "Photo taken", "GPS fraco (<8 satélites)": "Weak GPS (<8 satellites)",
+        "Fim da gravação de vídeo": "Video recording stopped",
+        "Foto": "Photo taken", "Foto tirada": "Photo taken",
+        "Ponto Home atualizado": "Home Point updated", "Distância > 500 m do Ponto Home (VLOS)": "Distance > 500 m from Home Point (VLOS)",
+        "Alerta: Vibração nas hélices detectada": "Alert: Propeller vibration detected",
+        "Alerta: Força de propulsão insuficiente": "Alert: Insufficient propulsion force",
+        "Alerta: Interferência na bússola": "Alert: Compass interference",
+        "Alerta: Motor bloqueado": "Alert: Motor blocked", "Alerta: Gimbal travado": "Alert: Gimbal stuck",
+        "GPS fraco (<8 satélites)": "Weak GPS (<8 satellites)",
         "Sinal RC fraco (<=20%)": "Weak RC signal (<=20%)", "Aviso de tensão baixa": "Low voltage warning",
     },
     "es": {
+        "Decolagem": "Despegue", "Pouso": "Aterrizaje",
         "Modo normal (GPS)": "Modo normal (GPS)", "Modo iniciante": "Modo principiante",
         "Modo esportivo": "Modo deportivo", "Modo Cine (tripé)": "Modo Cine (trípode)",
         "Retorno automático (RTH)": "Retorno automático (RTH)", "Pouso automático": "Aterrizaje automático",
@@ -412,15 +422,33 @@ _EVENT_TRANS = {
         "Retorno automático por bateria baixa": "RTH por batería baja", "Pouso automático por bateria crítica": "Aterrizaje por batería crítica",
         "Retorno automático concluído": "RTH completado", "Pouso por limite vertical baixo": "Aterrizaje por límite vertical bajo",
         "Bateria em 20%": "Batería al 20%", "Bateria em 10%": "Batería al 10%",
+        "Aviso de bateria baixa (nível 1)": "Alerta de batería baja (nivel 1)", "Aviso de bateria crítica (nível 2)": "Alerta de batería crítica (nivel 2)",
         "Início de gravação de vídeo": "Inicio de grabación de video", "Fim de gravação de vídeo": "Fin de grabación de video",
-        "Foto tirada": "Foto tomada", "GPS fraco (<8 satélites)": "GPS débil (<8 satélites)",
+        "Fim da gravação de vídeo": "Fin de grabación de video",
+        "Foto": "Foto tomada", "Foto tirada": "Foto tomada",
+        "Ponto Home atualizado": "Punto Home actualizado", "Distância > 500 m do Ponto Home (VLOS)": "Distancia > 500 m del Punto Home (VLOS)",
+        "Alerta: Vibração nas hélices detectada": "Alerta: Vibración en hélices detectada",
+        "Alerta: Força de propulsão insuficiente": "Alerta: Fuerza de propulsión insuficiente",
+        "Alerta: Interferência na bússola": "Alerta: Interferencia en la brújula",
+        "Alerta: Motor bloqueado": "Alerta: Motor bloqueado", "Alerta: Gimbal travado": "Alerta: Gimbal bloqueado",
+        "GPS fraco (<8 satélites)": "GPS débil (<8 satélites)",
         "Sinal RC fraco (<=20%)": "Señal RC débil (<=20%)", "Aviso de tensão baixa": "Alerta de voltaje bajo",
     },
 }
 
 def tr_event(label: str, lang: str) -> str:
-    if lang == "pt-BR": return label
-    return _EVENT_TRANS.get(lang, {}).get(label, label)
+    if not label or lang == "pt-BR": return label
+    exact = _EVENT_TRANS.get(lang, {}).get(label)
+    if exact: return exact
+    if label.startswith("Altura máxima ("):
+        return label.replace("Altura máxima", "Max altitude" if lang == "en" else "Altura máxima", 1)
+    if label.startswith("Sinal GPS fraco ("):
+        return label.replace("Sinal GPS fraco", "Weak GPS signal" if lang == "en" else "Señal GPS débil", 1).replace("satélites", "satellites" if lang == "en" else "satélites")
+    if label.startswith("Sinal do controle fraco ("):
+        return label.replace("Sinal do controle fraco", "Weak RC signal" if lang == "en" else "Señal RC débil", 1)
+    if label.startswith("Aviso do app:"):
+        return label.replace("Aviso do app:", "App warning:" if lang == "en" else "Aviso de la app:", 1)
+    return label
 
 def py_fmt_alt(m: float, lang: str) -> str:
     return f"{m * 3.28084:.0f} ft" if lang == "en" else f"{m:.0f} m"
@@ -758,7 +786,6 @@ def _import_dji_log(p: Path):
 
 def _import_csv_log(p: Path):
     """Importa logs CSV do Litchi ou Airdata UAV (métrico ou imperial)."""
-    import csv
     with open(p, "r", encoding="utf-8-sig", errors="replace", newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
@@ -953,7 +980,9 @@ def _import_ulog(p: Path):
                 if "temperature" in rec: bat_st["btemp"] = rec["temperature"]
             elif mname == "home_position":
                 if "lat" in rec and "lon" in rec:
-                    home_st["hlat"], home_st["hlon"] = rec["lat"], rec["lon"]
+                    hla, hlo = rec["lat"], rec["lon"]
+                    home_st["hlat"] = hla / 1e7 if abs(hla) > 180 else float(hla)
+                    home_st["hlon"] = hlo / 1e7 if abs(hlo) > 180 else float(hlo)
                     if "alt" in rec: home_st["halt"] = rec["alt"]
             elif mname == "input_rc" and "rssi" in rec:
                 rc_st["rc"] = min(100, max(0, int(rec["rssi"])))
@@ -1275,8 +1304,8 @@ def index_media(errors):
                           (w, h, json.dumps(meta), r["id"]))
     if any(tagmap.values()):
         with db() as c:
-            for pth, tg in tagmap.items():
-                if tg: c.execute("UPDATE media SET tags=? WHERE path=? AND (tags IS NULL OR tags='')", (tg, pth))
+            c.executemany("UPDATE media SET tags=? WHERE path=? AND (tags IS NULL OR tags='')",
+                          [(tg, pth) for pth, tg in tagmap.items() if tg])
     return len(new)
 
 def link_media():
@@ -1451,9 +1480,11 @@ def _calc_flight_health(track: list, bat: dict, meta: dict, source: str = "log")
     }
 
 def _solar_times_utc(lat: float, lon: float, dt_utc: datetime) -> tuple[Optional[datetime], Optional[datetime]]:
-    """Calcula nascer e pôr do sol em UTC (algoritmo NOAA simplificado, sem rede)."""
+    """Calcula nascer e pôr do sol em UTC para o dia solar local do ponto (algoritmo NOAA, sem rede)."""
     try:
-        doy = dt_utc.timetuple().tm_yday
+        solar_tz_h = round(lon / 15.0)
+        local_day = (dt_utc + timedelta(hours=solar_tz_h)).replace(hour=0, minute=0, second=0, microsecond=0)
+        doy = local_day.timetuple().tm_yday
         def _calc(is_rise: bool) -> Optional[datetime]:
             lng_h = lon / 15.0
             t = doy + ((6.0 - lng_h) / 24.0 if is_rise else (18.0 - lng_h) / 24.0)
@@ -1468,9 +1499,8 @@ def _solar_times_utc(lat: float, lon: float, dt_utc: datetime) -> tuple[Optional
             if cos_h > 1.0 or cos_h < -1.0:
                 return None
             H = (360.0 - degrees(acos(cos_h))) / 15.0 if is_rise else degrees(acos(cos_h)) / 15.0
-            ut = (H + RA - 0.06571 * t - 6.622 - lng_h) % 24.0
-            base = dt_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-            return base + timedelta(hours=ut)
+            local_t = (H + RA - 0.06571 * t - 6.622) % 24.0
+            return local_day + timedelta(hours=local_t - lng_h)
         sr, ss = _calc(True), _calc(False)
         if sr and ss and ss < sr:
             ss += timedelta(days=1)
@@ -1700,7 +1730,7 @@ def fl_out(r, full=False):
     d["start_local"] = local(d["start"]).isoformat() if d["start"] else None
     bat_obj = json.loads(d["bat"]) if d.get("bat") else {}
     tr = None
-    if "health" not in d["meta"] and (d.get("source") or "log") != "photos":
+    if "health" not in d["meta"] and (d.get("source") or "log") == "log":
         try:
             tr = json.loads(d["track"]) if d.get("track") else []
             hl = _calc_flight_health(tr, bat_obj, d["meta"], d.get("source") or "log")
@@ -2123,7 +2153,7 @@ def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: in
     join_rt = " JOIN rtree_media rm ON rm.id=m.id" if bb else ""
     sql, a = f"SELECT m.*, f.place AS place FROM media m{join_rt} LEFT JOIN flights f ON f.id=m.flight_id WHERE 1=1", []
     if bb:
-        sql += " AND rm.min_lon>=? AND rm.max_lon<=? AND rm.min_lat>=? AND rm.max_lat<=?"
+        sql += " AND rm.max_lon>=? AND rm.min_lon<=? AND rm.max_lat>=? AND rm.min_lat<=?"
         a.extend([bb[0], bb[1], bb[2], bb[3]])
     for cond, val, arg in ((kind, " AND m.kind=?", kind), (fav, " AND m.fav=1", None), (flight_id, " AND m.flight_id=?", flight_id),
                            (unlinked, " AND m.flight_id IS NULL", None), (geo, " AND m.lat IS NOT NULL", None),
@@ -2315,6 +2345,26 @@ _HUD_SEM = threading.Semaphore(2)
 def _esc_ff_filter(p: Path) -> str:
     return str(p).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
 
+def _cleanup_temp_media(max_age_s: int = 3600):
+    now_t = time.time()
+    for pat in ("merged_*.mp4", "concat_*.txt", "hud_*.mp4", "hud_*.ass", "export_*.zip"):
+        for fp in THUMBS.glob(pat):
+            try:
+                if now_t - fp.stat().st_mtime > max_age_s:
+                    _unlink_quiet(fp)
+            except OSError:
+                pass
+    try:
+        with db() as c:
+            for k, v in c.execute("SELECT k, v FROM kv WHERE k LIKE 'merge_job:%' OR k LIKE 'merge_dl:%'").fetchall():
+                try:
+                    if now_t - float(json.loads(v).get("ts") or 0) > max_age_s:
+                        c.execute("DELETE FROM kv WHERE k=?", (k,))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 def _save_merge_job(job_id: str, data: dict):
     data["job_id"] = job_id
     kv_set(f"merge_job:{job_id}", json.dumps(data))
@@ -2400,6 +2450,7 @@ def merge_flight_videos(fid: int, b: MergeVideosBody):
         out_mp4 = Path(m_name)
 
     import secrets
+    _cleanup_temp_media()
     now_t = time.time()
     job_id = secrets.token_urlsafe(12)
     _save_merge_job(job_id, {"fid": fid, "status": "running", "ts": now_t})
@@ -2499,6 +2550,9 @@ def _delete_media_item(mid: int, delete_disk: bool):
             raise HTTPException(403, "Caminho fora das pastas de mídia configuradas.")
         if p.is_file():
             p.unlink()
+            if m.get("kind") == "video":
+                for ext in (".SRT", ".srt"):
+                    _unlink_quiet(p.with_suffix(ext))
             disk_deleted = True
         else:
             offline = True
@@ -3420,15 +3474,34 @@ def _process_geotiff(tif_path: Path, png_path: Path, on_progress=None) -> dict:
         tags = getattr(im, "tag_v2", {})
         scale = tags.get(33550)   # ModelPixelScaleTag (sx, sy, sz)
         tie = tags.get(33922)     # ModelTiepointTag (i, j, k, x, y, z)
+        mtrans = tags.get(34264)  # ModelTransformationTag (matriz afim 4x4)
         gkeys = tags.get(34735)   # GeoKeyDirectoryTag
-        if not scale or not tie or len(scale) < 2 or len(tie) < 6:
-            raise ValueError("O arquivo TIFF não possui tags GeoTIFF (ModelPixelScale / ModelTiepoint).")
-        sx, sy = float(scale[0]), float(scale[1])
-        ti, tj, tx, ty = float(tie[0]), float(tie[1]), float(tie[3]), float(tie[4])
-        x0 = tx - ti * sx
-        y0 = ty + tj * sy
-        x1 = x0 + w * sx
-        y1 = y0 - h * sy
+        # Verifica GTRasterTypeGeoKey (1025) == 2 (RasterPixelIsPoint -> desloca -0.5 pixel para borda externa)
+        pix_off = 0.0
+        if gkeys and len(gkeys) >= 4:
+            for idx in range(4, len(gkeys) - 3, 4):
+                if gkeys[idx] == 1025 and gkeys[idx + 1] == 0 and gkeys[idx + 3] == 2:
+                    pix_off = 0.5
+                    break
+        if scale and tie and len(scale) >= 2 and len(tie) >= 6:
+            sx, sy = float(scale[0]), float(scale[1])
+            ti, tj, tx, ty = float(tie[0]) + pix_off, float(tie[1]) + pix_off, float(tie[3]), float(tie[4])
+            x0 = tx - ti * sx
+            y0 = ty + tj * sy
+            x1 = x0 + w * sx
+            y1 = y0 - h * sy
+        elif mtrans and len(mtrans) >= 16:
+            tr = [float(v) for v in mtrans[:16]]
+            sx = hypot(tr[0], tr[4]) or abs(tr[0]) or 1e-5
+            corners_xy = [
+                (tr[0] * (cx - pix_off) + tr[1] * (cy - pix_off) + tr[3],
+                 tr[4] * (cx - pix_off) + tr[5] * (cy - pix_off) + tr[7])
+                for cx, cy in ((0, 0), (w, 0), (w, h), (0, h))
+            ]
+            x0, x1 = min(c[0] for c in corners_xy), max(c[0] for c in corners_xy)
+            y1, y0 = min(c[1] for c in corners_xy), max(c[1] for c in corners_xy)
+        else:
+            raise ValueError("O arquivo TIFF não possui tags GeoTIFF (ModelPixelScale/ModelTiepoint ou ModelTransformation).")
         epsg = _extract_geotiff_epsg(gkeys) or (4326 if -180 <= x0 <= 180 and -90 <= y0 <= 90 else None)
         if epsg in (4326, 4674, 4269, 4258):  # WGS84, SIRGAS 2000, NAD83, ETRS89 (graus decimais)
             min_lon, max_lon = min(x0, x1), max(x0, x1)
@@ -3944,12 +4017,7 @@ def _line_length_m(pts: list[list[float]], closed: bool = False) -> float:
 
 def _poly_area_m2(pts: list[list[float]]) -> float:
     if len(pts) < 3: return 0.0
-    lat0 = sum(p[0] for p in pts) / len(pts)
-    kx = 111320.0 * cos(radians(lat0))
-    ky = 110540.0
-    xy = [(p[1] * kx, p[0] * ky) for p in pts]
-    acc = sum(xy[i][0] * xy[(i + 1) % len(xy)][1] - xy[(i + 1) % len(xy)][0] * xy[i][1] for i in range(len(xy)))
-    return round(abs(acc) * 0.5, 2)
+    return round(float(_st_area_utm_m2(pts) or 0.0), 2)
 
 class AnnotationIn(BaseModel):
     kind: str
@@ -4133,7 +4201,7 @@ def spots_list(bbox: str = ""):
         if bb:
             return [dict(r) for r in c.execute(
                 "SELECT s.* FROM spots s JOIN rtree_spots rs ON rs.id = s.id "
-                "WHERE rs.min_lon >= ? AND rs.max_lon <= ? AND rs.min_lat >= ? AND rs.max_lat <= ?",
+                "WHERE rs.max_lon >= ? AND rs.min_lon <= ? AND rs.max_lat >= ? AND rs.min_lat <= ?",
                 (bb[0], bb[1], bb[2], bb[3])
             )]
         return [dict(r) for r in c.execute("SELECT * FROM spots")]
@@ -4377,17 +4445,15 @@ def airspace_info(lat: float, lon: float, layers: str = ""):
     try: return http_json(AIR_WMS + "?" + q)
     except Exception as e: return {"error": str(e), "features": []}
 
-import urllib.parse as _up
-AIRCK_WMS = "https://geoaisweb.decea.mil.br/geoserver/ows"
 AIR_NEAR_KM = 9.0   # referência minha (não é regra): aeródromo mais perto que isso gera "atenção"
 AIR_CHECK = [("ICA:eac_p", "Área proibida", 3), ("ICA:eac_r", "Área restrita", 3), ("ICA:eac_d", "Área perigosa", 2),
              ("ICA:CTR", "Zona de controle (CTR)", 3), ("ICA:ATZ", "Zona de tráfego de aeródromo (ATZ)", 3),
              ("ICA:fiz", "Zona de informação de voo (FIZ)", 2)]
 
 def _wfs(layer, bb):
-    q = _up.urlencode({"service": "WFS", "version": "1.0.0", "request": "GetFeature", "typeName": layer,
-                       "outputFormat": "application/json", "bbox": "%f,%f,%f,%f,EPSG:4326" % bb, "maxFeatures": 300})
-    return http_json(AIRCK_WMS + "?" + q).get("features", [])
+    q = urllib.parse.urlencode({"service": "WFS", "version": "1.0.0", "request": "GetFeature", "typeName": layer,
+                                "outputFormat": "application/json", "bbox": "%f,%f,%f,%f,EPSG:4326" % bb, "maxFeatures": 300})
+    return http_json(AIR_WMS + "?" + q).get("features", [])
 
 def _pip(x, y, ring):
     ins = False; j = len(ring) - 1
@@ -4692,7 +4758,7 @@ def missions_air_check(mid: int):
     for i in range(1, len(wps)):
         a, b = wps[i - 1], wps[i]
         seg_d = hav(a[0], a[1], b[0], b[1])
-        steps = max(1, min(50, int(seg_d // 40) + 1))
+        steps = max(1, min(250, int(seg_d // 40) + 1))
         for k in range(1, steps + 1):
             f = k / steps
             cur_t += int(max(1, (seg_d / steps) / spd))
