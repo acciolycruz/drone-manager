@@ -180,7 +180,7 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 
   - **Natural Language Search (no external AI):** Parses queries in English, Portuguese, or Spanish (including `ft`, `mi`, and `mph`), such as *"flights above 250 ft in 2025"*, *"unlinked photos"*, or *"flights near airport"*.
 - **Main Map, Spatial GIS Engine & Photogrammetry (`📐 Footprint / GSD`):**
-  - Flight polylines (Ramer-Douglas-Peucker simplified), photo clusters, ground **Footprint** polygon projection, **GSD (`cm/px`)** & **overlap %** estimation, DECEA WMS layers, and **`🇺🇸 FAA UASFM / Airspace (USA)`** GeoJSON overlays.
+  - Flight polylines (Ramer-Douglas-Peucker simplified), photo clusters, trapezoidal/rectangular ground **Footprint** polygon projection, **GSD (`cm/px`)** & **overlap %** estimation, DECEA WMS layers, and **`🇺🇸 FAA UASFM / Airspace (USA)`** GeoJSON overlays.
   - **Tier 1 + Tier 2 SQLite Spatial Engine:** Native **SQLite R-Tree** 2D spatial indexes (`rtree_flights` bounding full flight paths, `rtree_media`, `rtree_spots`) + **SpatiaLite / GEOS / PROJ** geodesic & cartographic SQL functions (`ST_Distance_Sphere`, `ST_MakePointGeoJSON`, `ST_MakePointGeoJSON3D`, `ST_MakeEnvelopeGeoJSON`, `ST_UTM_EPSG`, `ST_Area_UTM`) with instant viewport filtering (`📐 Filter in map view`).
 - **Live Cockpit HUD, Flight Health, Compliance & Dynamic Track Coloring (2D/3D):**
   - **Synchronized Player (Video + 2D/3D Map + Chart):** Plays the drone video side-by-side with the **2D (Leaflet)** or **3D (CesiumJS** with real terrain, vertical curtain, 3D camera FOV cone, and photo thumbnails along the path), syncing the map and `Chart.js` cursor with video playback. Includes `0.5×`–`8×` speeds, fine sync offset (`-5s`, `-1s`, `+1s`, `+5s` saved per video), 3D camera modes (`Follow`, `Overview`, `Top`), and **Fullscreen Mode** with floating Picture-in-Picture (PiP) video.<img width="1919" height="1051" alt="flight-video-replay" src="https://github.com/user-attachments/assets/98de42e0-4c45-4ffd-86fa-df87afcf4ef9" /><img width="1919" height="1051" alt="flight-video-replay-3d" src="https://github.com/user-attachments/assets/04eb41d2-8713-4051-bab5-edfbd31f104f" />
@@ -241,7 +241,7 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 | `DELETE` / `POST` | `/api/media/{mid}?disk=0\|1` & `/api/media/delete-batch` | Removes media from the gallery/DB only or permanently deletes files from disk (path-validated). |
 | `GET` | `/api/media/{mid}/srt` | Returns second-by-second `.SRT` telemetry track for a video. |
 | `GET` | `/api/media/{mid}/hud-video` | Renders and downloads an `.mp4` clip with burned-in telemetry HUD via `ffmpeg`. |
-| `POST` | `/api/flights/{fid}/merge-videos` | Losslessly merges selected flight `.mp4` clips (`ffmpeg -c copy`) for download or local saving. |
+| `POST/GET` | `/api/flights/{fid}/merge-videos`, `/merge-status/{job}` & `/merge-download/{tok}` | Losslessly merges selected flight `.mp4` clips (`ffmpeg -c copy`) in background with status polling and streaming download or local saving. |
 | `POST` | `/api/media/{mid}/detect` & `/api/detect/batch` | Runs aerial object detection (YOLO11s VisDrone ONNX) on a single item or batch. |
 | `GET/POST` | `/api/media/semantic-status`, `/semantic-index`, `/semantic-search` | Local photo indexing and offline visual semantic search via CLIP ViT-B/32 ONNX. |
 | `GET` | `/api/detections/report` | Generates consolidated object detection report (HTML or JSON). |
