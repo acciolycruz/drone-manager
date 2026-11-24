@@ -29,6 +29,11 @@
   --danger: #ef4444;
   --warn: #f59e0b;
   --ok: #10b981;
+  --danger-fg: #fca5a5;
+  --warn-fg: #fbbf24;
+  --ok-fg: #34d399;
+  --toast-bg: rgba(17, 22, 29, 0.96);
+  --toast-fg: #f1f5f9;
   --radius: 8px;
 }
 body.light {
@@ -39,12 +44,17 @@ body.light {
   --border: rgba(15, 23, 42, 0.1);
   --border-strong: rgba(15, 23, 42, 0.18);
   --fg: #0f172a;
-  --mut: #64748b;
+  --mut: #475569;
   --acc: #0066cc;
   --acc-hover: #0052a3;
   --acc-cyan: #0284c7;
   --acc-glow: rgba(0, 102, 204, 0.12);
   --sb: #0b0f17;
+  --danger-fg: #b91c1c;
+  --warn-fg: #b45309;
+  --ok-fg: #047857;
+  --toast-bg: #ffffff;
+  --toast-fg: #0f172a;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -474,7 +484,7 @@ tr.r { cursor: pointer; transition: background 0.1s ease; }
 tr.r:hover td { background: rgba(24, 144, 255, 0.08); }
 #ftab th { cursor: pointer; user-select: none; white-space: nowrap; }
 #ftab th:hover { color: var(--fg); background: rgba(255, 255, 255, 0.05); }
-button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid var(--acc-cyan); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, select:focus-visible, input[type="checkbox"]:focus-visible, input[type="range"]:focus-visible, tr.r:focus-visible { outline: 2px solid var(--acc-cyan); outline-offset: 2px; }
 @media (max-width: 860px) {
   table { display: block; overflow-x: auto; white-space: nowrap; }
 }
@@ -483,14 +493,14 @@ button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid
   right: 20px;
   bottom: 20px;
   z-index: 3000;
-  background: rgba(17, 22, 29, 0.96);
+  background: var(--toast-bg);
   border: 1px solid var(--acc-cyan);
-  color: var(--fg);
+  color: var(--toast-fg);
   padding: 9px 15px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
@@ -604,12 +614,10 @@ h4 {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  min-height: 36px;
   margin: 0 0 8px;
   flex: none;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
+  flex-wrap: wrap;
 }
 #fvbox { position: relative; }
 #fvbox video {
@@ -976,9 +984,11 @@ input[type=range] {
   #side .lb, #side #banner div, #side .sbsearch, #side header a, #side #themetog span { display: none; }
   #side #banner { justify-content: center; padding: 16px 0 12px; }
   #side .nav { justify-content: center; padding: 11px 0; }
-  #side #scan { font-size: 0; padding: 9px; }
+  #side #scan, #side #uplog { font-size: 0; padding: 9px; }
   #side #scan::before { content: '⟳'; font-size: 18px; }
   #side #scan:disabled::before { content: '…'; }
+  #side #uplog::before { content: '⬆'; font-size: 16px; }
+  #side #langsel { font-size: 11px; padding: 4px 2px; text-align: center; }
 }
 </style>
 </head>
@@ -1054,8 +1064,8 @@ input[type=range] {
           <button id="mtool-line" onclick="startMeasure('line')" style="font-size:11.5px;padding:4px 8px">📏 Distância</button>
           <button id="mtool-polygon" onclick="startMeasure('polygon')" style="font-size:11.5px;padding:4px 8px">⬠ Área</button>
           <button id="mtool-pin" onclick="startMeasure('pin')" style="font-size:11.5px;padding:4px 8px">📌 Pino</button>
-          <a href="/api/annotations/geojson" style="margin-left:auto;font-size:11.5px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;color:var(--fg);text-decoration:none" title="Exportar anotações em GeoJSON">⬇ GeoJSON</a>
-          <a href="/api/annotations/report" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;color:var(--fg);text-decoration:none" title="Relatório para impressão/PDF">🖨 PDF</a>
+          <a href="/api/annotations/geojson" style="margin-left:auto;font-size:11.5px;padding:4px 8px;border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:#f1f5f9;text-decoration:none" title="Exportar anotações em GeoJSON">⬇ GeoJSON</a>
+          <a href="/api/annotations/report" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;padding:4px 8px;border:1px solid rgba(255,255,255,0.18);border-radius:6px;color:#f1f5f9;text-decoration:none" title="Relatório para impressão/PDF">🖨 PDF</a>
         </div>
         <div id="meas-bar" class="hide" style="padding:7px 9px;margin-bottom:8px;border:1px solid var(--acc);border-radius:8px;background:rgba(0,210,255,0.08);font-size:12px">
           <div id="meas-info" style="margin-bottom:5px">Clique no mapa para marcar pontos…</div>
@@ -1314,8 +1324,8 @@ input[type=range] {
   <section id="locais" class="hide"></section>
   <section id="config" class="hide"></section>
 </main>
-<div id="modal" class="hide" onclick="if(event.target.id=='modal')closeM()"></div>
-<div id="mergemodal" class="hide" onclick="if(event.target.id=='mergemodal')closeMergeModal()">
+<div id="modal" class="hide" role="dialog" aria-modal="true" onclick="if(event.target.id=='modal')closeM()"></div>
+<div id="mergemodal" class="hide" role="dialog" aria-modal="true" onclick="if(event.target.id=='mergemodal')closeMergeModal()">
   <div class="mrg-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <h3 style="margin:0" data-i18n="fdet.merge_title">Unificar clipes do voo (.MP4)</h3>
@@ -1334,7 +1344,7 @@ input[type=range] {
     </div>
   </div>
 </div>
-<div id="odmmodal" class="hide" style="position:fixed;inset:0;background:rgba(5,7,10,0.76);backdrop-filter:blur(4px);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target.id=='odmmodal')closeOdmModal()">
+<div id="odmmodal" class="hide" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(5,7,10,0.76);backdrop-filter:blur(4px);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target.id=='odmmodal')closeOdmModal()">
   <div class="mrg-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <h3 style="margin:0">🛰 Gerar Ortomosaico (NodeODM)</h3>
@@ -1792,6 +1802,7 @@ function togglePlanner(on){
   PLAN_ON=!!on;
   if(PLAN_ON&&AIRQ_ON)toggleAirQuery(false);
   if(PLAN_ON&&WX_ON)toggleWx(false);
+  if(PLAN_ON&&$('#mortho')&&!$('#mortho').classList.contains('hide'))toggleOrthoPanel(false);
   const p=$('#mplan');if(p)p.classList.toggle('hide',!PLAN_ON);
   const b=$('#b-plan');if(b)b.classList.toggle('on',PLAN_ON);
   if(map)map.getContainer().style.cursor=(PLAN_ON||AIRQ_ON||WX_ON)?'crosshair':'';
@@ -1801,6 +1812,7 @@ function toggleWx(on,pt){
   WX_ON=!!on;
   if(WX_ON&&AIRQ_ON)toggleAirQuery(false);
   if(WX_ON&&PLAN_ON)togglePlanner(false);
+  if(WX_ON&&$('#mortho')&&!$('#mortho').classList.contains('hide'))toggleOrthoPanel(false);
   const p=$('#mwx');if(p)p.classList.toggle('hide',!WX_ON);
   const b=$('#b-wx');if(b)b.classList.toggle('on',WX_ON);
   if(map)map.getContainer().style.cursor=(PLAN_ON||AIRQ_ON||WX_ON)?'crosshair':'';
@@ -2192,13 +2204,16 @@ async function loadFlights(){
   }
   const p=new URLSearchParams({q:$('#fq').value,min_alt:$('#fa').value||0,min_dur:$('#fdur').value||0,date_from:$('#fd1').value,date_to:$('#fd2').value,
     battery:sel.value,drone:dsel?dsel.value:'',source:$('#fs').value,fav:$('#ffav').checked?1:0,bbox:ACTIVE_BBOX||'',sort:FS.k,order:FS.o});
-  const fl=(await api('/flights?'+p)).filter(NLF);
+  $('#ftab').innerHTML='<tr><td colspan="12" style="color:var(--mut);padding:16px">⏳ Carregando voos…</td></tr>';
+  let fl=[];
+  try{fl=(await api('/flights?'+p)).filter(NLF)}
+  catch(e){$('#ftab').innerHTML=`<tr><td colspan="12" style="color:var(--danger-fg);padding:16px">Erro ao carregar voos. <button onclick="loadFlights()">↻ Tentar novamente</button></td></tr>`;return}
   const ar=k=>FS.k==k?(FS.o=='desc'?' ▼':' ▲'):'';
   const th=(k,l)=>`<th onclick="sortF('${k}')">${l}${ar(k)}`;
   const filtered=[...p.entries()].some(([k,v])=>!['sort','order'].includes(k)&&v!==''&&v!=='0');
   const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">'+t('flights.src_photos')+'</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">'+t('flights.src_srt')+'</span>':'';
   $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}`+th('health',t('flights.col.health'))+`<th>${t('flights.col.compliance')}<th>${t('flights.col.airspace')}</tr>`+
-    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${healthChip(f)}<td>${compChip(f)}<td>${airChip(f)}</tr>`).join('')
+    (fl.map(f=>`<tr class=r tabindex="0" role="button" onclick="openFlight(${f.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openFlight(${f.id})}"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${healthChip(f)}<td>${compChip(f)}<td>${airChip(f)}</tr>`).join('')
     ||`<tr><td colspan=12>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
   $('#fcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
 }
@@ -2820,16 +2835,17 @@ const CES_VER='1.145';
 const DRONE_ICO='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="48" height="48"><path d="M32 32L12 12M32 32L52 12M32 32L12 52M32 32L52 52" stroke="#102a43" stroke-width="3" stroke-linecap="round" fill="none"/><g fill="#fff" stroke="#102a43" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="52" cy="12" r="9"/><circle cx="12" cy="52" r="9"/><circle cx="52" cy="52" r="9"/></g><rect x="22" y="20" width="20" height="24" rx="7" fill="#1890ff" stroke="#102a43" stroke-width="2"/><circle cx="32" cy="48" r="4" fill="#00d2ff"/></svg>');
 function loadCesium(){
   if(window.Cesium&&window.Cesium.Ion)return Promise.resolve();
+  const sri='sha384-5oazsHA45lZs9jgvxUv40qbMATfjwmtR/wQePfqDAeIDIhGmSK2V0gpRoCpZVBzJ';
   const add=base=>new Promise((ok,err)=>{
     window.CESIUM_BASE_URL=base;
     const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';document.head.appendChild(l);
-    const s=document.createElement('script');s.src=base+'Cesium.js';
+    const s=document.createElement('script');s.src=base+'Cesium.js';s.integrity=sri;s.crossOrigin='anonymous';
     s.onload=()=>window.Cesium&&window.Cesium.Ion?ok():err(new Error('CesiumJS não inicializou'));
     s.onerror=()=>{s.remove();err(new Error('não foi possível baixar o CesiumJS'))};
     document.head.appendChild(s)});
   return add('https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/')
     .catch(()=>add('https://unpkg.com/cesium@1.124.0/Build/Cesium/'))
-    .catch(()=>add('https://cesium.com/downloads/cesiumjs/releases/'+CES_VER+'/Build/Cesium/'))}
+    .catch(()=>add('https://cesium.com/downloads/cesiumjs/releases/1.124.0/Build/Cesium/'))}
 function tnow(){const v=$('#vid');
   if(FV.length&&FV[CV]&&v&&!v.paused&&performance.now()>scrubUntil)return v.currentTime+FV[CV].off;
   return window.TNOW||0}
@@ -2840,9 +2856,9 @@ function toggleFs(){const b=$('#fmapbox');
 function onFs(){
   const el=document.fullscreenElement||document.webkitFullscreenElement,on=el===$('#fmapbox');
   if(on===FSON)return;FSON=on;
-  const box=$('#fmapbox'),vb=$('#fvbox'),bar=$('#play').parentElement,v=$('#vid'),was=v&&!v.paused;
-  if(on){$('#fmapstack').appendChild(vb);box.appendChild(bar)}
-  else{$('#fplayer').insertBefore(vb,box);$('#fplayer').after(bar)}
+  const box=$('#fmapbox'),vb=$('#fvbox'),bar=$('#play').parentElement,tl=$('#fvtlwrap'),v=$('#vid'),was=v&&!v.paused;
+  if(on){$('#fmapstack').appendChild(vb);box.appendChild(bar);if(tl)box.appendChild(tl)}
+  else{$('#fplayer').insertBefore(vb,box);$('#fplayer').after(bar);if(tl)bar.after(tl)}
   $('#bfs').textContent=on?'✕ Sair da tela cheia':'⛶ Tela cheia';
   if(was)v.play().catch(()=>{});
   setTimeout(()=>{fm.invalidateSize();if(V3)V3.resize()},150)}
@@ -3150,6 +3166,7 @@ async function menuOrtho(){
 function toggleOrthoPanel(force){
   const p=$('#mortho');if(!p)return;
   const open=force!==undefined?force:p.classList.contains('hide');
+  if(open){if(PLAN_ON)togglePlanner(false);if(WX_ON)toggleWx(false)}
   p.classList.toggle('hide',!open);
   const b=$('#b-ortho');if(b)b.classList.toggle('on',open);
   if(open){loadOrthos();refreshOdmDot();loadAnnotations()}
@@ -3438,8 +3455,10 @@ async function loadMedia(k){
   if($('#bsem-clr'))$('#bsem-clr').classList.add('hide');
   if($('#semstat'))$('#semstat').textContent='';
   const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value,bbox:ACTIVE_BBOX||''});
-  let ms=[];try{ms=await api('/media?'+p)}catch(e){alert('Filtro inválido: '+e.message)}ms=ms.filter(NLM);
-  $('#mgrid').innerHTML=ms.map(mediaCard).join('')||'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.';
+  const hasFilt=Boolean($('#mq').value||($('#mor')&&$('#mor').value)||$('#mf').checked||$('#mu').checked||$('#md').value||$('#mn').value||ACTIVE_BBOX);
+  $('#mgrid').innerHTML='<div style="color:var(--mut);padding:16px">⏳ …</div>';
+  let ms=[];try{ms=await api('/media?'+p)}catch(e){toast('Erro ao carregar mídias');$('#mgrid').innerHTML='<div style="color:var(--danger-fg);padding:16px">Erro ao carregar mídias. <button onclick="loadMedia()">↻</button></div>';return}ms=ms.filter(NLM);
+  $('#mgrid').innerHTML=ms.map(mediaCard).join('')||(hasFilt?esc(t('flights.none_filtered')):'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.');
   $('#mcount').textContent=ms.length+' itens';
   if(kind==='photo')refreshSemanticStatus();
 }
@@ -3806,18 +3825,19 @@ function compChip(f){
 function renderCompliance(f){
   const el=$('#fcomp');if(!el)return;
   const c=f.compliance;if(!c){el.innerHTML='';return}
-  const pill=(ok,lbl,sev='warn')=>{
-    const col=ok?'#10b981':(sev==='crit'?'#ef4444':(sev==='info'?'#94a3b8':'#f59e0b'));
+  const pill=(ok,lbl,sev='warn',onclk='')=>{
+    const col=ok?'var(--ok-fg)':(sev==='crit'?'var(--danger-fg)':(sev==='info'?'var(--mut)':'var(--warn-fg)'));
     const bg=ok?'rgba(16,185,129,0.12)':(sev==='crit'?'rgba(239,68,68,0.14)':(sev==='info'?'rgba(148,163,184,0.12)':'rgba(245,158,11,0.14)'));
     const ico=ok?'🟢':(sev==='crit'?'🔴':(sev==='info'?'⚪':'🟡'));
-    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:12px;border:1px solid ${col}55;background:${bg};color:${col}">${ico} ${esc(lbl)}</span>`;
+    const tag=onclk?'button':'span',extra=onclk?` type="button" onclick="${onclk}" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:12px;border:1px solid ${col};background:${bg};color:${col}"`:` style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:12px;border:1px solid ${col};background:${bg};color:${col}"`;
+    return `<${tag}${extra}>${ico} ${esc(lbl)}</${tag}>`;
   };
   const isUS=c.region==='US';
   const altP=pill(!c.alt_120,c.alt_120?t(isUS?'comp.alt_400ft':'comp.alt_120',{val:fmt.alt(c.max_alt_m)}):t(isUS?'comp.alt_ok_us':'comp.alt_ok'));
   const sunS=(c.sunrise&&c.sunset)?` (${c.sunrise}–${c.sunset})`:'';
   const dayP=pill(!c.night,(c.night?t(isUS?'comp.night_us':'comp.night'):t('comp.day_ok'))+sunS,isUS?'info':'warn');
   const vlosP=pill(!c.vlos_500,c.vlos_500?t('comp.vlos_500',{val:fmt.alt(c.max_vlos_m)}):t('comp.vlos_ok'));
-  const aeroP=!c.air_checked?pill(false,t(isUS?'comp.air_unchecked_us':'comp.air_unchecked'),'info'):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
+  const aeroP=!c.air_checked?pill(false,t(isUS?'comp.air_unchecked_us':'comp.air_unchecked'),'info',`airCheck(${f.id})`):(c.air_hit?pill(false,t('comp.air_hit'),'crit'):pill(!c.aero_9km,c.aero_9km?t('comp.aero_9km',{km:c.aero_km!=null?c.aero_km:'≤9'}):t('comp.aero_ok')));
   const uasfmP=(isUS&&c.uasfm_min_ft!=null)?pill(c.uasfm_min_ft>0&&(c.max_alt_m*3.28084)<=c.uasfm_min_ft,`UASFM ${c.uasfm_min_ft} ft`,'crit'):'';
   el.innerHTML=`<div style="background:var(--card);border:1px solid var(--border);padding:8px 12px;border-radius:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px"><strong style="font-size:13px">${esc(t(isUS?'comp.title_us':'comp.title'))}:</strong>${altP}${dayP}${vlosP}${aeroP}${uasfmP}</div>`;
 }
@@ -3847,7 +3867,7 @@ function renderWindAnalysis(f){
   }
   const rose=wa.rose||[];
   const maxC=Math.max(1,...rose.map(r=>r.count));
-  const rSvg=wa.sample_count?`<svg viewBox="0 0 130 130" width="118" height="118" style="flex:none">
+  const rSvg=wa.sample_count?`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:none"><svg viewBox="0 0 130 130" width="118" height="118" role="img" aria-label="${esc(t('wind.rose_title',{n:wa.sample_count}))}">
     <circle cx="65" cy="65" r="46" fill="none" stroke="var(--border)" stroke-width="1"/>
     <circle cx="65" cy="65" r="24" fill="none" stroke="var(--border)" stroke-dasharray="2 3" stroke-width="1"/>
     ${rose.map((r,i)=>{
@@ -3859,7 +3879,7 @@ function renderWindAnalysis(f){
         `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--mut)">${esc(r.dir)}</text>`;
     }).join('')}
     <circle cx="65" cy="65" r="3" fill="var(--fg)"/>
-  </svg>`:'';
+  </svg><span style="font-size:10.5px;color:var(--mut)">🔵 &lt;5 · 🟡 5–9 · 🔴 ≥9 m/s</span></div>`:'';
   const eff=wa.eff;
   let effHtml='';
   if(eff){
@@ -4459,6 +4479,8 @@ function toast(msg){
 window.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(!$('#modal').classList.contains('hide'))closeM();
+    else if($('#mergemodal')&&!$('#mergemodal').classList.contains('hide'))closeMergeModal();
+    else if($('#odmmodal')&&!$('#odmmodal').classList.contains('hide'))closeOdmModal();
     else if($('#fcoordbar')&&!$('#fcoordbar').classList.contains('hide'))$('#fcoordbar').classList.add('hide');
   }
   const tag=(e.target&&e.target.tagName)||'';

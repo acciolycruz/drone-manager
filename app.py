@@ -1296,27 +1296,32 @@ def check_backup():
 
 # ---------- API ----------
 app = FastAPI(title="Drone Manager")
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+_allowed_hosts = ["127.0.0.1", "localhost"]
+if os.getenv("APP_ENV") == "test":
+    _allowed_hosts.append("testserver")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)
 
 @app.middleware("http")
 async def security_headers_and_csrf(request: Request, call_next):
+    sec_site = (request.headers.get("sec-fetch-site") or "").lower()
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-        sec_site = (request.headers.get("sec-fetch-site") or "").lower()
         if sec_site == "cross-site":
             return Response("Origem não autorizada", status_code=403)
         origin = request.headers.get("origin") or request.headers.get("referer") or ""
         if not origin or not re.match(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?(/|$)", origin):
             return Response("Origem não autorizada", status_code=403)
+    elif sec_site == "cross-site" and (request.url.path.endswith("/hud-video") or request.url.path == "/api/export/photos"):
+        return Response("Origem não autorizada", status_code=403)
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Content-Security-Policy"] = (
-        "default-src 'self' https: data: blob:; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https: blob:; "
-        "worker-src 'self' blob: https:; "
-        "connect-src 'self' https: data: blob:; "
-        "style-src 'self' 'unsafe-inline' https:; "
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cesium.com blob:; "
+        "worker-src 'self' blob: https://unpkg.com https://cdn.jsdelivr.net https://cesium.com; "
+        "connect-src 'self' https://*.cesium.com https://*.arcgisonline.com https://geoaisweb.decea.mil.br https://services6.arcgis.com https://*.openstreetmap.org https://*.opentopomap.org data: blob:; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cesium.com; "
         "img-src 'self' data: blob: https:;"
     )
     return resp
@@ -3427,9 +3432,24 @@ def _get_odm_url(override: str = "") -> str:
     return (row[0] if row and row[0] else "http://127.0.0.1:3000").rstrip("/")
 
 def _validate_odm_url(url: str) -> str:
+    import ipaddress, socket
     u = urllib.parse.urlparse(url)
-    if u.scheme not in ("http", "https") or not u.netloc:
+    if u.scheme not in ("http", "https") or not u.hostname:
         raise HTTPException(400, "URL do NodeODM inválida. Use http://127.0.0.1:3000")
+    host = u.hostname.lower()
+    allowed_hosts = {"127.0.0.1", "localhost", "::1"}
+    extra_hosts = {h.strip().lower() for h in os.getenv("ODM_ALLOWED_HOSTS", "").split(",") if h.strip()}
+    if host not in (allowed_hosts | extra_hosts):
+        raise HTTPException(403, "Host do NodeODM não permitido.")
+    try:
+        for res in socket.getaddrinfo(host, u.port or (443 if u.scheme == "https" else 80)):
+            ip = ipaddress.ip_address(res[4][0].split("%")[0])
+            if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+                raise HTTPException(403, "Endereço IP não permitido para NodeODM.")
+    except HTTPException:
+        raise
+    except OSError:
+        raise HTTPException(400, "Não foi possível resolver o host do NodeODM.")
     return url.rstrip("/")
 
 def _odm_json(url: str, method: str = "GET", timeout: int = 8):
@@ -3619,8 +3639,8 @@ def odm_status(url: str = ""):
         info = _odm_json(f"{target}/info", timeout=3)
         return {"online": True, "url": target, "version": info.get("version"), "engine_version": info.get("engineVersion"),
                 "cpus": info.get("availableCpus"), "mem": info.get("totalMemory"), "queue": info.get("taskQueueCount"), **extra}
-    except Exception as e:
-        return {"online": False, "url": target, "error": str(e), **extra}
+    except Exception:
+        return {"online": False, "url": target, "error": "NodeODM offline ou inacessível.", **extra}
 
 @app.post("/api/odm/start")
 def odm_start(url: str = ""):
@@ -3771,8 +3791,17 @@ def _import_local_worker(oid: int, tif_path: Path, png_path: Path):
 def import_ortho_local(b: OrthoLocalBody):
     """Importa um GeoTIFF grande direto do caminho no disco em background com acompanhamento de %."""
     p = Path(norm_path(b.path.strip()))
-    if not _is_allowed_fs_path(p) or not p.is_file():
+    if not _is_allowed_fs_path(str(p)) or not p.is_file():
         raise HTTPException(400, "Arquivo GeoTIFF não encontrado ou pasta não permitida.")
+    if p.suffix.lower() not in (".tif", ".tiff"):
+        raise HTTPException(400, "Apenas arquivos .tif ou .tiff são permitidos.")
+    try:
+        with open(p, "rb") as _fh:
+            hdr = _fh.read(4)
+    except OSError:
+        raise HTTPException(400, "Não foi possível ler o arquivo GeoTIFF.")
+    if hdr not in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+"):
+        raise HTTPException(400, "Assinatura TIFF inválida.")
     clean_name = (b.name or "").strip() or p.stem
     with db() as c:
         cur = c.execute(
@@ -3936,11 +3965,14 @@ def ortho_png(oid: int):
 @app.get("/api/orthos/{oid:int}/tif")
 def ortho_tif(oid: int):
     with db() as c:
-        r = c.execute("SELECT name, tif_path FROM orthomosaics WHERE id=?", (oid,)).fetchone()
-    if not r or not r["tif_path"] or not Path(r["tif_path"]).is_file():
+        r = c.execute("SELECT name, tif_path, status FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+    if not r or r["status"] != "completed" or not r["tif_path"]:
+        raise HTTPException(404, "Arquivo GeoTIFF não encontrado.")
+    tp = Path(r["tif_path"])
+    if tp.suffix.lower() not in (".tif", ".tiff") or not tp.is_file():
         raise HTTPException(404, "Arquivo GeoTIFF não encontrado.")
     safe = re.sub(r"[^\w\-]+", "_", r["name"] or f"ortho_{oid}").strip("_") or f"ortho_{oid}"
-    return FileResponse(r["tif_path"], media_type="image/tiff", filename=f"{safe}.tif")
+    return FileResponse(str(tp), media_type="image/tiff", filename=f"{safe}.tif")
 
 @app.get("/api/stats")
 def stats():
@@ -4804,7 +4836,11 @@ def root_out(r, c):
 
 ALLOWED_FS_PREFIXES = ("/mnt", "/media", "/run/media", "/Volumes", os.path.abspath("data/media"), os.path.abspath(str(MEDIA_DIR)))
 
-_BLOCKED_WIN_PREFIXES = ("/mnt/c/windows", "/mnt/c/users", "/mnt/c/program files", "/mnt/c/program files (x86)", "/mnt/c/programdata")
+_BLOCKED_WIN_PREFIXES = (
+    "/mnt/c/windows", "/mnt/c/users", "/mnt/c/program files",
+    "/mnt/c/program files (x86)", "/mnt/c/programdata",
+    "/mnt/wsl", "/mnt/wslg",
+)
 
 def _is_allowed_fs_path(p: str) -> bool:
     rp = os.path.realpath(p)
