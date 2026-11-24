@@ -704,6 +704,7 @@ def import_log(p):
         "mech": mech,
         "drone": {"sn": dsn or "", "name": dname or "", "type": str(dtype or "DJI Mini 3"), "rc_sn": rcsn or "", "cam_sn": camsn or ""}
     }
+    fmeta["health"] = _calc_flight_health(track, binfo, fmeta, "log")
     im = max(range(len(track)), key=lambda i: track[i][3])
     events = ([{"t": 0, "label": "Decolagem"}] + events +
               [{"t": track[-1][0], "label": "Pouso"}, {"t": track[im][0], "label": f"Altura máxima ({track[im][3]} m)"}])
@@ -954,13 +955,128 @@ async def security_headers_and_csrf(request: Request, call_next):
     )
     return resp
 
+def _calc_flight_health(track: list, bat: dict, meta: dict, source: str = "log") -> Optional[dict]:
+    """Calcula o Índice de Saúde do Voo (0..100) cruzando mecânica/sensores, bateria/voltage sag e link RC/GPS."""
+    if source == "photos":
+        return None
+    mc = (meta or {}).get("mech") or {}
+    bat = bat or {}
+    vib_s = int(mc.get("vib_s") or 0)
+    force_s = int(mc.get("force_s") or 0)
+    comp_s = int(mc.get("comp_s") or 0)
+    gimb_s = int(mc.get("gimb_s") or 0)
+
+    # 1. Sub-nota Mecânica & Sensores (0..100)
+    p_vib = min(35, vib_s * 3)
+    p_force = min(40, force_s * 8)
+    p_comp = min(35, comp_s * 7)
+    p_gimb = min(25, gimb_s * 5)
+    mech_pen = min(100, p_vib + p_force + p_comp + p_gimb)
+    mech_score = max(0, 100 - mech_pen)
+
+    # Analisa a trilha 1 Hz para queda brusca de tensão por célula (voltage sag), perdas de sinal RC e GPS fraco
+    rc_low_s, rc_crit_s, gps_low_s = 0, 0, 0
+    max_sag_mv, min_cell_v = 0, None
+    cell_hist = []
+    for p in (track or []):
+        if not isinstance(p, (list, tuple)):
+            continue
+        sats = p[6] if len(p) > 6 else None
+        if isinstance(sats, (int, float)) and not isinstance(sats, bool) and 0 < sats < 8:
+            gps_low_s += 1
+        rc = p[13] if len(p) > 13 else None
+        if isinstance(rc, (int, float)) and not isinstance(rc, bool):
+            if rc <= 20:
+                rc_crit_s += 1
+            elif rc <= 40:
+                rc_low_s += 1
+        pwr = p[14] if len(p) > 14 else None
+        if isinstance(pwr, (list, tuple)):
+            cells = [float(c) for c in pwr[3:] if isinstance(c, (int, float)) and not isinstance(c, bool) and 2.5 <= c <= 4.5]
+            if not cells and isinstance(pwr[0], (int, float)) and pwr[0] > 5.0:
+                n_cells = 2 if pwr[0] < 9.5 else (3 if pwr[0] < 13.8 else 4)
+                cells = [float(pwr[0]) / n_cells]
+            if cells:
+                cmin = min(cells)
+                min_cell_v = cmin if min_cell_v is None else min(min_cell_v, cmin)
+                if cell_hist:
+                    ref_v = max(cell_hist[-5:])
+                    sag = round((ref_v - cmin) * 1000.0)
+                    if sag > max_sag_mv:
+                        max_sag_mv = sag
+                cell_hist.append(cmin)
+
+    if min_cell_v is None and isinstance(bat.get("vmin"), (int, float)) and bat["vmin"] > 0:
+        v_tot = bat["vmin"] / 1000.0
+        n_c = 2 if v_tot < 9.5 else (3 if v_tot < 13.8 else 4)
+        min_cell_v = round(v_tot / n_c, 3)
+
+    # 2. Sub-nota Elétrica & Bateria (0..100)
+    p_sag = 30 if max_sag_mv >= 300 else (18 if max_sag_mv >= 200 else (8 if max_sag_mv >= 130 else 0))
+    p_cmin = 35 if (min_cell_v is not None and min_cell_v < 3.30) else (20 if (min_cell_v is not None and min_cell_v < 3.45) else (8 if (min_cell_v is not None and min_cell_v < 3.55) else 0))
+    dev = bat.get("dev")
+    p_dev = 25 if (isinstance(dev, (int, float)) and dev > 100) else (12 if (isinstance(dev, (int, float)) and dev > 60) else (5 if (isinstance(dev, (int, float)) and dev > 40) else 0))
+    tmax = bat.get("tmax")
+    p_temp = 20 if (isinstance(tmax, (int, float)) and tmax > 58) else (10 if (isinstance(tmax, (int, float)) and tmax > 50) else 0)
+    bend = bat.get("end")
+    p_end = 15 if (isinstance(bend, (int, float)) and bend <= 10) else (6 if (isinstance(bend, (int, float)) and bend <= 18) else 0)
+    bat_pen = min(100, p_sag + p_cmin + p_dev + p_temp + p_end)
+    bat_score = max(0, 100 - bat_pen)
+
+    # 3. Sub-nota Sinal RC & GPS (0..100)
+    p_rc = min(35, rc_crit_s * 3 + rc_low_s * 1)
+    p_gps = min(30, gps_low_s * 3)
+    link_pen = min(100, p_rc + p_gps)
+    link_score = max(0, 100 - link_pen)
+
+    score = max(0, min(100, 100 - mech_pen - bat_pen - link_pen))
+    status = "good" if score >= 85 else ("warn" if score >= 65 else "crit")
+
+    issues = []
+    if force_s > 0: issues.append({"k": "force", "v": force_s, "p": p_force})
+    if comp_s > 0: issues.append({"k": "comp", "v": comp_s, "p": p_comp})
+    if vib_s > 0: issues.append({"k": "vib", "v": vib_s, "p": p_vib})
+    if gimb_s > 0: issues.append({"k": "gimb", "v": gimb_s, "p": p_gimb})
+    if p_sag > 0: issues.append({"k": "sag", "v": max_sag_mv, "p": p_sag})
+    if p_cmin > 0 and min_cell_v is not None: issues.append({"k": "cmin", "v": round(min_cell_v, 2), "p": p_cmin})
+    if p_dev > 0 and dev is not None: issues.append({"k": "dev", "v": round(dev), "p": p_dev})
+    if p_temp > 0 and tmax is not None: issues.append({"k": "temp", "v": round(tmax, 1), "p": p_temp})
+    if p_end > 0 and bend is not None: issues.append({"k": "bat_low", "v": int(bend), "p": p_end})
+    if p_rc > 0: issues.append({"k": "rc", "v": rc_crit_s + rc_low_s, "p": p_rc})
+    if p_gps > 0: issues.append({"k": "gps", "v": gps_low_s, "p": p_gps})
+
+    return {
+        "score": int(score),
+        "status": status,
+        "mech": int(mech_score),
+        "bat": int(bat_score),
+        "link": int(link_score),
+        "sag_mv": int(max_sag_mv),
+        "min_cell_v": round(min_cell_v, 2) if min_cell_v is not None else None,
+        "rc_drop_s": int(rc_crit_s + rc_low_s),
+        "gps_low_s": int(gps_low_s),
+        "issues": issues,
+    }
+
 def fl_out(r, full=False):
     d = dict(r)
     d["weather"] = json.loads(d["weather"]) if d["weather"] else None
     d["meta"] = json.loads(d["meta"]) if d.get("meta") else {}
     d["start_local"] = local(d["start"]).isoformat() if d["start"] else None
+    bat_obj = json.loads(d["bat"]) if d.get("bat") else {}
+    tr = None
+    if "health" not in d["meta"] and (d.get("source") or "log") != "photos":
+        try:
+            tr = json.loads(d["track"]) if d.get("track") else []
+            hl = _calc_flight_health(tr, bat_obj, d["meta"], d.get("source") or "log")
+            if hl:
+                d["meta"]["health"] = hl
+        except Exception:
+            pass
+    d["health"] = d["meta"].get("health")
     if full:
-        tr = json.loads(d["track"])
+        if tr is None:
+            tr = json.loads(d["track"])
         d["track"], d["events"] = tr, json.loads(d["events"])
         # Fallback automático para Ponto Home (H) e distância máxima VLOS caso o log ainda não tenha sido reimportado
         if "home" not in d["meta"] and tr:
@@ -1078,8 +1194,10 @@ def flights(q: str = "", min_alt: float = 0, min_dur: float = 0, date_from: str 
                 and (not battery or f["battery_sn"] == battery) and (not fav or f["fav"])
                 and (not source or (f["source"] or "log") == source)
                 and (not drone or drone.lower() in dlabel.lower()))
-    key = sort if sort in ("start", "duration", "distance", "max_alt", "max_speed", "place", "name", "fav") else "start"
+    key = sort if sort in ("start", "duration", "distance", "max_alt", "max_speed", "place", "name", "fav", "health") else "start"
     def val(f):
+        if key == "health":
+            return (f.get("health") or {}).get("score") if f.get("health") else -1
         v = f[key]
         return (v or "").lower() if key in ("place", "name", "start") else (v or 0)
     return sorted((f for f in out if ok(f)), key=val, reverse=(order == "desc"))
@@ -1179,12 +1297,14 @@ def report(fid: int, lang: str = ""):
     ev = "".join(f"<li>{e['t']//60}m{e['t']%60:02d}s — {html.escape(tr_event(e['label'], L))}</li>" for e in f["events"])
     wx = (f"{py_fmt_temp(w['temperature_2m'], L)}, {tr(L, 'fdet.wind_lbl')} {py_fmt_spd(w['wind_speed_10m'], L)} "
           f"({tr(L, 'fdet.gust_short')} {py_fmt_spd(w['wind_gusts_10m'], L)}), {w['precipitation']} mm") if w else tr(L, "report.no_data")
+    hl = f.get("health")
+    hl_s = f" · {tr(L, 'fdet.health_title')}: <b>{hl['score']}/100</b> ({tr(L, 'fdet.health_' + hl['status'])})" if hl else ""
     th = "".join(f'<img src="/api/media/{m["id"]}/thumb" width=170>' for m in ms)
     return f"""<!doctype html><html lang="{L}"><meta charset=utf-8><title>{tr(L, 'report.flight_title', id=fid)}</title><body style="font:15px system-ui;max-width:760px;margin:30px auto">
 <button onclick=print() style="float:right">{tr(L, 'report.print_pdf')}</button>
 <h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {(f.get('start_local') or '')[:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
 <p>{tr(L, 'report.duration')} {int(f['duration'] or 0)//60} min {int(f['duration'] or 0)%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'] or 0, L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'] or 0, L)} ·
-{tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'] or 0, L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}</p>
+{tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'] or 0, L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}{hl_s}</p>
 <p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
 
 def _csv_safe(v):

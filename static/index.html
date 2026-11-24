@@ -1843,9 +1843,9 @@ async function loadFlights(){
   const th=(k,l)=>`<th onclick="sortF('${k}')">${l}${ar(k)}`;
   const filtered=[...p.entries()].some(([k,v])=>!['sort','order'].includes(k)&&v!==''&&v!=='0');
   const srcBadge=s=>s=='photos'?' <span style="color:var(--mut);font-size:11.5px">'+t('flights.src_photos')+'</span>':s=='srt'?' <span style="color:var(--acc-cyan);font-size:11.5px">'+t('flights.src_srt')+'</span>':'';
-  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}<th>${t('flights.col.airspace')}</tr>`+
-    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${airChip(f)}</tr>`).join('')
-    ||`<tr><td colspan=10>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
+  $('#ftab').innerHTML='<tr>'+th('fav','★')+th('start',t('flights.col.date'))+th('name',t('flights.col.name'))+th('place',t('flights.col.place'))+th('duration',t('flights.col.duration'))+th('distance',t('flights.col.distance'))+th('max_alt',t('flights.col.max_alt'))+th('max_speed',t('flights.col.max_speed'))+`<th>${t('flights.col.battery')}`+th('health',t('flights.col.health'))+`<th>${t('flights.col.airspace')}</tr>`+
+    (fl.map(f=>`<tr class=r onclick="openFlight(${f.id})"><td onclick="event.stopPropagation();favF(${f.id},${f.fav?0:1})" style="cursor:pointer;font-size:16px;color:${f.fav?'#f59e0b':'var(--mut)'}">${f.fav?'★':'☆'}<td>${fmt.d(f.start_local)}<td><b>${esc(f.name)}</b><td>${esc(f.place||'')}${srcBadge(f.source)}<td>${fmt.t(f.duration)}<td>${fmt.km(f.distance)}<td>${fmt.alt(f.max_alt)}<td>${fmt.kmh(f.max_speed)}<td>${esc(f.battery_sn||'')}<td>${healthChip(f)}<td>${airChip(f)}</tr>`).join('')
+    ||`<tr><td colspan=11>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
   $('#fcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
 }
 let fm,fg,trkGrp,mk,homeMk,homeLine,ch,CH_MODE='fl',TRK_COLOR='solid',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
@@ -2105,6 +2105,7 @@ async function openFlight(id){
   $('#fhead').innerHTML=`<div class="row" style="margin-top:0"><button onclick="closeFlight()">${t('fdet.back')}</button> <button id="favbtn" onclick="favDetail(${id},${f.fav?0:1})" title="${t('fdet.fav_title')}" style="font-size:16px;color:${f.fav?'#f59e0b':'var(--fg)'}">${f.fav?'★':'☆'}</button> <input id="fname" value="${esc(f.name)}" placeholder="${t('fdet.name_ph')}" onchange="renameF(${id},this.value)" style="width:min(440px,90%);font-size:15px;font-weight:600"> <span style="color:var(--mut)">${fmt.d(f.start_local)} ${f.place?'· '+esc(f.place):''} ${drLabel?'· 🛸 '+drLabel:''}</span>${f.source=='photos'?' <span style="color:var(--mut)">'+t('fdet.src_photos')+'</span>':f.source=='srt'?' <span style="color:var(--acc-cyan)">'+t('fdet.src_srt')+'</span>':''}</div>
    ${mechBanner}
    <div class=cards>
+    ${healthCard(f)}
     <div class=card>${t('fdet.duration')}<b>${fmt.t(f.duration)}</b></div><div class=card>${t('fdet.distance')}<b>${fmt.km(f.distance)}</b></div>
     <div class=card>${t('fdet.home_dist')}<b>${fmt.alt(hmax)}${vlosBadge}</b>${FHOME&&FHOME.rth_alt?`<small>RTH: ${fmt.alt(FHOME.rth_alt)}</small>`:''}</div>
     <div class=card>${t('fdet.max_alt')}<b>${fmt.alt(f.max_alt)}</b></div><div class=card>${t('fdet.max_speed')}<b>${fmt.kmh(f.max_speed)}</b></div>
@@ -2857,7 +2858,28 @@ async function loadBatHealth(){
   BHC.push(new Chart($('#bhc1'),{type:'scatter',data:{datasets:ds('full')},options:opt('mAh')}));
   BHC.push(new Chart($('#bhc2'),{type:'scatter',data:{datasets:ds('dev')},options:opt('mV')}));
 }
-/* ---------- verificação de espaço aéreo por voo ---------- */
+/* ---------- índice de saúde do voo (Flight Health Score) e verificação de espaço aéreo ---------- */
+function _fmtHealthIssues(h){
+  if(!h||!Array.isArray(h.issues)||!h.issues.length)return t('fdet.health_ok_msg');
+  return h.issues.map(it=>t('fdet.health_iss.'+it.k,{v:it.v,p:it.p})).join(' · ');
+}
+function healthChip(f){
+  const h=f.health||(f.meta&&f.meta.health);
+  if(!h||h.score==null)return `<span style="color:var(--mut)">—</span>`;
+  const ico=h.status==='crit'?'🔴':h.status==='warn'?'🟡':'🟢';
+  const col=h.status==='crit'?'#ef4444':h.status==='warn'?'#f59e0b':'#10b981';
+  const tip=`${t('fdet.health_title')}: ${h.score}/100 (${t('fdet.health_'+h.status)}) — ${t('fdet.health_sub',{m:h.mech,b:h.bat,l:h.link})} — ${_fmtHealthIssues(h)}`;
+  return `<span title="${esc(tip)}" style="color:${col};font-weight:700;font-variant-numeric:tabular-nums">${ico} ${h.score}</span>`;
+}
+function healthCard(f){
+  const h=f.health||(f.meta&&f.meta.health);
+  if(!h||h.score==null)return '';
+  const ico=h.status==='crit'?'🔴':h.status==='warn'?'🟡':'🟢';
+  const col=h.status==='crit'?'#ef4444':h.status==='warn'?'#f59e0b':'#10b981';
+  const sub=t('fdet.health_sub',{m:h.mech,b:h.bat,l:h.link});
+  const iss=_fmtHealthIssues(h);
+  return `<div class=card title="${esc(iss)}" style="border-color:${col}55">${t('fdet.health_title')}<b style="font-size:15px;color:${col}">${ico} ${h.score}/100 · ${t('fdet.health_'+h.status)}</b><small>${esc(sub)}${h.issues&&h.issues.length?' · '+esc(iss):''}</small></div>`;
+}
 function airChip(f){
   let a=null;try{a=f.air?JSON.parse(f.air):null}catch(e){}
   if(!a)return `<span style="color:var(--mut)" title="${t('air.not_checked')}">—</span>`;
@@ -2908,7 +2930,7 @@ let NLF=()=>true,NLM=()=>true;
 function nlParse(q){
   let s=' '+NZ(q).replace(/[,;]+/g,' ').replace(/\s+/g,' ')+' ';
   const sp={target:'voos',alt:[null,null],dur:[null,null],dist:[null,null],spd:[null,null],batEnd:[null,null],batUsedMin:null,batSn:'',
-    air:0,source:'',orient:'',vib:false,vlos:false,fav:false,unlinked:false,dfn:null,words:[],chips:[],ignored:[]};
+    health:[null,null],air:0,source:'',orient:'',vib:false,vlos:false,fav:false,unlinked:false,dfn:null,words:[],chips:[],ignored:[]};
   const cut=re=>{const m=s.match(re);if(m)s=s.replace(re,' ');return m};
   const cmp=(prefix,unit)=>{
     const re=new RegExp(prefix+'\\s*(?:('+GT+')|('+LT+'))?\\s*(\\d+(?:[.,]\\d+)?)\\s*'+unit+'(?![a-z/])'),out=[];let m;
@@ -2921,9 +2943,12 @@ function nlParse(q){
   else if(cut(/\b(horizonta(?:l|is)|paisagem|landscape|paisaje|horizontales?)\b/))sp.orient='landscape';
   else if(cut(/\b(360|panoramas?|panoramic[oa]s?|esferic[oa]s?)\b/)){sp.orient='pano';if(!/\bvideos?\b/.test(s))sp.target='fotos'}
   else if(cut(/\b(4k|ultra hd)\b/))sp.orient='4k';
-  /* alertas mecânicos / VLOS */
+  /* alertas mecânicos / VLOS / saúde do voo */
   if(cut(/\b(vibrac(?:ao|oes)|helices?|vibration|propellers?)\b/))sp.vib=true;
   if(cut(/\b(vlos|fora de vlos|beyond vlos|afastamento|fuera de vlos)\b/))sp.vlos=true;
+  if(cut(/\b(saude critica|saude baixa|voos? criticos?|critical health|low health|salud critica)\b/))sp.health[1]=64;
+  else if(cut(/\b(saude em atencao|alerta de saude|queda de tensao|voltage sag)\b/))sp.health[1]=84;
+  lim(cmp('(?:saude|health|salud)(?: do voo)?\\s*','(?:pts?|pontos?|%)?'),'health');
   /* o que está sendo procurado */
   if(cut(/\b(sem voo(?: associado)?|unlinked|sin vuelo)\b/))sp.unlinked=true;
   if(/\b(fotos?|imagens?|photos?|pictures?)\b/.test(s))sp.target='fotos';else if(/\bvideos?\b/.test(s))sp.target='videos';
@@ -2986,7 +3011,7 @@ function nlParse(q){
   if(sp.orient)c.push(({portrait:'verticais (9:16)',landscape:'horizontais',pano:'panoramas 360°','4k':'resolução 4K+'})[sp.orient]);
   if(sp.vib)c.push('alerta de vibração');if(sp.vlos)c.push('distância > 500 m (VLOS)');
   rg(sp.alt,'altura',x=>x+' m');rg(sp.dur,'duração',x=>(x/60).toFixed(x%60?1:0)+' min');rg(sp.dist,'distância',x=>x+' km');rg(sp.spd,'velocidade',x=>x+' km/h');
-  rg(sp.batEnd,'bateria final',x=>x+'%');
+  rg(sp.batEnd,'bateria final',x=>x+'%');rg(sp.health,'saúde do voo',x=>x);
   if(sp.batUsedMin!=null)c.push('bateria usada ≥ '+sp.batUsedMin+'%');if(sp.batSn)c.push('bateria '+sp.batSn.toUpperCase());
   if(sp.air)c.push(sp.air>=3?'espaço aéreo: alerta':'espaço aéreo: atenção ou alerta');
   if(sp.words.length)c.push('texto: '+sp.words.join(' '));
@@ -2998,6 +3023,8 @@ function nlFlight(sp){
     if(sp.dfn&&!sp.dfn(new Date(f.start_local)))return false;
     if(sp.fav&&!f.fav)return false;
     if(!inr(f.max_alt||0,sp.alt)||!inr((f.duration||0),sp.dur)||!inr((f.distance||0)/1000,sp.dist)||!inr((f.max_speed||0)*3.6,sp.spd))return false;
+    const hsc=(f.health||(f.meta&&f.meta.health)||{}).score;
+    if((sp.health[0]!=null||sp.health[1]!=null)&&!(hsc!=null&&inr(hsc,sp.health)))return false;
     let b=null;try{b=f.bat?JSON.parse(f.bat):null}catch(e){}
     if((sp.batEnd[0]!=null||sp.batEnd[1]!=null)&&!(b&&b.end!=null&&inr(b.end,sp.batEnd)))return false;
     if(sp.batUsedMin!=null&&!(b&&b.start!=null&&b.end!=null&&b.start-b.end>=sp.batUsedMin))return false;
