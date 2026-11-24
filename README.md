@@ -42,7 +42,7 @@ Never used a terminal or Python before? Follow these steps one command at a time
 In the terminal, navigate to where you want to store the project and install the required system utilities (`python3-venv`, `exiftool`, `ffmpeg`, and `cargo`):
 
 ```bash
-git clone <REPOSITORY_URL> ~/drone-manager
+git clone https://github.com/acciolycruz/drone-manager.git ~/drone-manager
 cd ~/drone-manager
 sudo apt update && sudo apt install -y python3 python3-venv python3-pip libimage-exiftool-perl ffmpeg cargo
 ```
@@ -112,8 +112,8 @@ drone-manager/
 │   ├── logs_ignorados/     # Discarded/corrupted logs with no takeoff
 │   ├── media/              # Default local folder for photos/videos/.SRT
 │   ├── models/             # Cached ONNX models (yolo11s_visdrone.onnx, CLIP)
+│   ├── orthos/             # Imported GeoTIFFs, PNG previews, and NodeODM workdir
 │   └── thumbs/             # Cached JPEG thumbnails (400px) and temporary HUD clips
-├── .agent/                 # Specialist agent rules and skills for development
 ├── .env.example            # Documented environment variable template (no secrets)
 ├── .gitignore              # Keeps .env, database, flight logs, media, and cache out of git
 ├── requirements.txt        # Python dependencies with minimum compatible versions
@@ -123,7 +123,6 @@ drone-manager/
 │   ├── DroneManager.ps1    # Smart launcher that starts WSL2 and opens the browser
 │   ├── criar-atalho.ps1    # Generates the "Drone Manager.lnk" Desktop shortcut
 │   └── drone.ico           # Windows application icon
-├── GEMINI.md               # Architectural documentation and AI context rules
 └── README.md               # This installation, architecture, and usage guide
 ```
 
@@ -145,6 +144,8 @@ All settings can be configured in `.env` (based on [`.env.example`](.env.example
 | `PROP_LIMIT_H` | `50` | No | Accumulated flight hours threshold for propeller replacement alerts. |
 | `DJI_LOG_BIN` | `dji-log` | No | Name or full path to the `dji-log` binary. |
 | `HOST` / `PORT` | `127.0.0.1` / `8000` | No | Bind host and port used by [`start.sh`](start.sh) when launching `uvicorn`. |
+| `ODM_ALLOWED_HOSTS` | `""` | No | Comma-separated extra hostnames allowed for remote NodeODM (beyond `127.0.0.1`, `localhost`, `::1`). |
+| `APP_ENV` | `""` | No | Set to `test` to allow FastAPI `TestClient` (`testserver`) in `TrustedHostMiddleware`. |
 
 ---
 
@@ -180,7 +181,7 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
   - **Natural Language Search (no external AI):** Parses queries in English, Portuguese, or Spanish (including `ft`, `mi`, and `mph`), such as *"flights above 250 ft in 2025"*, *"unlinked photos"*, or *"flights near airport"*.
 - **Main Map, Spatial GIS Engine & Photogrammetry (`📐 Footprint / GSD`):**
   - Flight polylines (Ramer-Douglas-Peucker simplified), photo clusters, ground **Footprint** polygon projection, **GSD (`cm/px`)** & **overlap %** estimation, DECEA WMS layers, and **`🇺🇸 FAA UASFM / Airspace (USA)`** GeoJSON overlays.
-  - **Tier 1 + Tier 2 SQLite Spatial Engine:** Native **SQLite R-Tree** 2D spatial indexes (`rtree_flights` bounding full flight paths, `rtree_media`, `rtree_spots`) + **SpatiaLite / GEOS / PROJ** geodesic & cartographic SQL functions (`ST_Distance_Sphere`, `ST_MakePointGeoJSON`, `ST_MakeEnvelopeGeoJSON`, `ST_UTM_EPSG`, `ST_Area_UTM`) with instant viewport filtering (`📐 Filter in map view`).
+  - **Tier 1 + Tier 2 SQLite Spatial Engine:** Native **SQLite R-Tree** 2D spatial indexes (`rtree_flights` bounding full flight paths, `rtree_media`, `rtree_spots`) + **SpatiaLite / GEOS / PROJ** geodesic & cartographic SQL functions (`ST_Distance_Sphere`, `ST_MakePointGeoJSON`, `ST_MakePointGeoJSON3D`, `ST_MakeEnvelopeGeoJSON`, `ST_UTM_EPSG`, `ST_Area_UTM`) with instant viewport filtering (`📐 Filter in map view`).
 - **Live Cockpit HUD, Flight Health, Compliance & Dynamic Track Coloring (2D/3D):**
   - **Synchronized Player (Video + 2D/3D Map + Chart):** Plays the drone video side-by-side with the **2D (Leaflet)** or **3D (CesiumJS** with real terrain, vertical curtain, 3D camera FOV cone, and photo thumbnails along the path), syncing the map and `Chart.js` cursor with video playback. Includes `0.5×`–`8×` speeds, fine sync offset (`-5s`, `-1s`, `+1s`, `+5s` saved per video), 3D camera modes (`Follow`, `Overview`, `Top`), and **Fullscreen Mode** with floating Picture-in-Picture (PiP) video.<img width="1919" height="1051" alt="flight-video-replay" src="https://github.com/user-attachments/assets/98de42e0-4c45-4ffd-86fa-df87afcf4ef9" /><img width="1919" height="1051" alt="flight-video-replay-3d" src="https://github.com/user-attachments/assets/04eb41d2-8713-4051-bab5-edfbd31f104f" />
 
@@ -227,15 +228,15 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 | :---: | :--- | :--- |
 | `POST` | `/api/scan?force=0\|1` | Imports logs (`.txt`, `.csv`, `.ulg`, `.bin`), indexes media/EXIF/XMP/SRT, links media to flights, and reconstructs flights. |
 | `POST` | `/api/logs/upload?name=...` | Streams uploaded flight logs (`.txt`, `.csv`, `.ulg`, `.bin`) from the browser and imports them. |
-| `GET` | `/api/flights` | Lists flights with filters (text, dates, min altitude/duration, battery, aircraft, source, favorites, bbox). |
-| `GET` | `/api/flights/{fid}` | Full flight detail including `track`, `events`, `bat`, `air`, `compliance`, `wind_analysis`, and `meta`. |
+| `GET` | `/api/config` & `/api/tracks` | Frontend runtime configuration (`CESIUM_TOKEN`, `AIRSPACE_TILES`) and RDP-simplified flight polylines for the main map. |
+| `GET/PATCH` | `/api/flights` & `/api/flights/{fid}` | Lists/filters flights, returns full detail (`track`, `events`, `bat`, `air`, `compliance`, `wind_analysis`, `meta`), or updates name/notes/favorite. |
 | `POST` | `/api/flights/{fid}/airspace-check` | Checks flight path against **DECEA (Brazil)** WFS or **FAA (USA)** ArcGIS REST layers. |
 | `GET` | `/api/airspace/info` & `/api/faa/layer` | Point airspace lookup (DECEA or FAA) and GeoJSON proxy for FAA UASFM / NSUFR map overlays. |
 | `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` \| `/package` | Exports flight track as KML, GPX, GeoJSON (RFC 7946), HTML/PDF report, or **offline Portable HTML Package**. |
 | `GET` | `/api/logbook.csv` | Exports the full flight logbook as CSV (with CSV Injection protection). |
-| `GET/POST/DELETE` | `/api/missions`, `/elevation` & `/{mid}/airspace-check` | Pre-flight mission planner (waypoints, DEM terrain profile, battery/VLOS estimates, DECEA/FAA check, KMZ WPML/KML/GPX/GeoJSON export). |
+| `GET/POST/DELETE` | `/api/missions`, `POST /elevation`, `POST /{mid}/airspace-check` & `GET /kml\|gpx\|geojson\|kmz` | Pre-flight mission planner (waypoints, DEM terrain profile, battery/VLOS estimates, DECEA/FAA check, KMZ WPML/KML/GPX/GeoJSON export). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Hourly flight window forecast (Open-Meteo altitude winds, gusts, rain, visibility + NOAA Kp index). |
-| `GET` | `/api/media` | Lists photos/videos with orientation (`portrait`, `landscape`, `pano`, `4k`), tags, and GPS radius filters. |
+| `GET/PATCH` | `/api/media` & `/api/media/{mid}` | Lists/filters photos & videos (`portrait`, `landscape`, `pano`, `4k`, tags, GPS radius) or updates favorite/tags/flight link/sync offset. |
 | `GET` | `/api/media/{mid}/nearby` | Lists photos near a base photo's GPS coordinate (`radius_m`), sorted by distance and heading (`Δyaw`). |
 | `DELETE` / `POST` | `/api/media/{mid}?disk=0\|1` & `/api/media/delete-batch` | Removes media from the gallery/DB only or permanently deletes files from disk (path-validated). |
 | `GET` | `/api/media/{mid}/srt` | Returns second-by-second `.SRT` telemetry track for a video. |
@@ -252,7 +253,7 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 | `POST` | `/api/backup` | Runs `backup.sh --no-pause` to back up logs, SQLite DB, and code to an external drive. |
 | `GET/POST` | `/api/gis/status` & `/api/gis/rebuild` | Spatial GIS engine diagnostics and rebuild (SQLite R-Tree 2D + SpatiaLite / GEOS / PROJ). |
 | `GET/POST` | `/api/lang` | Reads or saves the active UI language (`pt-BR`, `en`, `es`) in SQLite `kv`. |
-| `GET/POST/DELETE` | `/api/odm/status`, `/start`, `/stop` & `/api/orthos/*` | Local **NodeODM** integration (Docker container control, photo upload, progress, streaming **GeoTIFF** import, PNG/TIF map layers). |
+| `GET/POST/DELETE` | `/api/odm/status`, `/start`, `/stop`, `/config` & `/api/orthos/*` | Local **NodeODM** integration (Docker container control, URL config, photo upload, progress, streaming **GeoTIFF** import, PNG/TIF map layers). |
 | `GET/POST/DELETE` | `/api/annotations` & `/geojson` \| `/report` | Geodesic distance/area measurements and inspection pins on orthomosaics, with **GeoJSON** and HTML/PDF export. |
 
 ---
@@ -266,7 +267,7 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
    - **[Leaflet/Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster)** (`v1.5.3`)
    - **[Leaflet/Leaflet.heat](https://github.com/Leaflet/Leaflet.heat)** (`v0.2.0`)
    - **[chartjs/Chart.js](https://github.com/chartjs/Chart.js)** (`v4.4.1`)
-   - **[CesiumGS/cesium](https://github.com/CesiumGS/cesium)** (`v1.145`)
+   - **[CesiumGS/cesium](https://github.com/CesiumGS/cesium)** (`v1.124.0`)
    - **[mpetroff/pannellum](https://github.com/mpetroff/pannellum)** (`v2.5.6`)
 3. **Python Backend Libraries ([`requirements.txt`](requirements.txt)):**
    - **[fastapi/fastapi](https://github.com/fastapi/fastapi)** (with **[encode/starlette](https://github.com/encode/starlette)** and **[pydantic/pydantic](https://github.com/pydantic/pydantic)**)

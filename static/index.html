@@ -2691,21 +2691,25 @@ async function runMergeVideos(mode){
     }));
     if(!res.ok){
       let msg=await res.text();
-      try{msg=JSON.parse(msg).detail||msg}catch(e){}
+      try{const j=JSON.parse(msg);msg=j.detail!=null?(typeof j.detail==='string'?j.detail:JSON.stringify(j.detail)):msg}catch(e){}
       throw new Error(msg);
     }
+    let j=await res.json();
+    const jobId=j.job_id;
+    if(jobId){
+      while(j.status==='running'){
+        await new Promise(r=>setTimeout(r,1500));
+        j=await api('/flights/'+window.CURF+'/merge-status/'+encodeURIComponent(jobId));
+      }
+      if(j.status==='error')throw new Error(j.error||'Erro ao unificar');
+    }
     if(mode==='download'){
-      const blob=await res.blob();
-      const cd=res.headers.get('content-disposition')||'';
-      const m=cd.match(/filename="?([^"]+)"?/i);
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download=m?m[1]:`voo_${window.CURF}_unificado.mp4`;
-      document.body.appendChild(a);a.click();a.remove();
-      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
       closeMergeModal();
+      const a=document.createElement('a');
+      a.href=j.download_url;
+      a.download=j.filename||`voo_${window.CURF}_unificado.mp4`;
+      document.body.appendChild(a);a.click();a.remove();
     }else{
-      const j=await res.json();
       closeMergeModal();
       toast(t('fdet.merge_saved',{path:j.win_path||j.path}));
       if(j.media_id)openFlight(window.CURF);

@@ -1098,48 +1098,63 @@ def exif_batch(paths):
                         "-GPSAltitude", "-GPSAltitudeRef", "-ImageWidth", "-ImageHeight", "-Duration", "-Make", "-Model", "-ISO", "-ExposureTime",
                         "-FNumber", "-ExposureCompensation", "-FocalLength", "-FocalLengthIn35mmFormat",
                         "-GimbalYawDegree", "-GimbalPitchDegree", "-GimbalRollDegree", "-FlightYawDegree",
-                        "-RelativeAltitude", "-ProjectionType", "--", *paths], capture_output=True, text=True)
-    return {str(Path(x["SourceFile"])): x for x in json.loads(r.stdout or "[]")}
+                        "-RelativeAltitude", "-ProjectionType", "--", *paths], capture_output=True, text=True, timeout=90)
+    if r.returncode != 0 and not r.stdout:
+        return {}
+    try:
+        return {str(Path(x["SourceFile"])): x for x in json.loads(r.stdout or "[]")}
+    except Exception:
+        return {}
 
 def parse_srt_full(p):
-    """Lê todos os blocos de legenda do arquivo .SRT da DJI (1 ponto por segundo com GPS, altitude e dados de câmera)."""
+    """Lê todos os blocos de legenda do arquivo .SRT da DJI em streaming (1 ponto por segundo)."""
+    def _iter_blocks(fp):
+        buf = []
+        for ln in fp:
+            if ln.strip():
+                buf.append(ln)
+            elif buf:
+                yield "".join(buf)
+                buf.clear()
+        if buf:
+            yield "".join(buf)
+
     for ext in (".SRT", ".srt"):
         s = p.with_suffix(ext)
         if s.exists():
+            pts, last_sec, t0 = [], -1, None
             try:
                 with open(s, "r", encoding="utf-8", errors="ignore") as f:
-                    txt = f.read(2_000_000)
-            except Exception: return []
-            pts, last_sec, t0 = [], -1, None
-            for blk in re.split(r"\n\s*\n", txt):
-                if not blk.strip(): continue
-                d = re.search(r"(\d{4}[-:]\d\d[-:]\d\d \d\d:\d\d:\d\d)", blk)
-                dt = parse_dt(d.group(1)) if d else None
-                if dt and t0 is None: t0 = dt
-                tm = re.search(r"(\d\d):(\d\d):(\d\d)[,.](\d+)", blk)
-                sec = int(tm.group(1)) * 3600 + int(tm.group(2)) * 60 + int(tm.group(3)) if tm else (int((dt - t0).total_seconds()) if (dt and t0) else len(pts))
-                if sec == last_sec: continue
-                last_sec = sec
-                def fn(k):
-                    m = re.search(rf"\[{k}\s*:\s*(-?[\d.]+)", blk, re.I)
-                    return float(m.group(1)) if m else None
-                def fs(k):
-                    m = re.search(rf"\[{k}\s*:\s*([^\]]+)\]", blk, re.I)
-                    return m.group(1).strip() if m else None
-                lat, lon = fn("latitude"), fn("longitude")
-                if lat is None or lon is None:
-                    g2 = re.search(r"GPS\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)", blk)
-                    if g2: lon, lat = float(g2.group(1)), float(g2.group(2))
-                if not valid_gps(lat, lon):
-                    lat, lon = None, None
-                rel_alt = fn("rel_alt")
-                abs_alt = fn("abs_alt") if fn("abs_alt") is not None else fn("altitude")
-                alt = rel_alt if rel_alt is not None else abs_alt
-                pts.append({"t": sec, "lat": lat, "lon": lon, "alt": alt, "rel_alt": rel_alt, "abs_alt": abs_alt,
-                            "iso": int(fn("iso")) if fn("iso") else None,
-                            "shutter": fs("shutter"), "fnum": fn("fnum"), "ev": fn("ev"),
-                            "focal": fn("focal_len"), "taken": dt.isoformat() if dt else None})
-            return pts
+                    for blk in _iter_blocks(f):
+                        d = re.search(r"(\d{4}[-:]\d\d[-:]\d\d \d\d:\d\d:\d\d)", blk)
+                        dt = parse_dt(d.group(1)) if d else None
+                        if dt and t0 is None: t0 = dt
+                        tm = re.search(r"(\d\d):(\d\d):(\d\d)[,.](\d+)", blk)
+                        sec = int(tm.group(1)) * 3600 + int(tm.group(2)) * 60 + int(tm.group(3)) if tm else (int((dt - t0).total_seconds()) if (dt and t0) else len(pts))
+                        if sec == last_sec: continue
+                        last_sec = sec
+                        def fn(k):
+                            m = re.search(rf"\[{k}\s*:\s*(-?[\d.]+)", blk, re.I)
+                            return float(m.group(1)) if m else None
+                        def fs(k):
+                            m = re.search(rf"\[{k}\s*:\s*([^\]]+)\]", blk, re.I)
+                            return m.group(1).strip() if m else None
+                        lat, lon = fn("latitude"), fn("longitude")
+                        if lat is None or lon is None:
+                            g2 = re.search(r"GPS\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)", blk)
+                            if g2: lon, lat = float(g2.group(1)), float(g2.group(2))
+                        if not valid_gps(lat, lon):
+                            lat, lon = None, None
+                        rel_alt = fn("rel_alt")
+                        abs_alt = fn("abs_alt") if fn("abs_alt") is not None else fn("altitude")
+                        alt = rel_alt if rel_alt is not None else abs_alt
+                        pts.append({"t": sec, "lat": lat, "lon": lon, "alt": alt, "rel_alt": rel_alt, "abs_alt": abs_alt,
+                                    "iso": int(fn("iso")) if fn("iso") else None,
+                                    "shutter": fs("shutter"), "fnum": fn("fnum"), "ev": fn("ev"),
+                                    "focal": fn("focal_len"), "taken": dt.isoformat() if dt else None})
+                return pts
+            except Exception:
+                return []
     return []
 
 def read_srt(p):
@@ -1235,6 +1250,9 @@ def index_media(errors):
                 st = p.stat()
                 taken = taken or datetime.fromtimestamp(st.st_mtime)
                 meta = _build_media_meta(x, kind, w, h, s)
+                if kind == "video" and not meta.get("dur"):
+                    d_pr = _probe_video_duration(p)
+                    if d_pr: meta["dur"] = d_pr
                 c.execute("INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                           (str(p), kind, taken.isoformat(), lat, lon, alt, w, h, st.st_size, sha1(p), json.dumps(meta)))
             except OSError:
@@ -1274,7 +1292,10 @@ def link_media():
             rec0 = any(e["t"] == 0 and e["label"].startswith("Início de gravação") for e in ev)
             fl.append((r["id"], a, a + timedelta(seconds=r["duration"] or 0), r["place"], starts, rec0))
         for m in c.execute("SELECT id,kind,taken,tags FROM media WHERE flight_id IS NULL AND COALESCE(manual,0)=0").fetchall():
-            t = datetime.fromisoformat(m["taken"]); vid = m["kind"] == "video"; best = None
+            t = datetime.fromisoformat(m["taken"])
+            if t.tzinfo is not None:
+                t = t.astimezone(timezone(timedelta(hours=TZ_OFFSET))).replace(tzinfo=None)
+            vid = m["kind"] == "video"; best = None
             for fid, a, b, place, starts, rec0 in fl:
                 key = None
                 if vid and any(abs(t - s) <= tol for s in starts): key = (1, min(abs((t - s).total_seconds()) for s in starts))
@@ -2226,7 +2247,9 @@ def media_hud_video(mid: int, start_s: float = 0.0, dur_s: float = 20.0):
                 if e["label"].startswith("Início de gravação") and e["t"] > 0 and abs(e["t"] - off) <= 30:
                     off = e["t"]; break
             off += float(m.get("sync_adj") or 0)
-            h0 = g(f, "meta", "home") or {"lat": tr[0][1], "lon": tr[0][2]}
+            h0 = g(f, "meta", "home") or ({"lat": tr[0][1], "lon": tr[0][2]} if tr else None)
+            if not h0:
+                raise ValueError("empty track")
             for sec in range(int(dur_s) + 2):
                 ft = start_s + sec + off
                 p = next((x for x in tr if x[0] >= ft), tr[-1] if tr else None)
@@ -2266,9 +2289,10 @@ def media_hud_video(mid: int, start_s: float = 0.0, dur_s: float = 20.0):
     try:
         ass_path.write_text("".join(ass_lines), encoding="utf-8")
         cmd = ["ffmpeg", "-nostdin", "-y", "-ss", str(start_s), "-t", str(dur_s), "-i", str(vp),
-               "-vf", f"scale='min(1920,iw)':-2,ass={ass_path}", "-c:v", "libx264", "-preset", "veryfast",
+               "-vf", f"scale='min(1920,iw)':-2,ass='{_esc_ff_filter(ass_path)}'", "-c:v", "libx264", "-preset", "veryfast",
                "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out_mp4)]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        with _HUD_SEM:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if r.returncode or not out_mp4.exists() or out_mp4.stat().st_size == 0:
             _unlink_quiet(out_mp4)
             raise HTTPException(500, "Erro ao renderizar vídeo com HUD no FFmpeg: " + (r.stderr[-200:] if r.stderr else "desconhecido"))
@@ -2286,14 +2310,49 @@ def media_hud_video(mid: int, start_s: float = 0.0, dur_s: float = 20.0):
         background=BackgroundTask(_unlink_quiet, out_mp4)
     )
 
+_HUD_SEM = threading.Semaphore(2)
+
+def _esc_ff_filter(p: Path) -> str:
+    return str(p).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+
+def _save_merge_job(job_id: str, data: dict):
+    data["job_id"] = job_id
+    kv_set(f"merge_job:{job_id}", json.dumps(data))
+
+def _get_merge_job(job_id: str) -> Optional[dict]:
+    raw = kv_get(f"merge_job:{job_id}")
+    if not raw: return None
+    try: return json.loads(raw)
+    except Exception: return None
+
+@app.get("/api/flights/{fid:int}/merge-download/{tok}")
+def merge_download(fid: int, tok: str):
+    raw = kv_get(f"merge_dl:{tok}")
+    if not raw:
+        raise HTTPException(404, "Arquivo unificado expirado ou não encontrado.")
+    with db() as c:
+        c.execute("DELETE FROM kv WHERE k=?", (f"merge_dl:{tok}",))
+    item = json.loads(raw)
+    out_mp4 = Path(item["path"])
+    if not out_mp4.is_file():
+        raise HTTPException(404, "Arquivo unificado expirado ou não encontrado.")
+    return FileResponse(out_mp4, media_type="video/mp4", filename=item["filename"], background=BackgroundTask(_unlink_quiet, out_mp4))
+
 class MergeVideosBody(BaseModel):
     media_ids: Optional[list[int]] = None
     mode: str = "download"       # "download" (temporário) | "save" (salva na pasta do voo sem apagar originais)
     index_to_db: bool = True     # quando mode == "save", indexar o novo arquivo no voo
 
+@app.get("/api/flights/{fid:int}/merge-status/{job_id}")
+def merge_status(fid: int, job_id: str):
+    j = _get_merge_job(job_id)
+    if not j or j.get("fid") != fid:
+        raise HTTPException(404, "Tarefa de unificação não encontrada.")
+    return j
+
 @app.post("/api/flights/{fid:int}/merge-videos")
 def merge_flight_videos(fid: int, b: MergeVideosBody):
-    """Unifica opcionalmente múltiplos clipes MP4/MOV do mesmo voo sem perda (-c copy)."""
+    """Unifica opcionalmente múltiplos clipes MP4/MOV do mesmo voo em background sem perda (-c copy)."""
     if b.mode not in ("download", "save"):
         raise HTTPException(400, "Modo inválido. Use 'download' ou 'save'.")
     f = dict(get_flight(fid))
@@ -2316,17 +2375,19 @@ def merge_flight_videos(fid: int, b: MergeVideosBody):
     if missing:
         raise HTTPException(400, f"Arquivo(s) indisponível(is) no disco (HD desconectado?): {missing[0]}")
 
-    # Nome base amigável para o arquivo unificado
     base_name = re.sub(r"[^\w\-]+", "_", (f.get("name") or f.get("place") or f"voo_{fid}")).strip("_") or f"voo_{fid}"
     ts_part = (f.get("start") or "")[:10].replace("-", "")
     dl_name = f"{base_name}_{ts_part}_unificado.mp4" if ts_part else f"{base_name}_unificado.mp4"
 
     tmp_dir = Path("data/thumbs")
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    list_txt = tmp_dir / f"concat_{fid}_{int(time.time() * 1000)}.txt"
+    fd_l, list_name = tempfile.mkstemp(prefix=f"concat_{fid}_", suffix=".txt", dir=str(tmp_dir))
+    os.close(fd_l)
+    list_txt = Path(list_name)
     if b.mode == "save":
         parent = paths[0].parent
-        if not _is_allowed_fs_path(parent):
+        if not _is_allowed_fs_path(str(parent)):
+            _unlink_quiet(list_txt)
             raise HTTPException(403, "Pasta de destino não permitida.")
         out_mp4 = parent / f"{paths[0].stem}_unificado.mp4"
         n = 2
@@ -2334,60 +2395,66 @@ def merge_flight_videos(fid: int, b: MergeVideosBody):
             out_mp4 = parent / f"{paths[0].stem}_unificado_{n}.mp4"
             n += 1
     else:
-        out_mp4 = tmp_dir / f"merged_{fid}_{int(time.time() * 1000)}.mp4"
+        fd_m, m_name = tempfile.mkstemp(prefix=f"merged_{fid}_", suffix=".mp4", dir=str(tmp_dir))
+        os.close(fd_m)
+        out_mp4 = Path(m_name)
 
-    try:
-        # Escapa aspas simples para o formato concat demuxer do FFmpeg
-        lines = ["file '" + str(p.resolve()).replace("'", "'\\''") + "'" for p in paths]
-        list_txt.write_text("\n".join(lines), encoding="utf-8")
-        cmd = [
-            "ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(list_txt), "-c", "copy", "-movflags", "+faststart", str(out_mp4)
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if res.returncode != 0 or not out_mp4.exists():
-            _unlink_quiet(out_mp4)
-            err = (res.stderr or "").strip().splitlines()[-1:] or ["Erro desconhecido"]
-            raise HTTPException(500, f"Falha ao unificar com FFmpeg (-c copy): {err[0]}")
-    finally:
-        _unlink_quiet(list_txt)
+    import secrets
+    now_t = time.time()
+    job_id = secrets.token_urlsafe(12)
+    _save_merge_job(job_id, {"fid": fid, "status": "running", "ts": now_t})
 
-    if b.mode == "download":
-        return FileResponse(
-            out_mp4,
-            media_type="video/mp4",
-            filename=dl_name,
-            background=BackgroundTask(_unlink_quiet, out_mp4)
-        )
-
-    # mode == "save": arquivo salvo ao lado dos originais; indexa opcionalmente sem alterar os originais
-    new_id = None
-    if b.index_to_db:
+    def _worker():
         try:
-            ex = exif_batch([str(out_mp4)]).get(str(out_mp4), {})
-        except Exception:
-            ex = {}
-        first = rows[0]
-        w, h = ex.get("ImageWidth") or first.get("w"), ex.get("ImageHeight") or first.get("h")
-        dur = ex.get("Duration") if isinstance(ex.get("Duration"), (int, float)) else _probe_video_duration(out_mp4)
-        meta = _build_media_meta(ex, "video", w, h, None)
-        if dur: meta["dur"] = round(float(dur), 2)
-        meta["merged_from"] = [r["id"] for r in rows]
-        st = out_mp4.stat()
-        with db() as c:
-            cur = c.execute(
-                "INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,flight_id,manual,tags,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (str(out_mp4), "video", first["taken"], first.get("lat"), first.get("lon"), first.get("alt"),
-                 w, h, st.st_size, sha1(out_mp4), fid, 1, first.get("tags") or "", json.dumps(meta))
-            )
-            new_id = cur.lastrowid
-    return {
-        "ok": True,
-        "path": str(out_mp4),
-        "win_path": to_win(str(out_mp4)),
-        "size": out_mp4.stat().st_size,
-        "media_id": new_id,
-    }
+            lines = ["file '" + str(p.resolve()).replace("'", "'\\''") + "'" for p in paths]
+            list_txt.write_text("\n".join(lines), encoding="utf-8")
+            cmd = [
+                "ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(list_txt), "-c", "copy", str(out_mp4)
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+            if res.returncode != 0 or not out_mp4.exists():
+                _unlink_quiet(out_mp4)
+                err = (res.stderr or "").strip().splitlines()[-1:] or ["Erro desconhecido"]
+                _save_merge_job(job_id, {"fid": fid, "status": "error", "error": f"Falha ao unificar com FFmpeg (-c copy): {err[0]}", "ts": time.time()})
+                return
+            if b.mode == "download":
+                tok = secrets.token_urlsafe(16)
+                kv_set(f"merge_dl:{tok}", json.dumps({"path": str(out_mp4), "filename": dl_name, "ts": time.time()}))
+                _save_merge_job(job_id, {"fid": fid, "status": "done", "download_url": f"/api/flights/{fid}/merge-download/{tok}", "filename": dl_name, "ts": time.time()})
+                return
+            new_id = None
+            if b.index_to_db:
+                try:
+                    ex = exif_batch([str(out_mp4)]).get(str(out_mp4), {})
+                except Exception:
+                    ex = {}
+                first = rows[0]
+                w, h = ex.get("ImageWidth") or first.get("w"), ex.get("ImageHeight") or first.get("h")
+                dur = ex.get("Duration") if isinstance(ex.get("Duration"), (int, float)) else _probe_video_duration(out_mp4)
+                meta = _build_media_meta(ex, "video", w, h, None)
+                if dur: meta["dur"] = round(float(dur), 2)
+                meta["merged_from"] = [r["id"] for r in rows]
+                st = out_mp4.stat()
+                with db() as c:
+                    cur = c.execute(
+                        "INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,flight_id,manual,tags,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (str(out_mp4), "video", first["taken"], first.get("lat"), first.get("lon"), first.get("alt"),
+                         w, h, st.st_size, sha1(out_mp4), fid, 1, first.get("tags") or "", json.dumps(meta))
+                    )
+                    new_id = cur.lastrowid
+            _save_merge_job(job_id, {
+                "fid": fid, "status": "done", "path": str(out_mp4), "win_path": to_win(str(out_mp4)),
+                "size": out_mp4.stat().st_size, "media_id": new_id, "ts": time.time()
+            })
+        except Exception as e:
+            _unlink_quiet(out_mp4)
+            _save_merge_job(job_id, {"fid": fid, "status": "error", "error": str(e), "ts": time.time()})
+        finally:
+            _unlink_quiet(list_txt)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return {"ok": True, "job_id": job_id, "status": "running"}
 
 class MediaPatch(BaseModel):
     tags: Optional[str] = None
@@ -2595,11 +2662,11 @@ def _detect_video_stream(sess, p: Path, ow: int, oh: int, conf_thr: float, step_
     nw, nh = max(1, int(round(ow * scale))), max(1, int(round(oh * scale)))
     px, py = (640 - nw) / 2.0, (640 - nh) / 2.0
     vf = f"fps=1/{step_s},scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2:color=0x727272"
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(p), "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "fatal", "-i", str(p), "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     frame_bytes = 640 * 640 * 3
     max_frames = 240
     items = []
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         idx = 0
         while idx < max_frames:
@@ -2980,6 +3047,7 @@ def _clip_embed_image(img_path: Path) -> bytes:
     from PIL import Image, ImageOps
     vis_sess, _, _, _, _ = _get_clip()
     with Image.open(img_path) as im:
+        im.draft("RGB", (512, 512))
         im = ImageOps.exif_transpose(im).convert("RGB").resize((224, 224), Image.Resampling.BICUBIC)
         arr = np.asarray(im, dtype=np.float32) / 255.0
     mean = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
@@ -3007,8 +3075,9 @@ def semantic_index(limit: int = 300, force: int = 0):
         rows = c.execute(f"SELECT id, path FROM media WHERE kind='photo' {cond} ORDER BY taken DESC LIMIT ?", (limit,)).fetchall()
     indexed, skipped, errors = 0, 0, []
     for mid, raw_p in rows:
+        th = THUMBS / f"{mid}.jpg"
         p = Path(raw_p)
-        src = p if p.is_file() else (THUMBS / f"{mid}.jpg")
+        src = th if th.is_file() else p
         if not src.is_file():
             skipped += 1
             continue
@@ -3064,6 +3133,7 @@ def media_thumb(mid: int):
             return Response(status_code=404)
         with _THUMB_SEM:
             if not out.exists():
+                tmp = out.with_suffix(".tmp.jpg")
                 try:
                     if m["kind"] == "photo":
                         from PIL import Image, ImageOps
@@ -3071,13 +3141,21 @@ def media_thumb(mid: int):
                             im.draft("RGB", (800, 800))
                             im = ImageOps.exif_transpose(im)
                             im.thumbnail((400, 400))
-                            im.convert("RGB").save(out, "JPEG", quality=80, optimize=True)
+                            im.convert("RGB").save(tmp, "JPEG", quality=80, optimize=True)
                     else:
-                        subprocess.run(["ffmpeg", "-nostdin", "-y", "-ss", "1", "-i", str(p),
-                                        "-frames:v", "1", "-vf", "scale=400:-1", str(out)],
-                                       capture_output=True, timeout=15)
+                        for ss in ("1", "0"):
+                            _unlink_quiet(tmp)
+                            subprocess.run(["ffmpeg", "-nostdin", "-y", "-ss", ss, "-i", str(p),
+                                            "-frames:v", "1", "-vf", "scale=400:-2", str(tmp)],
+                                           capture_output=True, timeout=15)
+                            if tmp.is_file() and tmp.stat().st_size > 0:
+                                break
+                    if tmp.is_file() and tmp.stat().st_size > 0:
+                        tmp.replace(out)
                 except Exception:
-                    _unlink_quiet(out)
+                    _unlink_quiet(tmp)
+                finally:
+                    _unlink_quiet(tmp)
     return FileResponse(out) if out.exists() else Response(status_code=404)
 
 @app.get("/api/export/photos")
@@ -3087,13 +3165,24 @@ def export_photos(ids: str):
     os.close(fd)
     tmp_path = Path(tmp_name)
     try:
+        used_names = set()
+        written = 0
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_STORED) as z:
             for i in ids.split(","):
                 if not i.strip(): continue
-                m = get_media(int(i))
+                mid = int(i)
+                m = get_media(mid)
                 mp = Path(m["path"])
                 if mp.is_file():
-                    z.write(mp, mp.name)
+                    arc = mp.name if mp.name not in used_names else f"{mid}_{mp.name}"
+                    used_names.add(arc)
+                    z.write(mp, arc)
+                    written += 1
+        if written == 0:
+            _unlink_quiet(tmp_path)
+            raise HTTPException(404, "Nenhum dos arquivos selecionados está disponível no disco.")
+    except HTTPException:
+        raise
     except Exception as e:
         _unlink_quiet(tmp_path)
         raise HTTPException(400, f"Erro ao gerar pacote ZIP: {e}")
@@ -3228,9 +3317,14 @@ def _stream_large_tiff(tif_path: Path, out_w: int, out_h: int, on_progress=None)
         spp = int(tags.get(277, 3))
         bps = tags.get(258, (8,))
         pred = int(tags.get(317, 1))
-        if comp not in (1, 5, 8, 32946) or spp not in (1, 3, 4):
+        planar = int(tags.get(284, 1))
+        photo_i = int(tags.get(262, 2))
+        sfmt = tags.get(339, (1,))
+        if comp not in (1, 5, 8, 32946) or spp not in (1, 3, 4) or planar != 1 or photo_i not in (0, 1, 2, 6):
             return None
         if any(int(b) != 8 for b in (bps if isinstance(bps, (tuple, list)) else (bps,))):
+            return None
+        if any(int(s) != 1 for s in (sfmt if isinstance(sfmt, (tuple, list)) else (sfmt,))):
             return None
 
         t_off, t_cnt = tags.get(324), tags.get(325)
@@ -3745,18 +3839,18 @@ async def import_ortho_tif(request: Request, name: str = "", flight_id: int = 0)
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > max_bytes:
-                    raise HTTPException(413, "GeoTIFF excede o limite de 600 MB.")
+                    raise HTTPException(413, "GeoTIFF excede o limite de 8 GB.")
                 f.write(chunk)
         if size < 64:
             raise HTTPException(400, "Arquivo GeoTIFF vazio ou inválido.")
-        geo = _process_geotiff(tif_path, png_path)
+        with open(tif_path, "rb") as _fh:
+            if _fh.read(4) not in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+"):
+                raise HTTPException(400, "Assinatura TIFF inválida.")
         with db() as c:
-            c.execute(
-                "UPDATE orthomosaics SET status='completed', progress=100, tif_path=?, png_path=?, bounds=?, epsg=?, gsd_cm=?, finished_at=? WHERE id=?",
-                (str(tif_path), str(png_path), json.dumps(geo["bounds"]), geo["epsg"], geo["gsd_cm"],
-                 datetime.now().isoformat(timespec="seconds"), oid)
-            )
-            return _ortho_out(c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone())
+            c.execute("UPDATE orthomosaics SET tif_path=?, progress=15 WHERE id=?", (str(tif_path), oid))
+            out = _ortho_out(c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone())
+        threading.Thread(target=_import_local_worker, args=(oid, tif_path, png_path), daemon=True).start()
+        return out
     except Exception as e:
         _unlink_quiet(tif_path); _unlink_quiet(png_path)
         with db() as c:
