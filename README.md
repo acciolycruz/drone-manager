@@ -183,6 +183,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 - **Extração de Coordenada Geográfica do Frame (`📍 Coordenada do frame`):**
   - Extrai a coordenada GPS exata do frame exibido no vídeo/replay (via `.SRT` ou interpolação da trilha do voo) e calcula também a **coordenada estimada do Alvo da Câmera no Solo**, gerando botões diretos para **`🗺 Abrir no Google Maps ↗`**, copiar ou salvar nos Locais Favoritos.
 - **Exportador de Clipe MP4 com HUD Embutido (`🎬 Exportar clipe com HUD`):** Renderiza via `ffmpeg` um trecho do vídeo com telemetria DJI gravada na imagem (com limpeza automática de arquivos temporários em background).
+- **Integração Local com NodeODM / WebODM & Ortomosaicos GeoTIFF (`Ortomosaicos` no menu):** Envia fotos selecionadas da galeria ou de um voo direto para uma instância local do **NodeODM** (`http://127.0.0.1:3000`), permite iniciar/parar o container Docker local (`drone-manager-nodeodm`) em 1 clique quando offline, acompanha o progresso em tempo real e importa arquivos **GeoTIFF** grandes direto pelo caminho no disco (com leitura em faixas/blocos de baixo uso de RAM e barra de `%`) como camada sobreposta no mapa Leaflet com controle de opacidade e download do `.tif`.
 - **Timeline Contínua de Multi-Clipes no Voo (e Unificação Opcional `.MP4`):** Quando um voo possui múltiplos vídeos (como splits de 4 GB ou gravações separadas), a barra de replay exibe os segmentos de cada clipe na linha do tempo e alterna automaticamente entre eles durante a reprodução (avançando também nos intervalos sem gravação). Opcionalmente, o usuário pode unificar os clipes selecionados sem perda (`ffmpeg -c copy`, preservando os originais) apenas para download ou salvando na pasta do voo.
 - **Detecção Aérea de Objetos (`YOLO11s VisDrone ONNX`):** Analisa fotos e frames de vídeo localmente via `onnxruntime`, identifica 10 classes aéreas (pedestre, carro, van, caminhão, ônibus, moto, bicicleta, etc.), aplica tags automáticas `ia:*` e gera relatórios filtráveis em HTML/JSON.
 - **Busca Semântica Local em Fotos (`CLIP ViT-B/32 ONNX`):** Indexa fotos localmente em `512` dimensões no SQLite (`clip_emb`) e permite buscar imagens por descrição visual offline em português ou inglês (ex.: *"praia pôr do sol"*, *"barco"*, *"telhado"*, *"lagoa"*), exibindo a pontuação de similaridade.
@@ -229,6 +230,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
 | `GET/POST` | `/api/gis/status` & `/api/gis/rebuild` | Diagnóstico e reconstrução do motor espacial GIS (Nível 1: SQLite R-Tree 2D + B-Tree; Nível 2: SpatiaLite / GEOS / PROJ). |
 | `GET/POST` | `/api/lang` | Lê ou salva o idioma ativo (`pt-BR`, `en`, `es`) na tabela `kv` do SQLite. |
+| `GET/POST/DELETE` | `/api/odm/status`, `/start`, `/stop` & `/api/orthos/*` | Integração local com **NodeODM** (controle de container Docker local, envio de fotos, progresso, cancelamento, importação em *streaming* de **GeoTIFF** por caminho/upload e camada PNG/TIF no mapa). |
 
 ---
 

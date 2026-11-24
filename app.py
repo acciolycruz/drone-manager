@@ -3,7 +3,7 @@ import os, re, json, csv, io, time, html, ctypes, ctypes.util, shutil, sqlite3, 
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from math import radians, degrees, sin, cos, tan, asin, acos, atan2, sqrt, hypot, ceil
+from math import radians, degrees, sin, cos, tan, asin, acos, atan, atan2, exp, pi, sqrt, hypot, ceil
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
@@ -35,6 +35,7 @@ TZ_OFFSET = float(os.getenv("TZ_OFFSET", "-3"))          # fuso local (Rio = -3)
 AIRSPACE_TILES = os.getenv("AIRSPACE_TILES", "")         # URL de tiles de espaço aéreo (opcional)
 PROP_LIMIT_H = float(os.getenv("PROP_LIMIT_H", "50"))    # horas até trocar hélices
 THUMBS = Path("data/thumbs"); THUMBS.mkdir(parents=True, exist_ok=True)
+ORTHOS = Path("data/orthos"); ORTHOS.mkdir(parents=True, exist_ok=True)
 for d in (LOGS_DIR, MEDIA_DIR):
     try: d.mkdir(parents=True, exist_ok=True)
     except OSError: pass
@@ -278,6 +279,13 @@ with db() as _c:
         if col not in mcols: _c.execute(f"ALTER TABLE media ADD COLUMN {col} {ddl}")
     _c.execute("CREATE TABLE IF NOT EXISTS missions(id INTEGER PRIMARY KEY, name TEXT NOT NULL, waypoints TEXT NOT NULL, "
                "alt REAL DEFAULT 60, speed REAL DEFAULT 8, notes TEXT DEFAULT '', air TEXT, created TEXT)")
+    _c.execute("""CREATE TABLE IF NOT EXISTS orthomosaics(
+        id INTEGER PRIMARY KEY, name TEXT NOT NULL, flight_id INTEGER, odm_url TEXT,
+        task_id TEXT, status TEXT DEFAULT 'pending', progress REAL DEFAULT 0,
+        photo_count INTEGER DEFAULT 0, options TEXT, tif_path TEXT, png_path TEXT,
+        bounds TEXT, epsg INTEGER, gsd_cm REAL, error TEXT, created_at TEXT, finished_at TEXT
+    )""")
+    _c.execute("UPDATE orthomosaics SET status='failed', error='Importação interrompida (reinício do servidor).' WHERE status='importing'")
     mscols = [r[1] for r in _c.execute("PRAGMA table_info(missions)")]
     if "meta" not in mscols:
         _c.execute("ALTER TABLE missions ADD COLUMN meta TEXT DEFAULT '{}'")
@@ -2355,6 +2363,736 @@ def export_photos(ids: str):
         filename="fotos_selecionadas.zip",
         background=BackgroundTask(_unlink_quiet, tmp_path)
     )
+
+# ---------- Integração Local com NodeODM / WebODM & Ortomosaicos GeoTIFF ----------
+def _utm_to_wgs84(easting: float, northing: float, zone: int, northern: bool = True):
+    """Converte coordenadas UTM (WGS84) para (lat, lon) em graus decimais."""
+    a = 6378137.0
+    e2 = 0.00669437999014
+    e1 = (1.0 - sqrt(1.0 - e2)) / (1.0 + sqrt(1.0 - e2))
+    x = easting - 500000.0
+    y = northing if northern else northing - 10000000.0
+    m = y / 0.9996
+    mu = m / (a * (1.0 - e2 / 4.0 - 3.0 * e2 * e2 / 64.0 - 5.0 * e2 * e2 * e2 / 256.0))
+    phi1 = (mu + (3.0 * e1 / 2.0 - 27.0 * (e1 ** 3) / 32.0) * sin(2.0 * mu)
+            + (21.0 * e1 * e1 / 16.0 - 55.0 * (e1 ** 4) / 32.0) * sin(4.0 * mu)
+            + (151.0 * (e1 ** 3) / 96.0) * sin(6.0 * mu)
+            + (1097.0 * (e1 ** 4) / 512.0) * sin(8.0 * mu))
+    ep2 = e2 / (1.0 - e2)
+    c1 = ep2 * (cos(phi1) ** 2)
+    t1 = tan(phi1) ** 2
+    n1 = a / sqrt(1.0 - e2 * (sin(phi1) ** 2))
+    r1 = a * (1.0 - e2) / ((1.0 - e2 * (sin(phi1) ** 2)) ** 1.5)
+    d = x / (n1 * 0.9996)
+    lat_rad = phi1 - (n1 * tan(phi1) / r1) * (
+        d * d / 2.0
+        - (5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1 * c1 - 9.0 * ep2) * (d ** 4) / 24.0
+        + (61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1 * t1 - 252.0 * ep2 - 3.0 * c1 * c1) * (d ** 6) / 720.0
+    )
+    lon_rad = (
+        d - (1.0 + 2.0 * t1 + c1) * (d ** 3) / 6.0
+        + (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1 * c1 + 8.0 * ep2 + 24.0 * t1 * t1) * (d ** 5) / 120.0
+    ) / cos(phi1)
+    lon0 = radians((zone - 1) * 6 - 180 + 3)
+    return round(degrees(lat_rad), 7), round(degrees(lon_rad + lon0), 7)
+
+def _webmerc_to_wgs84(x: float, y: float):
+    """Converte coordenadas Web Mercator (EPSG:3857) para (lat, lon) WGS84."""
+    R = 6378137.0
+    return round(degrees(2.0 * atan(exp(y / R)) - pi / 2.0), 7), round(degrees(x / R), 7)
+
+def _extract_geotiff_epsg(geo_keys) -> Optional[int]:
+    if not geo_keys or len(geo_keys) < 4:
+        return None
+    nkeys = int(geo_keys[3])
+    for idx in range(nkeys):
+        off = 4 + idx * 4
+        if off + 3 >= len(geo_keys): break
+        key_id, tiff_tag_loc, _count, val = int(geo_keys[off]), int(geo_keys[off + 1]), int(geo_keys[off + 2]), int(geo_keys[off + 3])
+        if key_id in (3072, 2048) and tiff_tag_loc == 0 and val > 0:
+            return val
+    return None
+
+def _mem_available_bytes() -> int:
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except Exception:
+        pass
+    return 2 * 1024 * 1024 * 1024
+
+def _tiff_lzw_decode(data: bytes) -> bytes:
+    """Decodificador LZW padrão TIFF (MSB-first, 9..12 bits) para faixas/tiles individuais."""
+    out = bytearray()
+    table = {i: bytes([i]) for i in range(256)}
+    next_code, code_size = 258, 9
+    bit_buf = bit_cnt = idx = 0
+    n = len(data)
+    prev = b""
+    def _next():
+        nonlocal bit_buf, bit_cnt, idx
+        while bit_cnt < code_size:
+            if idx >= n:
+                return None
+            bit_buf = (bit_buf << 8) | data[idx]
+            idx += 1
+            bit_cnt += 8
+        bit_cnt -= code_size
+        val = (bit_buf >> bit_cnt) & ((1 << code_size) - 1)
+        bit_buf &= (1 << bit_cnt) - 1
+        return val
+    while True:
+        code = _next()
+        if code is None or code == 257:
+            break
+        if code == 256:
+            table = {i: bytes([i]) for i in range(256)}
+            next_code, code_size = 258, 9
+            prev = b""
+            continue
+        if code in table:
+            entry = table[code]
+        elif code == next_code and prev:
+            entry = prev + prev[:1]
+        else:
+            break
+        out.extend(entry)
+        if prev:
+            if next_code < 4096:
+                table[next_code] = prev + entry[:1]
+                next_code += 1
+                if next_code == (1 << code_size) and code_size < 12:
+                    code_size += 1
+        prev = entry
+    return bytes(out)
+
+def _decomp_tiff_chunk(raw: bytes, comp: int) -> bytes:
+    if comp == 1:
+        return raw
+    if comp in (8, 32946):
+        return __import__("zlib").decompress(raw)
+    if comp == 5:
+        return _tiff_lzw_decode(raw)
+    raise ValueError(f"Compressão TIFF {comp} não suportada em streaming")
+
+def _stream_large_tiff(tif_path: Path, out_w: int, out_h: int, on_progress=None):
+    """Lê TIFF grande em faixas (strips) ou blocos (tiles) sem carregar a imagem inteira na RAM."""
+    import numpy as np
+    from PIL import Image
+    with Image.open(tif_path) as im:
+        w, h = im.size
+        tags = getattr(im, "tag_v2", {})
+        comp = int(tags.get(259, 1))  # 1=None, 5=LZW, 8/32946=Deflate
+        spp = int(tags.get(277, 3))
+        bps = tags.get(258, (8,))
+        pred = int(tags.get(317, 1))
+        if comp not in (1, 5, 8, 32946) or spp not in (1, 3, 4):
+            return None
+        if any(int(b) != 8 for b in (bps if isinstance(bps, (tuple, list)) else (bps,))):
+            return None
+
+        t_off, t_cnt = tags.get(324), tags.get(325)
+        tw, th = tags.get(322), tags.get(323)
+        s_off, s_cnt = tags.get(273), tags.get(279)
+        rps = int(tags.get(278, h))
+
+        out = np.zeros((out_h, out_w, 4), dtype=np.uint8)
+        last_pct = 45
+
+        def _write_rows(arr, y_start, x_start, row_h, col_w, ox0, ox1, oy0, oy1):
+            if pred == 2:
+                arr = np.cumsum(arr, axis=1, dtype=np.uint8)
+            for oy in range(oy0, oy1):
+                sy = min(row_h - 1, max(0, int(oy * h / out_h) - y_start))
+                sx_idx = np.clip((np.arange(ox0, ox1) * w / out_w).astype(np.int64) - x_start, 0, col_w - 1)
+                row = arr[sy, sx_idx]
+                if spp == 4:
+                    out[oy, ox0:ox1] = row
+                elif spp == 3:
+                    out[oy, ox0:ox1, :3] = row
+                    nodata = (row[:, 0] == 0) & (row[:, 1] == 0) & (row[:, 2] == 0)
+                    out[oy, ox0:ox1, 3] = np.where(nodata, 0, 255)
+                else:
+                    out[oy, ox0:ox1, 0] = out[oy, ox0:ox1, 1] = out[oy, ox0:ox1, 2] = row[:, 0]
+                    out[oy, ox0:ox1, 3] = np.where(row[:, 0] == 0, 0, 255)
+
+        if t_off and t_cnt and tw and th:
+            tw, th = int(tw), int(th)
+            nx = (w + tw - 1) // tw
+            ny = (h + th - 1) // th
+            total = max(1, len(t_off))
+            ox_map = np.clip((np.arange(out_w) * w / out_w).astype(np.int64), 0, w - 1)
+            oy_map = np.clip((np.arange(out_h) * h / out_h).astype(np.int64), 0, h - 1)
+            with open(tif_path, "rb") as f:
+                for idx, (off, cnt) in enumerate(zip(t_off, t_cnt)):
+                    tx = (idx % nx) * tw
+                    ty = (idx // nx) * th
+                    ox_idx = np.where((ox_map >= tx) & (ox_map < tx + tw))[0]
+                    oy_idx = np.where((oy_map >= ty) & (oy_map < ty + th))[0]
+                    if ox_idx.size and oy_idx.size and cnt > 0:
+                        f.seek(int(off))
+                        raw = _decomp_tiff_chunk(f.read(int(cnt)), comp)
+                        arr = np.frombuffer(raw, dtype=np.uint8)
+                        if arr.size < tw * th * spp:
+                            return None
+                        arr = arr[:tw * th * spp].reshape((th, tw, spp)).copy()
+                        _write_rows(arr, ty, tx, th, tw, int(ox_idx[0]), int(ox_idx[-1]) + 1, int(oy_idx[0]), int(oy_idx[-1]) + 1)
+                    pct = 45 + int(35 * (idx + 1) / total)
+                    if on_progress and pct >= last_pct + 3:
+                        last_pct = pct
+                        on_progress(pct)
+            return Image.fromarray(out, "RGBA")
+
+        if s_off and s_cnt:
+            total = max(1, len(s_off))
+            oy_map = np.clip((np.arange(out_h) * h / out_h).astype(np.int64), 0, h - 1)
+            with open(tif_path, "rb") as f:
+                for s_idx, (off, cnt) in enumerate(zip(s_off, s_cnt)):
+                    y_start = s_idx * rps
+                    y_end = min(h, y_start + rps)
+                    rows_in_strip = y_end - y_start
+                    if rows_in_strip <= 0:
+                        continue
+                    oy_idx = np.where((oy_map >= y_start) & (oy_map < y_end))[0]
+                    if oy_idx.size and cnt > 0:
+                        f.seek(int(off))
+                        raw = _decomp_tiff_chunk(f.read(int(cnt)), comp)
+                        arr = np.frombuffer(raw, dtype=np.uint8)
+                        expected = rows_in_strip * w * spp
+                        if arr.size < expected:
+                            return None
+                        arr = arr[:expected].reshape((rows_in_strip, w, spp)).copy()
+                        _write_rows(arr, y_start, 0, rows_in_strip, w, 0, out_w, int(oy_idx[0]), int(oy_idx[-1]) + 1)
+                    pct = 45 + int(35 * (s_idx + 1) / total)
+                    if on_progress and pct >= last_pct + 3:
+                        last_pct = pct
+                        on_progress(pct)
+            return Image.fromarray(out, "RGBA")
+        return None
+
+def _process_geotiff(tif_path: Path, png_path: Path, on_progress=None) -> dict:
+    """Lê bounds georreferenciados (WGS84 / UTM) do GeoTIFF e gera PNG RGBA leve para overlay no Leaflet."""
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+    def _prog(pct: int):
+        if on_progress:
+            try: on_progress(pct)
+            except Exception: pass
+    _prog(10)
+    with Image.open(tif_path) as im:
+        w, h = im.size
+        tags = getattr(im, "tag_v2", {})
+        scale = tags.get(33550)   # ModelPixelScaleTag (sx, sy, sz)
+        tie = tags.get(33922)     # ModelTiepointTag (i, j, k, x, y, z)
+        gkeys = tags.get(34735)   # GeoKeyDirectoryTag
+        if not scale or not tie or len(scale) < 2 or len(tie) < 6:
+            raise ValueError("O arquivo TIFF não possui tags GeoTIFF (ModelPixelScale / ModelTiepoint).")
+        sx, sy = float(scale[0]), float(scale[1])
+        ti, tj, tx, ty = float(tie[0]), float(tie[1]), float(tie[3]), float(tie[4])
+        x0 = tx - ti * sx
+        y0 = ty + tj * sy
+        x1 = x0 + w * sx
+        y1 = y0 - h * sy
+        epsg = _extract_geotiff_epsg(gkeys) or (4326 if -180 <= x0 <= 180 and -90 <= y0 <= 90 else None)
+        if epsg in (4326, 4674, 4269, 4258):  # WGS84, SIRGAS 2000, NAD83, ETRS89 (graus decimais)
+            min_lon, max_lon = min(x0, x1), max(x0, x1)
+            min_lat, max_lat = min(y0, y1), max(y0, y1)
+            gsd_cm = round(sx * 111320.0 * 100.0, 2)
+        elif epsg and (32601 <= epsg <= 32660 or 32701 <= epsg <= 32760 or 31978 <= epsg <= 31985 or 31965 <= epsg <= 31976):
+            if 32601 <= epsg <= 32660:
+                north, zone = True, epsg - 32600
+            elif 32701 <= epsg <= 32760:
+                north, zone = False, epsg - 32700
+            elif 31978 <= epsg <= 31985:  # SIRGAS 2000 / UTM 18S..25S (Brasil)
+                north, zone = False, epsg - 31960
+            else:  # SIRGAS 2000 / UTM 11N..22N
+                north, zone = True, epsg - 31954
+            pts = [_utm_to_wgs84(px, py, zone, north) for px in (x0, x1) for py in (y0, y1)]
+            min_lat = min(p[0] for p in pts); max_lat = max(p[0] for p in pts)
+            min_lon = min(p[1] for p in pts); max_lon = max(p[1] for p in pts)
+            gsd_cm = round(sx * 100.0, 2)
+        elif epsg in (3857, 900913):  # Web Mercator (Google / OSM / OpenAerialMap)
+            p0 = _webmerc_to_wgs84(x0, y0)
+            p1 = _webmerc_to_wgs84(x1, y1)
+            min_lat, max_lat = min(p0[0], p1[0]), max(p0[0], p1[0])
+            min_lon, max_lon = min(p0[1], p1[1]), max(p0[1], p1[1])
+            gsd_cm = round(sx * cos(radians((min_lat + max_lat) / 2.0)) * 100.0, 2)
+        else:
+            raise ValueError(f"CRS GeoTIFF não suportado (EPSG={epsg}). Use WGS84/SIRGAS 2000 (4326/4674), Web Mercator (3857) ou UTM.")
+
+        # Converte para PNG RGBA otimizado para o navegador (máx 4096px)
+        # Se for um COG / GeoTIFF com pirâmides (múltiplos frames), usa o overview mais adequado para evitar decodificar GBs na RAM
+        _prog(25)
+        max_dim = 4096
+        n_frames = getattr(im, "n_frames", 1)
+        if n_frames > 1:
+            best_idx, best_sz = 0, max(w, h)
+            for idx in range(1, n_frames):
+                try:
+                    im.seek(idx)
+                    fw, fh = im.size
+                    msz = max(fw, fh)
+                    if msz >= 800 and (best_sz > max_dim or msz > best_sz) and msz <= max_dim:
+                        best_idx, best_sz = idx, msz
+                    elif best_sz > max_dim and msz < best_sz:
+                        best_idx, best_sz = idx, msz
+                except Exception:
+                    break
+            im.seek(best_idx)
+        cur_w, cur_h = im.size
+        _prog(45)
+
+        if max(cur_w, cur_h) > max_dim:
+            sc = max_dim / max(cur_w, cur_h)
+            out_w, out_h = max(1, int(cur_w * sc)), max(1, int(cur_h * sc))
+            # Tenta leitura em faixas/blocos (baixo uso de RAM) antes de decodificar a imagem inteira no Pillow
+            rgba = _stream_large_tiff(tif_path, out_w, out_h, on_progress=_prog) if (n_frames == 1 or best_idx == 0) else None
+            if rgba is None:
+                est_bytes = cur_w * cur_h * 8
+                avail = _mem_available_bytes()
+                if est_bytes > avail * 0.65:
+                    comp_tag = tags.get(259, 1)
+                    tiled_tag = "tiled" if tags.get(324) else "stripped"
+                    raise ValueError(
+                        f"GeoTIFF muito grande ({cur_w}×{cur_h} px, comp={comp_tag}, {tiled_tag}) para a RAM disponível ({avail / (1024**3):.1f} GB). "
+                        "Exporte com pirâmides (COG) ou compressão Deflate/LZW."
+                    )
+                im = im.resize((out_w, out_h), Image.Resampling.BOX)
+                _prog(70)
+                if im.mode != "RGBA":
+                    rgba = im.convert("RGBA")
+                    arr = __import__("numpy").array(rgba)
+                    nodata = (arr[:, :, 0] == 0) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 0)
+                    arr[nodata, 3] = 0
+                    rgba = Image.fromarray(arr, "RGBA")
+                else:
+                    rgba = im
+        else:
+            im.load()
+            _prog(70)
+            if im.mode != "RGBA":
+                rgba = im.convert("RGBA")
+                arr = __import__("numpy").array(rgba)
+                nodata = (arr[:, :, 0] == 0) & (arr[:, :, 1] == 0) & (arr[:, :, 2] == 0)
+                arr[nodata, 3] = 0
+                rgba = Image.fromarray(arr, "RGBA")
+            else:
+                rgba = im
+        _prog(88)
+        rgba.save(png_path, "PNG", compress_level=3)
+    return {"bounds": [min_lat, min_lon, max_lat, max_lon], "epsg": epsg, "gsd_cm": gsd_cm}
+
+def _get_odm_url(override: str = "") -> str:
+    if override and override.strip():
+        return override.strip().rstrip("/")
+    with db() as c:
+        row = c.execute("SELECT v FROM kv WHERE k='odm_url'").fetchone()
+    return (row[0] if row and row[0] else "http://127.0.0.1:3000").rstrip("/")
+
+def _validate_odm_url(url: str) -> str:
+    u = urllib.parse.urlparse(url)
+    if u.scheme not in ("http", "https") or not u.netloc:
+        raise HTTPException(400, "URL do NodeODM inválida. Use http://127.0.0.1:3000")
+    return url.rstrip("/")
+
+def _odm_json(url: str, method: str = "GET", timeout: int = 8):
+    req = urllib.request.Request(url, method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+def _odm_multipart(url: str, fields: dict = None, file_path: Path = None, field_name: str = "images", timeout: int = 120):
+    import http.client
+    u = urllib.parse.urlparse(url)
+    boundary = f"----DroneManagerODM{int(time.time() * 1000)}"
+    body_parts = []
+    for k, v in (fields or {}).items():
+        body_parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode("utf-8"))
+    file_hdr = b""
+    file_size = 0
+    if file_path is not None:
+        fname = file_path.name.replace('"', "_")
+        file_hdr = f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field_name}\"; filename=\"{fname}\"\r\nContent-Type: application/octet-stream\r\n\r\n".encode("utf-8")
+        file_size = file_path.stat().st_size
+    tail = (b"\r\n" if file_path is not None else b"") + f"--{boundary}--\r\n".encode("utf-8")
+    total_len = sum(len(x) for x in body_parts) + len(file_hdr) + file_size + len(tail)
+
+    conn_cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
+    conn = conn_cls(u.hostname, u.port or (443 if u.scheme == "https" else 80), timeout=timeout)
+    try:
+        path = u.path + (f"?{u.query}" if u.query else "")
+        conn.putrequest("POST", path)
+        conn.putheader("Content-Type", f"multipart/form-data; boundary={boundary}")
+        conn.putheader("Content-Length", str(total_len))
+        conn.endheaders()
+        for p in body_parts:
+            conn.send(p)
+        if file_path is not None:
+            conn.send(file_hdr)
+            with open(file_path, "rb") as f:
+                while True:
+                    chunk = f.read(256 * 1024)
+                    if not chunk: break
+                    conn.send(chunk)
+        conn.send(tail)
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8", errors="ignore")
+        if resp.status >= 400:
+            raise RuntimeError(f"HTTP {resp.status}: {raw[:300]}")
+        return json.loads(raw) if raw.strip() else {}
+    finally:
+        conn.close()
+
+_ODM_PRESETS = {
+    "fast": [{"name": "orthophoto-resolution", "value": 5.0}, {"name": "fast-orthophoto", "value": True}],
+    "balanced": [{"name": "orthophoto-resolution", "value": 2.0}],
+    "high": [{"name": "orthophoto-resolution", "value": 1.0}, {"name": "pc-quality", "value": "high"}],
+}
+
+def _odm_worker(oid: int, odm_url: str, paths: list[Path], preset: str):
+    def upd(**kw):
+        cols = ", ".join(f"{k}=?" for k in kw)
+        with db() as c:
+            c.execute(f"UPDATE orthomosaics SET {cols} WHERE id=?", (*kw.values(), oid))
+    try:
+        opts = _ODM_PRESETS.get(preset, _ODM_PRESETS["balanced"])
+        init_res = _odm_multipart(f"{odm_url}/task/new/init", fields={
+            "name": f"drone_manager_{oid}",
+            "options": json.dumps(opts),
+        }, timeout=20)
+        uuid = init_res.get("uuid")
+        if not uuid:
+            raise RuntimeError(f"NodeODM não retornou UUID: {init_res}")
+        upd(task_id=uuid, status="uploading", progress=2)
+        total = max(1, len(paths))
+        for idx, p in enumerate(paths, 1):
+            with db() as c:
+                st_now = c.execute("SELECT status FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+            if st_now and st_now[0] == "canceled":
+                return
+            _odm_multipart(f"{odm_url}/task/new/upload/{uuid}", file_path=p, field_name="images", timeout=120)
+            upd(progress=round(2 + (idx / total) * 18, 1))
+        _odm_multipart(f"{odm_url}/task/new/commit/{uuid}", timeout=30)
+        upd(status="running", progress=20)
+
+        while True:
+            with db() as c:
+                st_now = c.execute("SELECT status FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+            if st_now and st_now[0] == "canceled":
+                return
+            info = _odm_json(f"{odm_url}/task/{uuid}/info", timeout=10)
+            st_code = (info.get("status") or {}).get("code")
+            prog = float(info.get("progress") or 0)
+            if st_code == 40:  # COMPLETED
+                break
+            if st_code == 30:  # FAILED
+                raise RuntimeError((info.get("status") or {}).get("errorMessage") or "Falha no processamento do NodeODM.")
+            if st_code == 50:  # CANCELED
+                upd(status="canceled")
+                return
+            upd(status="queued" if st_code == 10 else "running", progress=round(20 + prog * 0.75, 1))
+            time.sleep(2.5)
+
+        upd(status="importing", progress=96)
+        tif_path = ORTHOS / f"ortho_{oid}.tif"
+        png_path = ORTHOS / f"ortho_{oid}.png"
+        with urllib.request.urlopen(f"{odm_url}/task/{uuid}/download/orthophoto.tif", timeout=180) as r:
+            with open(tif_path, "wb") as f:
+                while True:
+                    chunk = r.read(512 * 1024)
+                    if not chunk: break
+                    f.write(chunk)
+        geo = _process_geotiff(tif_path, png_path)
+        upd(
+            status="completed", progress=100,
+            tif_path=str(tif_path), png_path=str(png_path),
+            bounds=json.dumps(geo["bounds"]), epsg=geo["epsg"], gsd_cm=geo["gsd_cm"],
+            finished_at=datetime.now().isoformat(timespec="seconds")
+        )
+    except Exception as e:
+        upd(status="failed", error=str(e)[:500])
+
+class OdmConfigBody(BaseModel):
+    url: str
+
+class OrthoCreateBody(BaseModel):
+    name: str
+    media_ids: list[int]
+    flight_id: Optional[int] = None
+    preset: str = "balanced"
+    odm_url: str = ""
+
+_ODM_CONTAINER = "drone-manager-nodeodm"
+_ODM_IMAGE = "opendronemap/nodeodm"
+_ODM_BOOT = {"starting": False, "msg": "", "error": ""}
+
+def _odm_is_local(url: str) -> bool:
+    h = (urllib.parse.urlparse(url).hostname or "").lower()
+    return h in ("127.0.0.1", "localhost", "0.0.0.0", "::1")
+
+def _odm_port(url: str) -> int:
+    return urllib.parse.urlparse(url).port or 3000
+
+def _docker_state() -> dict:
+    dbin = shutil.which("docker")
+    if not dbin:
+        return {"docker_bin": False, "docker_ok": False, "container": "missing", "image_ready": False, "docker_err": "Docker CLI não encontrado."}
+    try:
+        res = subprocess.run([dbin, "ps", "-a", "--filter", f"name=^/{_ODM_CONTAINER}$", "--format", "{{.State}}"], capture_output=True, text=True, timeout=3)
+        if res.returncode != 0:
+            return {"docker_bin": True, "docker_ok": False, "container": "unknown", "image_ready": False, "docker_err": (res.stderr or res.stdout).strip()[:200]}
+        lines = [ln.strip().lower() for ln in (res.stdout or "").splitlines() if ln.strip()]
+        cstate = lines[0] if lines else "missing"
+        img_res = subprocess.run([dbin, "images", "-q", _ODM_IMAGE], capture_output=True, text=True, timeout=3)
+        img_ready = bool(img_res.returncode == 0 and (img_res.stdout or "").strip())
+        return {"docker_bin": True, "docker_ok": True, "container": cstate, "image_ready": img_ready, "docker_err": ""}
+    except Exception as e:
+        return {"docker_bin": True, "docker_ok": False, "container": "unknown", "image_ready": False, "docker_err": str(e)[:200]}
+
+def _odm_start_worker(cstate: str, port: int):
+    dbin = shutil.which("docker")
+    try:
+        if cstate in ("exited", "created", "paused"):
+            _ODM_BOOT.update(starting=True, msg="Iniciando container NodeODM…", error="")
+            r = subprocess.run([dbin, "start", _ODM_CONTAINER], capture_output=True, text=True, timeout=30)
+        else:
+            _ODM_BOOT.update(starting=True, msg="Criando container NodeODM (na 1ª vez baixa a imagem)…", error="")
+            r = subprocess.run([dbin, "run", "-d", "--name", _ODM_CONTAINER, "-p", f"{port}:3000", _ODM_IMAGE], capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            _ODM_BOOT.update(starting=False, msg="", error=(r.stderr or r.stdout or "Falha ao iniciar Docker").strip()[:300])
+            return
+        _ODM_BOOT.update(starting=True, msg="Aguardando NodeODM responder na porta " + str(port) + "…", error="")
+        for _ in range(30):
+            try:
+                _odm_json(f"http://127.0.0.1:{port}/info", timeout=1)
+                _ODM_BOOT.update(starting=False, msg="", error="")
+                return
+            except Exception:
+                time.sleep(1)
+        _ODM_BOOT.update(starting=False, msg="", error="")
+    except Exception as e:
+        _ODM_BOOT.update(starting=False, msg="", error=str(e)[:300])
+
+@app.get("/api/odm/status")
+def odm_status(url: str = ""):
+    target = _validate_odm_url(_get_odm_url(url))
+    is_local = _odm_is_local(target)
+    dk = _docker_state() if is_local else {"docker_bin": False, "docker_ok": False, "container": "remote", "image_ready": False, "docker_err": ""}
+    extra = {**dk, "is_local": is_local, "starting": _ODM_BOOT["starting"], "boot_msg": _ODM_BOOT["msg"], "boot_error": _ODM_BOOT["error"]}
+    try:
+        info = _odm_json(f"{target}/info", timeout=3)
+        return {"online": True, "url": target, "version": info.get("version"), "engine_version": info.get("engineVersion"),
+                "cpus": info.get("availableCpus"), "mem": info.get("totalMemory"), "queue": info.get("taskQueueCount"), **extra}
+    except Exception as e:
+        return {"online": False, "url": target, "error": str(e), **extra}
+
+@app.post("/api/odm/start")
+def odm_start(url: str = ""):
+    target = _validate_odm_url(_get_odm_url(url))
+    if not _odm_is_local(target):
+        raise HTTPException(400, "Início automático disponível apenas para NodeODM local (localhost / 127.0.0.1).")
+    dk = _docker_state()
+    if not dk["docker_ok"]:
+        raise HTTPException(503, "Docker não está em execução. Abra o Docker Desktop no Windows (ou inicie o serviço Docker no WSL2) e tente novamente.")
+    try:
+        _odm_json(f"{target}/info", timeout=2)
+        return {"ok": True, "status": "running", "msg": "NodeODM já está online."}
+    except Exception:
+        pass
+    if _ODM_BOOT["starting"]:
+        return {"ok": True, "status": "starting", "msg": _ODM_BOOT["msg"] or "NodeODM está iniciando…"}
+    _ODM_BOOT.update(starting=True, msg="Iniciando NodeODM…", error="")
+    threading.Thread(target=_odm_start_worker, args=(dk["container"], _odm_port(target)), daemon=True).start()
+    return {"ok": True, "status": "starting", "msg": _ODM_BOOT["msg"]}
+
+@app.post("/api/odm/stop")
+def odm_stop():
+    dk = _docker_state()
+    if not dk["docker_ok"]:
+        raise HTTPException(503, "Docker não está em execução.")
+    if dk["container"] != "running":
+        return {"ok": False, "msg": "Container gerenciado do NodeODM não está em execução."}
+    dbin = shutil.which("docker")
+    r = subprocess.run([dbin, "stop", _ODM_CONTAINER], capture_output=True, text=True, timeout=20)
+    if r.returncode != 0:
+        raise HTTPException(500, (r.stderr or r.stdout or "Falha ao parar container").strip()[:200])
+    return {"ok": True, "msg": "Container NodeODM parado."}
+
+@app.post("/api/odm/config")
+def odm_save_config(b: OdmConfigBody):
+    u = _validate_odm_url(b.url)
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO kv(k, v) VALUES('odm_url', ?)", (u,))
+    return {"ok": True, "url": u}
+
+def _ortho_out(r) -> dict:
+    d = dict(r)
+    for k in ("bounds", "options"):
+        if isinstance(d.get(k), str):
+            try: d[k] = json.loads(d[k])
+            except Exception: pass
+    d["has_png"] = bool(d.get("png_path") and Path(d["png_path"]).is_file())
+    d["has_tif"] = bool(d.get("tif_path") and Path(d["tif_path"]).is_file())
+    return d
+
+@app.get("/api/orthos")
+def list_orthos():
+    with db() as c:
+        rows = c.execute("SELECT * FROM orthomosaics ORDER BY id DESC").fetchall()
+    return [_ortho_out(r) for r in rows]
+
+@app.post("/api/orthos/create")
+def create_ortho(b: OrthoCreateBody):
+    if len(b.media_ids) < 3:
+        raise HTTPException(400, "Selecione pelo menos 3 fotos com GPS para gerar um ortomosaico.")
+    odm_url = _validate_odm_url(_get_odm_url(b.odm_url))
+    try:
+        _odm_json(f"{odm_url}/info", timeout=3)
+    except Exception as e:
+        raise HTTPException(503, f"NodeODM indisponível em {odm_url}: {e}")
+    with db() as c:
+        qmarks = ",".join("?" for _ in b.media_ids)
+        rows = [dict(r) for r in c.execute(f"SELECT id, path, kind FROM media WHERE kind='photo' AND id IN ({qmarks})", b.media_ids)]
+    paths = [Path(r["path"]) for r in rows if Path(r["path"]).is_file()]
+    if len(paths) < 3:
+        raise HTTPException(400, "Pelo menos 3 fotos precisam estar disponíveis no disco (HD conectado?).")
+    preset = b.preset if b.preset in _ODM_PRESETS else "balanced"
+    name = (b.name or "").strip() or f"Ortomosaico {datetime.now().strftime('%d/%m %H:%M')}"
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO orthomosaics(name,flight_id,odm_url,status,progress,photo_count,options,created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (name, b.flight_id, odm_url, "pending", 0, len(paths), json.dumps({"preset": preset}), datetime.now().isoformat(timespec="seconds"))
+        )
+        oid = cur.lastrowid
+        if b.odm_url.strip():
+            c.execute("INSERT OR REPLACE INTO kv(k, v) VALUES('odm_url', ?)", (odm_url,))
+    threading.Thread(target=_odm_worker, args=(oid, odm_url, paths, preset), daemon=True).start()
+    with db() as c:
+        return _ortho_out(c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone())
+
+@app.post("/api/orthos/import-tif")
+async def import_ortho_tif(request: Request, name: str = "", flight_id: int = 0):
+    """Importa um arquivo GeoTIFF (.tif/.tiff) já gerado externamente e cria a camada para o mapa."""
+    clean_name = (name or "").strip() or f"GeoTIFF {datetime.now().strftime('%d/%m %H:%M')}"
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO orthomosaics(name,flight_id,status,progress,created_at) VALUES(?,?,?,?,?)",
+            (clean_name, flight_id or None, "importing", 50, datetime.now().isoformat(timespec="seconds"))
+        )
+        oid = cur.lastrowid
+    tif_path = ORTHOS / f"ortho_{oid}.tif"
+    png_path = ORTHOS / f"ortho_{oid}.png"
+    max_bytes = 8 * 1024 * 1024 * 1024  # 8 GB
+    size = 0
+    try:
+        with open(tif_path, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(413, "GeoTIFF excede o limite de 600 MB.")
+                f.write(chunk)
+        if size < 64:
+            raise HTTPException(400, "Arquivo GeoTIFF vazio ou inválido.")
+        geo = _process_geotiff(tif_path, png_path)
+        with db() as c:
+            c.execute(
+                "UPDATE orthomosaics SET status='completed', progress=100, tif_path=?, png_path=?, bounds=?, epsg=?, gsd_cm=?, finished_at=? WHERE id=?",
+                (str(tif_path), str(png_path), json.dumps(geo["bounds"]), geo["epsg"], geo["gsd_cm"],
+                 datetime.now().isoformat(timespec="seconds"), oid)
+            )
+            return _ortho_out(c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone())
+    except Exception as e:
+        _unlink_quiet(tif_path); _unlink_quiet(png_path)
+        with db() as c:
+            c.execute("DELETE FROM orthomosaics WHERE id=?", (oid,))
+        if isinstance(e, HTTPException): raise
+        raise HTTPException(400, f"Falha ao importar GeoTIFF: {e}")
+
+class OrthoLocalBody(BaseModel):
+    path: str
+    name: str = ""
+    flight_id: Optional[int] = None
+
+def _import_local_worker(oid: int, tif_path: Path, png_path: Path):
+    def _upd_prog(pct: int):
+        with db() as c:
+            c.execute("UPDATE orthomosaics SET progress=? WHERE id=? AND status='importing'", (pct, oid))
+    try:
+        geo = _process_geotiff(tif_path, png_path, on_progress=_upd_prog)
+        with db() as c:
+            c.execute(
+                "UPDATE orthomosaics SET status='completed', progress=100, tif_path=?, png_path=?, bounds=?, epsg=?, gsd_cm=?, finished_at=? WHERE id=?",
+                (str(tif_path), str(png_path), json.dumps(geo["bounds"]), geo["epsg"], geo["gsd_cm"],
+                 datetime.now().isoformat(timespec="seconds"), oid)
+            )
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        _unlink_quiet(png_path)
+        with db() as c:
+            c.execute("UPDATE orthomosaics SET status='failed', error=? WHERE id=?", (str(e)[:500], oid))
+
+@app.post("/api/orthos/import-local")
+def import_ortho_local(b: OrthoLocalBody):
+    """Importa um GeoTIFF grande direto do caminho no disco em background com acompanhamento de %."""
+    p = Path(norm_path(b.path.strip()))
+    if not _is_allowed_fs_path(p) or not p.is_file():
+        raise HTTPException(400, "Arquivo GeoTIFF não encontrado ou pasta não permitida.")
+    clean_name = (b.name or "").strip() or p.stem
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO orthomosaics(name,flight_id,status,progress,tif_path,created_at) VALUES(?,?,?,?,?,?)",
+            (clean_name, b.flight_id or None, "importing", 5, str(p), datetime.now().isoformat(timespec="seconds"))
+        )
+        oid = cur.lastrowid
+        out = _ortho_out(c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone())
+    png_path = ORTHOS / f"ortho_{oid}.png"
+    threading.Thread(target=_import_local_worker, args=(oid, p, png_path), daemon=True).start()
+    return out
+
+@app.post("/api/orthos/{oid:int}/cancel")
+def cancel_ortho(oid: int):
+    with db() as c:
+        r = c.execute("SELECT * FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+        if not r: raise HTTPException(404, "Ortomosaico não encontrado.")
+        c.execute("UPDATE orthomosaics SET status='canceled' WHERE id=?", (oid,))
+    if r["task_id"] and r["odm_url"]:
+        try: _odm_multipart(f"{r['odm_url'].rstrip('/')}/task/{r['task_id']}/cancel", timeout=5)
+        except Exception: pass
+    return {"ok": True}
+
+@app.delete("/api/orthos/{oid:int}")
+def delete_ortho(oid: int):
+    with db() as c:
+        r = c.execute("SELECT tif_path, png_path FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+        if not r: raise HTTPException(404, "Ortomosaico não encontrado.")
+        c.execute("DELETE FROM orthomosaics WHERE id=?", (oid,))
+    for p in (r["tif_path"], r["png_path"]):
+        if p:
+            pp = Path(p)
+            try:
+                if pp.resolve().is_relative_to(ORTHOS.resolve()):
+                    _unlink_quiet(pp)
+            except Exception:
+                pass
+    return {"ok": True}
+
+@app.get("/api/orthos/{oid:int}/png")
+def ortho_png(oid: int):
+    with db() as c:
+        r = c.execute("SELECT png_path FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+    if not r or not r["png_path"] or not Path(r["png_path"]).is_file():
+        raise HTTPException(404, "Preview PNG do ortomosaico não encontrado.")
+    return FileResponse(r["png_path"], media_type="image/png")
+
+@app.get("/api/orthos/{oid:int}/tif")
+def ortho_tif(oid: int):
+    with db() as c:
+        r = c.execute("SELECT name, tif_path FROM orthomosaics WHERE id=?", (oid,)).fetchone()
+    if not r or not r["tif_path"] or not Path(r["tif_path"]).is_file():
+        raise HTTPException(404, "Arquivo GeoTIFF não encontrado.")
+    safe = re.sub(r"[^\w\-]+", "_", r["name"] or f"ortho_{oid}").strip("_") or f"ortho_{oid}"
+    return FileResponse(r["tif_path"], media_type="image/tiff", filename=f"{safe}.tif")
 
 @app.get("/api/stats")
 def stats():
