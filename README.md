@@ -211,9 +211,9 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET` | `/api/flights` | Lista voos com filtros (texto, datas, altura, duração, bateria, aeronave, origem, favoritos). |
 | `GET` | `/api/flights/{fid}` | Detalhe completo do voo, incluindo `track` (15 posições/s), `events`, `bat`, `air` e `meta`. |
 | `POST` | `/api/flights/{fid}/airspace-check` | Consulta WFS no GeoServer do DECEA (GEOAISWEB) para o trajeto do voo. |
-| `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` | Exporta a rota do voo em KML, GPX, GeoJSON (RFC 7946) ou relatório HTML/PDF para impressão. |
+| `GET` | `/api/flights/{fid}/kml` \| `/gpx` \| `/geojson` \| `/report` \| `/package` | Exporta a rota do voo em KML, GPX, GeoJSON (RFC 7946), relatório HTML/PDF ou **Pacote Portátil HTML offline** para cliente/auditoria. |
 | `GET` | `/api/logbook.csv` | Exporta o livro de bordo completo em CSV (com proteção contra *CSV Injection*). |
-| `GET/POST/DELETE` | `/api/missions` & `/api/missions/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, estimativa de bateria/VLOS, checagem DECEA e exportação KMZ WPML/KML/GPX/GeoJSON). |
+| `GET/POST/DELETE` | `/api/missions`, `/elevation` & `/{mid}/airspace-check` | Planejador de Missões Pré-Voo (waypoints, perfil de elevação DEM / *Terrain Follow*, estimativa de bateria/VLOS, checagem DECEA e exportação KMZ WPML/KML/GPX/GeoJSON). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Previsão horária de janela de voo (Open-Meteo: vento em altitude, rajadas, chuva, visibilidade + índice Kp NOAA). |
 | `GET` | `/api/media` | Lista fotos/vídeos com filtros de orientação (`portrait`, `landscape`, `pano`, `4k`), tags e raio GPS. |
 | `GET` | `/api/media/{mid}/nearby` | Lista fotos próximas à coordenada GPS de uma foto base (`radius_m`), ordenadas por distância e ângulo (`Δyaw`). |
@@ -231,6 +231,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET/POST` | `/api/gis/status` & `/api/gis/rebuild` | Diagnóstico e reconstrução do motor espacial GIS (Nível 1: SQLite R-Tree 2D + B-Tree; Nível 2: SpatiaLite / GEOS / PROJ). |
 | `GET/POST` | `/api/lang` | Lê ou salva o idioma ativo (`pt-BR`, `en`, `es`) na tabela `kv` do SQLite. |
 | `GET/POST/DELETE` | `/api/odm/status`, `/start`, `/stop` & `/api/orthos/*` | Integração local com **NodeODM** (controle de container Docker local, envio de fotos, progresso, cancelamento, importação em *streaming* de **GeoTIFF** por caminho/upload e camada PNG/TIF no mapa). |
+| `GET/POST/DELETE` | `/api/annotations` & `/geojson` \| `/report` | Medição geodésica de distância/área e pinos de inspeção sobre ortomosaicos, com exportação **GeoJSON** e relatório HTML/PDF. |
 
 ---
 

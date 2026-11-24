@@ -1048,6 +1048,24 @@ input[type=range] {
           <button onclick="importOrthoLocal()" style="font-size:11.5px;padding:4px 8px" title="Recomendado para arquivos grandes (>500 MB): lê direto do caminho no HD sem copiar">📂 Por caminho</button>
         </div>
         <div id="ortho-list" style="display:flex;flex-direction:column;gap:8px;font-size:12.5px"></div>
+        <hr style="border:0;border-top:1px solid var(--border);margin:10px 0">
+        <div style="font-size:12px;font-weight:600;color:var(--acc-cyan);margin-bottom:6px">📐 Medição &amp; Inspeção GIS</div>
+        <div class="row" style="margin:0 0 6px;gap:5px;flex-wrap:wrap">
+          <button id="mtool-line" onclick="startMeasure('line')" style="font-size:11.5px;padding:4px 8px">📏 Distância</button>
+          <button id="mtool-polygon" onclick="startMeasure('polygon')" style="font-size:11.5px;padding:4px 8px">⬠ Área</button>
+          <button id="mtool-pin" onclick="startMeasure('pin')" style="font-size:11.5px;padding:4px 8px">📌 Pino</button>
+          <a href="/api/annotations/geojson" style="margin-left:auto;font-size:11.5px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;color:var(--fg);text-decoration:none" title="Exportar anotações em GeoJSON">⬇ GeoJSON</a>
+          <a href="/api/annotations/report" target="_blank" rel="noopener noreferrer" style="font-size:11.5px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;color:var(--fg);text-decoration:none" title="Relatório para impressão/PDF">🖨 PDF</a>
+        </div>
+        <div id="meas-bar" class="hide" style="padding:7px 9px;margin-bottom:8px;border:1px solid var(--acc);border-radius:8px;background:rgba(0,210,255,0.08);font-size:12px">
+          <div id="meas-info" style="margin-bottom:5px">Clique no mapa para marcar pontos…</div>
+          <div class="row" style="margin:0;gap:5px">
+            <button class="on" onclick="saveMeasure()" style="font-size:11px;padding:3px 8px">✓ Salvar</button>
+            <button onclick="undoMeasurePt()" style="font-size:11px;padding:3px 8px">↶ Desfazer</button>
+            <button onclick="cancelMeasure()" style="font-size:11px;padding:3px 8px">✕ Cancelar</button>
+          </div>
+        </div>
+        <div id="annot-list" style="display:flex;flex-direction:column;gap:5px;font-size:12px"></div>
       </div>
       <div id="mplan" class="hide" style="position:absolute;right:14px;bottom:24px;z-index:680;width:min(440px,94vw);max-height:78vh;overflow-y:auto;background:rgba(15,20,28,0.96);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:10px;padding:12px 14px;box-shadow:0 8px 28px rgba(0,0,0,0.65);color:#f1f5f9">
         <div class="row" style="margin:0 0 8px;justify-content:space-between">
@@ -1094,6 +1112,14 @@ input[type=range] {
             <label><span data-i18n="plan.dir">Sentido</span> <select id="mp-dir" onchange="renderDraftMission()" style="padding:3px 5px;font-size:11.5px"><option value="1" data-i18n="plan.dir_cw">Horário</option><option value="-1" data-i18n="plan.dir_ccw">Anti-horário</option></select></label>
           </div>
         </div>
+        <div class="row" style="margin:6px 0;gap:8px;align-items:center;justify-content:space-between">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px" title="Ajusta a altitude de cada waypoint conforme o relevo do terreno (para exportação KMZ/KML)"><input id="mp-tf" type="checkbox" onchange="onTerrainFollowToggle()"> <span>⛰️ Seguir Relevo (Terrain Follow)</span></label>
+          <button id="mp-elev-btn" onclick="fetchMissionElevation()" style="font-size:11.5px;padding:3px 8px" title="Consultar perfil de elevação do terreno (DEM)">⛰️ Perfil de Terreno</button>
+        </div>
+        <div id="mp-elev-box" class="hide" style="margin:6px 0;padding:7px 9px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px">
+          <div id="mp-elev-info" style="font-size:11.5px;margin-bottom:5px;color:#cbd5e1"></div>
+          <svg id="mp-elev-svg" viewBox="0 0 380 90" style="width:100%;height:90px;display:block"></svg>
+        </div>
         <div id="mp-stats" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 9px;font-size:12px;margin:8px 0;font-variant-numeric:tabular-nums" data-i18n="plan.min_pts">
           Adicione pelo menos 2 pontos no mapa.
         </div>
@@ -1121,9 +1147,20 @@ input[type=range] {
         <div id="wx-body" style="overflow:auto;font-size:12px"></div>
       </div>
       <div class="maphint" data-i18n="map.hint">Botão direito no mapa: salvar local favorito</div>
-      <div id="mapgisbar" style="position:absolute;left:56px;top:12px;z-index:650;display:flex;gap:6px;align-items:center">
-        <button id="b-bbox" onclick="applyMapBBoxFilter()" style="background:rgba(11,14,19,0.88);backdrop-filter:blur(8px);font-size:12px;padding:5px 11px;box-shadow:0 4px 12px rgba(0,0,0,0.4)" data-i18n="map.bbox_filter">📐 Filtrar nesta área do mapa</button>
-        <button id="b-bbox-clr" class="hide" onclick="clearMapBBoxFilter()" style="background:rgba(239,68,68,0.88);color:#fff;border-color:#ef4444;font-size:12px;padding:5px 10px" data-i18n="map.bbox_clear">✕ Limpar área</button>
+      <div id="mapgisbar" style="position:absolute;left:56px;top:12px;z-index:650;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 120px)">
+        <div id="mapsearch" style="position:relative;width:min(350px,68vw)">
+          <div style="display:flex;align-items:center;gap:6px;background:rgba(15,20,28,0.92);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:24px;padding:4px 12px;box-shadow:0 4px 14px rgba(0,0,0,0.45)">
+            <span style="color:#94a3b8;font-size:13px;user-select:none">🔍</span>
+            <input id="mapq" placeholder="Buscar endereço ou coordenada…" data-i18n-ph="map.search_ph" autocomplete="off" oninput="onMapSearchInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();runMapSearch(this.value)}else if(event.key==='Escape')clearMapSearch()" style="flex:1;min-width:0;background:transparent;border:0;outline:none;color:#f1f5f9;font-size:13px;padding:3px 0;box-shadow:none">
+            <button id="mapq-clr" class="hide" onclick="clearMapSearch()" title="Limpar busca" style="background:transparent;border:0;color:#94a3b8;padding:0 4px;font-size:13px;cursor:pointer">✕</button>
+          </div>
+          <div id="mapq-res" class="hide" style="position:absolute;top:100%;left:0;right:0;margin-top:6px;background:rgba(15,20,28,0.97);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.6);max-height:280px;overflow-y:auto;z-index:700"></div>
+        </div>
+        <div style="position:relative;display:inline-flex;align-items:center;gap:4px" onmouseenter="$('#bbox-hint').classList.remove('hide')" onmouseleave="$('#bbox-hint').classList.add('hide')">
+          <button id="b-bbox" onclick="applyMapBBoxFilter()" style="background:rgba(11,14,19,0.88);backdrop-filter:blur(8px);font-size:12px;padding:6px 11px;border-radius:20px;box-shadow:0 4px 12px rgba(0,0,0,0.4)" data-i18n="map.bbox_filter" data-i18n-title="map.bbox_hint">📐 Filtrar nesta área do mapa</button>
+          <div id="bbox-hint" class="hide" style="position:absolute;top:100%;left:0;margin-top:6px;width:270px;background:rgba(15,20,28,0.97);backdrop-filter:blur(8px);border:1px solid var(--acc);border-radius:8px;padding:8px 10px;font-size:11.5px;line-height:1.45;color:#e2e8f0;box-shadow:0 8px 22px rgba(0,0,0,0.6);z-index:710;pointer-events:none" data-i18n="map.bbox_hint">Restringe os voos, fotos e locais exibidos (no mapa e nas abas Voos/Fotos/Vídeos) apenas à área retangular visível na tela atual.</div>
+        </div>
+        <button id="b-bbox-clr" class="hide" onclick="clearMapBBoxFilter()" style="background:rgba(239,68,68,0.88);color:#fff;border-color:#ef4444;font-size:12px;padding:6px 10px;border-radius:20px" data-i18n="map.bbox_clear">✕ Limpar área</button>
       </div>
     </div>
   </section>
@@ -1820,6 +1857,15 @@ function renderDraftMission(){
 
   const g=buildPlanGeometry(alt,spd);
   if(PLAN_MODE!=='waypoints')PLAN_WPS=g.wps;
+  if(window.PLAN_ELEV&&window.PLAN_ELEV.rel_ground?.length!==PLAN_WPS.length){
+    window.PLAN_ELEV=null;$('#mp-elev-box')?.classList.add('hide');
+  }
+  const tfOn=!!$('#mp-tf')?.checked;
+  if(PLAN_WPS.length&&window.PLAN_ELEV&&window.PLAN_ELEV.rel_ground?.length===PLAN_WPS.length){
+    const rel=window.PLAN_ELEV.rel_ground;
+    PLAN_WPS.forEach((w,i)=>{w[2]=tfOn?Math.max(10,+(alt+rel[i]).toFixed(1)):alt});
+    renderElevationSvg();
+  }
   if(!PLAN_WPS.length){
     PLAN_META={};
     if(box)box.textContent=PLAN_MODE==='waypoints'?'Adicione pelo menos 2 pontos no mapa.':PLAN_MODE==='orbit'?'Clique no mapa para posicionar o centro (POI) da órbita.':'Clique no mapa para marcar ao menos 3 vértices do polígono.';
@@ -1863,7 +1909,7 @@ function renderDraftMission(){
   PLAN_META={
     mode:PLAN_MODE,drone_preset:$('#mp-drone').value,drone_bat_min:p.batMin,
     gsd_cm:+g.gsd.toFixed(2),est_photos:g.photos,batteries:nBats,battery_splits:splits,
-    area_ha:+g.areaHa.toFixed(2),
+    area_ha:+g.areaHa.toFixed(2),terrain_follow:!!$('#mp-tf')?.checked,
     ...(PLAN_MODE==='grid'||PLAN_MODE==='double_grid'?{
       polygon:PLAN_POLY,front_overlap:+($('#mp-ovf').value||75),side_overlap:+($('#mp-ovs').value||65),angle:+($('#mp-ang').value||0)
     }:{}),
@@ -1883,7 +1929,53 @@ function undoWaypoint(){
   else PLAN_WPS.pop();
   renderDraftMission();
 }
-function clearDraftMission(){PLAN_WPS=[];PLAN_POLY=[];PLAN_CENTER=null;PLAN_META={};renderDraftMission()}
+function clearDraftMission(){PLAN_WPS=[];PLAN_POLY=[];PLAN_CENTER=null;PLAN_META={};window.PLAN_ELEV=null;$('#mp-elev-box')?.classList.add('hide');if($('#mp-tf'))$('#mp-tf').checked=false;renderDraftMission()}
+async function onTerrainFollowToggle(){
+  if($('#mp-tf')?.checked&&(!window.PLAN_ELEV||window.PLAN_ELEV.rel_ground?.length!==PLAN_WPS.length)){
+    await fetchMissionElevation();
+  }else{
+    renderDraftMission();
+  }
+}
+async function fetchMissionElevation(){
+  if(PLAN_WPS.length<2){toast('Defina pelo menos 2 waypoints no mapa primeiro.');if($('#mp-tf'))$('#mp-tf').checked=false;return}
+  const btn=$('#mp-elev-btn');
+  if(btn){btn.disabled=true;btn.textContent='⛰️ Consultando…'}
+  try{
+    window.PLAN_ELEV=await api('/missions/elevation',J('POST',{waypoints:PLAN_WPS}));
+    renderDraftMission();
+  }catch(e){
+    let m=e.message||String(e);try{m=JSON.parse(m).detail||m}catch(_){}
+    toast('⚠ '+m);
+    if($('#mp-tf'))$('#mp-tf').checked=false;
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='⛰️ Perfil de Terreno'}
+  }
+}
+function renderElevationSvg(){
+  const box=$('#mp-elev-box'),info=$('#mp-elev-info'),svg=$('#mp-elev-svg');
+  const el=window.PLAN_ELEV;if(!box||!el||!PLAN_WPS.length)return;
+  box.classList.remove('hide');
+  const rel=el.rel_ground,tfOn=!!$('#mp-tf')?.checked;
+  const alt=Math.max(10,Math.min(500,+(($('#mp-alt')?.value)||60)));
+  const wAlts=PLAN_WPS.map((w,i)=>tfOn?Math.max(10,+(alt+rel[i]).toFixed(1)):alt);
+  const agls=wAlts.map((wa,i)=>+(wa-rel[i]).toFixed(1));
+  const minAgl=Math.min(...agls);
+  const warnTxt=minAgl<10?` · <b style="color:#ef4444">⚠ Risco de colisão! AGL mín: ${minAgl} m</b>`:` · AGL mín: <b style="color:#10b981">${minAgl} m</b>`;
+  info.innerHTML=`Relevo: <b>${el.min_rel>0?'+':''}${el.min_rel} m</b> a <b>${el.max_rel>0?'+':''}${el.max_rel} m</b> (base ${el.home_elev} m)${warnTxt}`;
+  const W=380,H=90,pad=8;
+  const minY=Math.min(0,...rel)-5,maxY=Math.max(...wAlts,...rel)+8,spanY=Math.max(10,maxY-minY);
+  const xAt=i=>pad+(i/Math.max(1,rel.length-1))*(W-2*pad);
+  const yAt=v=>H-pad-((v-minY)/spanY)*(H-2*pad);
+  const gPts=rel.map((v,i)=>`${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
+  const dPts=wAlts.map((v,i)=>`${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
+  const areaPts=`${xAt(0).toFixed(1)},${H-pad} ${gPts} ${xAt(rel.length-1).toFixed(1)},${H-pad}`;
+  const warnDots=agls.map((a,i)=>a<10?`<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(wAlts[i]).toFixed(1)}" r="3.5" fill="#ef4444"/>`:'').join('');
+  svg.innerHTML=`<line x1="${pad}" y1="${yAt(0).toFixed(1)}" x2="${W-pad}" y2="${yAt(0).toFixed(1)}" stroke="rgba(148,163,184,0.25)" stroke-dasharray="3 3"/>`+
+    `<polygon points="${areaPts}" fill="rgba(180,120,60,0.35)"/>`+
+    `<polyline points="${gPts}" fill="none" stroke="#d97706" stroke-width="1.8"/>`+
+    `<polyline points="${dPts}" fill="none" stroke="#00d2ff" stroke-width="2" ${tfOn?'':'stroke-dasharray="4 3"'}/>`+warnDots;
+}
 async function saveDraftMission(){
   if(PLAN_WPS.length<2)return alert('Defina pontos suficientes no mapa para gerar a missão (mín. 2 waypoints).');
   const defName=PLAN_MODE==='grid'?'Grade de Mapeamento':PLAN_MODE==='double_grid'?'Grade Dupla 3D':PLAN_MODE==='orbit'?'Órbita POI':'Missão planejada';
@@ -1895,6 +1987,72 @@ async function saveDraftMission(){
   try{await api('/missions/'+m.id+'/airspace-check',{method:'POST'});toast('✈ Espaço aéreo da missão verificado no DECEA')}catch(e){}
   loadMap();
 }
+let MAP_Q_TM=null,MAP_PIN=null;
+function onMapSearchInput(v){
+  $('#mapq-clr')?.classList.toggle('hide',!v.trim());
+  clearTimeout(MAP_Q_TM);
+  if(v.trim().length<3){$('#mapq-res')?.classList.add('hide');return}
+  MAP_Q_TM=setTimeout(()=>runMapSearch(v),420);
+}
+function clearMapSearch(){
+  const inp=$('#mapq');if(inp)inp.value='';
+  $('#mapq-clr')?.classList.add('hide');
+  $('#mapq-res')?.classList.add('hide');
+  if(MAP_PIN&&map){map.removeLayer(MAP_PIN);MAP_PIN=null}
+}
+async function runMapSearch(raw){
+  const q=(raw||'').trim(),box=$('#mapq-res');if(!q||!box)return;
+  const cm=q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if(cm){
+    const lat=+cm[1],lon=+cm[2];
+    if(lat>=-90&&lat<=90&&lon>=-180&&lon<=180){
+      box.classList.add('hide');
+      pickMapSearchResult({lat,lon,label:`${lat.toFixed(5)}, ${lon.toFixed(5)}`});
+      return;
+    }
+  }
+  box.classList.remove('hide');
+  box.innerHTML=`<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Buscando "${esc(q)}"…</div>`;
+  try{
+    const res=await api('/geocode?q='+encodeURIComponent(q));
+    if(!res.length){box.innerHTML=`<div style="padding:10px 12px;font-size:12px;color:#94a3b8">Nenhum endereço encontrado.</div>`;return}
+    window._MAP_RES=res;
+    box.innerHTML=res.map((r,i)=>`<div onclick="pickMapSearchResult(window._MAP_RES[${i}])" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12.5px;color:#f1f5f9" onmouseover="this.style.background='rgba(0,210,255,0.12)'" onmouseout="this.style.background='transparent'">`+
+      `<div style="font-weight:500">${esc(r.label)}</div>`+
+      `<div style="font-size:11px;color:#94a3b8">${esc(r.type||'local')} · ${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</div></div>`).join('');
+  }catch(e){
+    box.innerHTML=`<div style="padding:10px 12px;font-size:12px;color:#f87171">⚠ ${esc(e.message)}</div>`;
+  }
+}
+function pickMapSearchResult(r){
+  if(!r||!map)return;
+  $('#mapq-res')?.classList.add('hide');
+  if($('#mapq'))$('#mapq').value=r.label;
+  $('#mapq-clr')?.classList.remove('hide');
+  if(MAP_PIN)map.removeLayer(MAP_PIN);
+  if(Array.isArray(r.bbox)&&r.bbox.length===4){
+    map.fitBounds([[r.bbox[0],r.bbox[2]],[r.bbox[1],r.bbox[3]]],{maxZoom:17,padding:[40,40]});
+  }else{
+    map.setView([r.lat,r.lon],16);
+  }
+  const safeLbl=esc(r.label);
+  MAP_PIN=L.marker([r.lat,r.lon]).addTo(map).bindPopup(
+    `<div style="max-width:240px"><b>📍 ${safeLbl}</b><br><span style="font-size:11px;color:#64748b">${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</span><br>`+
+    `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">`+
+    `<button onclick="saveSearchSpot(${r.lat},${r.lon})" style="font-size:11px;padding:3px 7px">💾 Salvar local</button>`+
+    `<button onclick="loadWxForecast(${r.lat},${r.lon});toggleWx(true)" style="font-size:11px;padding:3px 7px">🌤 Previsão</button>`+
+    `</div></div>`
+  ).openPopup();
+}
+async function saveSearchSpot(lat,lon){
+  const def=($('#mapq')?.value||'').split(',')[0].trim();
+  const n=prompt(t('map.spot_prompt_name'),def);if(!n)return;
+  const notes=prompt(t('map.spot_prompt_notes'))||'';
+  await api('/spots',J('POST',{name:n,lat,lon,notes}));
+  toast('✓ Local salvo nos favoritos!');
+  loadMap(true);
+}
+document.addEventListener('click',e=>{if(!e.target.closest?.('#mapsearch'))$('#mapq-res')?.classList.add('hide')});
 async function viewMissionOnMap(mid){
   const ms=await api('/missions'),m=ms.find(x=>x.id===mid);
   if(!m||!m.waypoints.length)return;
@@ -1906,12 +2064,14 @@ async function loadMap(keepBounds=false){
     map=L.map('map').setView([-22.9,-43.2],10);
     const bases=makeBases();wireBases(map,bases);
     L_={voos:L.layerGroup().addTo(map),missoes:L.layerGroup().addTo(map),draft:L.layerGroup().addTo(map),wx:L.layerGroup().addTo(map),
+        annotations:L.layerGroup().addTo(map),measDraft:L.layerGroup().addTo(map),
         fotos:L.markerClusterGroup({maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}).addTo(map),
         footprints:L.layerGroup(),spots:L.layerGroup().addTo(map)};
-    const cfg=await api('/config'),ov={[t('map.layer.flights')]:L_.voos,[t('map.layer.missions')]:L_.missoes,[t('map.layer.photos')]:L_.fotos,[t('map.layer.footprints')]:L_.footprints,[t('map.layer.spots')]:L_.spots};
+    const cfg=await api('/config'),ov={[t('map.layer.flights')]:L_.voos,[t('map.layer.missions')]:L_.missoes,'📐 Medições & Anotações':L_.annotations,[t('map.layer.photos')]:L_.fotos,[t('map.layer.footprints')]:L_.footprints,[t('map.layer.spots')]:L_.spots};
     if(cfg.airspace)ov[t('map.layer.airspace')]=L.tileLayer(cfg.airspace,{opacity:.6});Object.assign(ov,airLayers());
     L.control.layers(bases,ov).addTo(map);airQuery(map);
     map.on('click',e=>{
+      if(MEAS_MODE){onMeasureMapClick(e.latlng);return}
       if(WX_ON){loadWxForecast(e.latlng.lat,e.latlng.lng);return}
       if(!PLAN_ON)return;
       const pt=[+e.latlng.lat.toFixed(6),+e.latlng.lng.toFixed(6)];
@@ -1927,6 +2087,7 @@ async function loadMap(keepBounds=false){
     });
   }
   map.invalidateSize();[L_.voos,L_.missoes,L_.fotos,L_.footprints,L_.spots].forEach(l=>l&&l.clearLayers());
+  loadAnnotations();
   const bq=ACTIVE_BBOX?`bbox=${encodeURIComponent(ACTIVE_BBOX)}`:'';
   const [tr,ph,sp,ms]=await Promise.all([api('/tracks'+(bq?'?'+bq:'')),api('/media?kind=photo&geo=1'+(bq?'&'+bq:'')),api('/spots'+(bq?'?'+bq:'')),api('/missions')]);
   const all=[];
@@ -2379,7 +2540,7 @@ async function openFlight(id){
     <div class=card>${t('fdet.battery')}<b>${esc(f.battery_sn||'–')}</b></div>${batCards(f)}
     <div class=card>${t('fdet.wind_air')}<b style="font-size:15px">${we?`${fmt.spd(we.spd)} (${esc(we.card)})`:'–'}</b>${we?`<small>${t('fdet.gust_est')} ${fmt.spd(we.max)} (${esc(we.deg)}°)</small>`:`<small>${t('fdet.reimport_hint')}</small>`}</div>
     <div class=card>${t('fdet.weather_ground')}<b style="font-size:14px">${w?`${fmt.temp(w.temperature_2m)}, ${t('fdet.wind_lbl')} ${fmt.spd(w.wind_speed_10m)} (${t('fdet.gust_short')} ${fmt.spd(w.wind_gusts_10m)})`:t('fdet.unavail')}</b></div></div>
-   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_pdf')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_ai')}</a> · <button onclick="openOdmModalFromFlight(${id})" style="padding:3px 9px;font-size:12px">🛰 Ortomosaico (ODM)</button></div><div id="fair" style="margin:6px 0"></div>`;
+   <div class=row><a href="/api/flights/${id}/kml">⬇ KML (Google Earth)</a> · <a href="/api/flights/${id}/gpx">⬇ GPX</a> · <a href="/api/flights/${id}/geojson">⬇ GeoJSON (QGIS)</a> · <a href="/api/flights/${id}/report?lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_pdf')}</a> · <a href="/api/flights/${id}/package?lang=${LANG}" title="Baixar pacote HTML portátil 100% offline para enviar a clientes ou auditoria">${t('fdet.package_html')}</a> · <button id="fdet-ia" onclick="detectFlightMedia(${id})" style="padding:3px 9px;font-size:12px">${t('fdet.detect_ai')}</button> · <a href="/api/detections/report?flight_id=${id}&lang=${LANG}" target="_blank" rel="noopener noreferrer">${t('fdet.report_ai')}</a> · <button onclick="openOdmModalFromFlight(${id})" style="padding:3px 9px;font-size:12px">🛰 Ortomosaico (ODM)</button></div><div id="fair" style="margin:6px 0"></div>`;
   if(!fm){
     fm=L.map('fmap');const B=makeBases();wireBases(fm,B);
     FOTL=(L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:35,showCoverageOnHover:false}):L.layerGroup()).addTo(fm);
@@ -2808,6 +2969,117 @@ function exportSel(){if(!sel.size)return alert('Marque as fotos que quer exporta
 
 /* ---------- Integração Local NodeODM / WebODM & Camadas GeoTIFF ---------- */
 let ORTHOS=[],ORTHO_LAYERS={},ORTHO_OP={},ORTHO_TM=null,ORTHO_AUTO=new Set(),ODM_BOOT_TM=null,ODM_IDS=[],ODM_FID=null;
+let MEAS_MODE=null,MEAS_PTS=[],ANNOTS=[];
+function startMeasure(mode){
+  if(MEAS_MODE===mode){cancelMeasure();return}
+  MEAS_MODE=mode;MEAS_PTS=[];
+  ['line','polygon','pin'].forEach(k=>$('#mtool-'+k)?.classList.toggle('on',k===mode));
+  $('#meas-bar')?.classList.remove('hide');
+  if($('#map'))$('#map').style.cursor='crosshair';
+  renderMeasureDraft();
+}
+function cancelMeasure(){
+  MEAS_MODE=null;MEAS_PTS=[];
+  ['line','polygon','pin'].forEach(k=>$('#mtool-'+k)?.classList.remove('on'));
+  $('#meas-bar')?.classList.add('hide');
+  if($('#map'))$('#map').style.cursor='';
+  L_.measDraft?.clearLayers();
+}
+function undoMeasurePt(){MEAS_PTS.pop();renderMeasureDraft()}
+async function onMeasureMapClick(ll){
+  const pt=[+ll.lat.toFixed(7),+ll.lng.toFixed(7)];
+  if(MEAS_MODE==='pin'){
+    MEAS_PTS=[pt];
+    await saveMeasure();
+    return;
+  }
+  MEAS_PTS.push(pt);
+  renderMeasureDraft();
+}
+function _havM(a,b){
+  const R=6371000,dLat=(b[0]-a[0])*Math.PI/180,dLon=(b[1]-a[1])*Math.PI/180;
+  const s=Math.sin(dLat/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function _areaM2(pts){
+  if(pts.length<3)return 0;
+  const lat0=pts.reduce((s,p)=>s+p[0],0)/pts.length;
+  const kx=111320*Math.cos(lat0*Math.PI/180),ky=110540;
+  let acc=0;
+  for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;acc+=pts[i][1]*kx*pts[j][0]*ky-pts[j][1]*kx*pts[i][0]*ky}
+  return Math.abs(acc)*0.5;
+}
+function renderMeasureDraft(){
+  L_.measDraft?.clearLayers();
+  const info=$('#meas-info');
+  if(!MEAS_MODE||!info)return;
+  if(MEAS_MODE==='pin'){info.textContent='Clique em um ponto do mapa para inserir o pino de inspeção.';return}
+  MEAS_PTS.forEach(p=>L.circleMarker(p,{radius:4,color:'#fff',weight:1.5,fillColor:'#00d2ff',fillOpacity:1}).addTo(L_.measDraft));
+  let len=0;for(let i=1;i<MEAS_PTS.length;i++)len+=_havM(MEAS_PTS[i-1],MEAS_PTS[i]);
+  if(MEAS_MODE==='line'){
+    if(MEAS_PTS.length>=2)L.polyline(MEAS_PTS,{color:'#00d2ff',weight:3,dashArray:'6 4'}).addTo(L_.measDraft);
+    info.innerHTML=MEAS_PTS.length<2?'Clique em 2 ou mais pontos no mapa para medir a distância.':`Distância: <b>${len>=1000?(len/1000).toFixed(2)+' km':len.toFixed(1)+' m'}</b> (${MEAS_PTS.length} pts)`;
+  }else if(MEAS_MODE==='polygon'){
+    if(MEAS_PTS.length>=3){
+      len+=_havM(MEAS_PTS[MEAS_PTS.length-1],MEAS_PTS[0]);
+      L.polygon(MEAS_PTS,{color:'#a855f7',weight:2.5,fillColor:'#a855f7',fillOpacity:0.2}).addTo(L_.measDraft);
+      const ar=_areaM2(MEAS_PTS);
+      info.innerHTML=`Área: <b>${ar>=10000?(ar/10000).toFixed(3)+' ha':Math.round(ar)+' m²'}</b> · Perímetro: <b>${len.toFixed(1)} m</b>`;
+    }else{
+      if(MEAS_PTS.length===2)L.polyline(MEAS_PTS,{color:'#a855f7',weight:2,dashArray:'4 4'}).addTo(L_.measDraft);
+      info.textContent='Clique em pelo menos 3 pontos no mapa para medir a área.';
+    }
+  }
+}
+async function saveMeasure(){
+  if(MEAS_MODE==='line'&&MEAS_PTS.length<2)return toast('Marque pelo menos 2 pontos.');
+  if(MEAS_MODE==='polygon'&&MEAS_PTS.length<3)return toast('Marque pelo menos 3 pontos.');
+  if(MEAS_MODE==='pin'&&MEAS_PTS.length<1)return toast('Clique no mapa para marcar o pino.');
+  const defN=MEAS_MODE==='pin'?'Ponto de Inspeção':MEAS_MODE==='polygon'?'Área Medida':'Distância Medida';
+  const name=prompt('Nome da medição / anotação:',defN);
+  if(name===null)return;
+  const notes=prompt('Observações (opcional):')||'';
+  const activeOrtho=Object.keys(ORTHO_LAYERS).map(Number)[0]||null;
+  const color=MEAS_MODE==='polygon'?'#a855f7':MEAS_MODE==='pin'?'#f59e0b':'#00d2ff';
+  await api('/annotations',J('POST',{kind:MEAS_MODE,name:name||defN,notes,coords:MEAS_PTS,ortho_id:activeOrtho,color}));
+  cancelMeasure();
+  await loadAnnotations();
+  toast('✓ Anotação GIS salva!');
+}
+async function loadAnnotations(){
+  try{ANNOTS=await api('/annotations')}catch(e){ANNOTS=[];return}
+  L_.annotations?.clearLayers();
+  ANNOTS.forEach(a=>{
+    if(!L_.annotations||!Array.isArray(a.coords)||!a.coords.length)return;
+    const metric=a.kind==='polygon'
+      ?`${a.area_m2>=10000?(a.area_m2/10000).toFixed(3)+' ha':Math.round(a.area_m2)+' m²'} (${a.length_m.toFixed(1)} m)`
+      :(a.kind==='line'?`${a.length_m>=1000?(a.length_m/1000).toFixed(2)+' km':a.length_m.toFixed(1)+' m'}`:'');
+    const pop=`<b>${esc(a.name)}</b>${metric?'<br>'+metric:''}${a.notes?'<br><small>'+esc(a.notes)+'</small>':''}<br><button onclick="deleteAnnotation(${a.id})" style="margin-top:5px;font-size:11px;color:#f87171">🗑 Excluir</button>`;
+    if(a.kind==='pin')L.marker(a.coords[0]).addTo(L_.annotations).bindPopup(pop).bindTooltip('📌 '+esc(a.name));
+    else if(a.kind==='line'&&a.coords.length>=2)L.polyline(a.coords,{color:a.color||'#00d2ff',weight:3}).addTo(L_.annotations).bindPopup(pop).bindTooltip(`${esc(a.name)}: ${metric}`);
+    else if(a.kind==='polygon'&&a.coords.length>=3)L.polygon(a.coords,{color:a.color||'#a855f7',weight:2.5,fillOpacity:0.18}).addTo(L_.annotations).bindPopup(pop).bindTooltip(`${esc(a.name)}: ${metric}`);
+  });
+  const box=$('#annot-list');
+  if(box){
+    box.innerHTML=ANNOTS.length?ANNOTS.map(a=>{
+      const ic=a.kind==='pin'?'📌':a.kind==='polygon'?'⬠':'📏';
+      const val=a.kind==='polygon'?(a.area_m2>=10000?(a.area_m2/10000).toFixed(3)+' ha':Math.round(a.area_m2)+' m²'):(a.kind==='line'?a.length_m.toFixed(1)+' m':'');
+      return`<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:rgba(255,255,255,0.02)">`+
+        `<span onclick="focusAnnotation(${a.id})" style="flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.notes||a.name)}">${ic} <b>${esc(a.name)}</b>${val?' · <span style="color:var(--acc-cyan)">'+val+'</span>':''}</span>`+
+        `<button onclick="deleteAnnotation(${a.id})" style="padding:1px 6px;font-size:11px;color:#f87171">🗑</button></div>`;
+    }).join(''):`<span style="color:#94a3b8;font-size:11.5px">Nenhuma medição ou pino salvo.</span>`;
+  }
+}
+function focusAnnotation(id){
+  const a=ANNOTS.find(x=>x.id===id);if(!a||!map||!a.coords?.length)return;
+  if(a.coords.length===1)map.setView(a.coords[0],18);
+  else map.fitBounds(L.latLngBounds(a.coords),{padding:[40,40],maxZoom:18});
+}
+async function deleteAnnotation(id){
+  if(!confirm('Excluir esta anotação GIS?'))return;
+  await api('/annotations/'+id,{method:'DELETE'});
+  loadAnnotations();
+}
 async function menuOrtho(){
   if($('#mapa').classList.contains('hide')){
     await show('mapa');
@@ -2821,7 +3093,7 @@ function toggleOrthoPanel(force){
   const open=force!==undefined?force:p.classList.contains('hide');
   p.classList.toggle('hide',!open);
   const b=$('#b-ortho');if(b)b.classList.toggle('on',open);
-  if(open){loadOrthos();refreshOdmDot()}
+  if(open){loadOrthos();refreshOdmDot();loadAnnotations()}
 }
 function _scheduleOdmBootPoll(){
   if(ODM_BOOT_TM)return;

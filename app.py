@@ -285,6 +285,11 @@ with db() as _c:
         photo_count INTEGER DEFAULT 0, options TEXT, tif_path TEXT, png_path TEXT,
         bounds TEXT, epsg INTEGER, gsd_cm REAL, error TEXT, created_at TEXT, finished_at TEXT
     )""")
+    _c.execute("""CREATE TABLE IF NOT EXISTS ortho_annotations(
+        id INTEGER PRIMARY KEY, ortho_id INTEGER, kind TEXT NOT NULL, name TEXT NOT NULL,
+        notes TEXT DEFAULT '', coords TEXT NOT NULL, length_m REAL DEFAULT 0,
+        area_m2 REAL DEFAULT 0, color TEXT DEFAULT '#00d2ff', created_at TEXT
+    )""")
     _c.execute("UPDATE orthomosaics SET status='failed', error='Importação interrompida (reinício do servidor).' WHERE status='importing'")
     mscols = [r[1] for r in _c.execute("PRAGMA table_info(missions)")]
     if "meta" not in mscols:
@@ -1652,6 +1657,140 @@ def flight_geojson(fid: int):
         })
     return attach(json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False, indent=2),
                   f"voo{fid}.geojson", "application/geo+json")
+
+@app.get("/api/flights/{fid}/package")
+def flight_package(fid: int, lang: str = ""):
+    """Gera um arquivo HTML 100% self-contained (offline) para envio a clientes ou auditoria."""
+    import base64
+    L = get_lang(lang)
+    f = fl_out(get_flight(fid), True)
+    tr_pts = f.get("track") or []
+    w = f.get("weather")
+    hl = f.get("health")
+    def _j(v):
+        if isinstance(v, dict): return v
+        if isinstance(v, str) and v.strip():
+            try: return json.loads(v)
+            except Exception: pass
+        return {}
+    bat = _j(f.get("bat"))
+    meta = _j(f.get("meta"))
+    drone = meta.get("drone") or {}
+    air = _j(f.get("air")) or None
+
+    # 1. Fotos principais embutidas em base64 (a partir dos thumbs locais)
+    with db() as c:
+        ms = c.execute("SELECT id, taken, lat, lon FROM media WHERE flight_id=? AND kind='photo' ORDER BY fav DESC, taken LIMIT 12", (fid,)).fetchall()
+    imgs_html = []
+    for m in ms:
+        tp = THUMBS / f"{m['id']}.jpg"
+        if tp.is_file():
+            b64 = base64.b64encode(tp.read_bytes()).decode("ascii")
+            cap = (m["taken"] or "")[:16].replace("T", " ")
+            imgs_html.append(
+                f"<figure style='margin:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden'>"
+                f"<img src='data:image/jpeg;base64,{b64}' style='width:100%;height:135px;object-fit:cover;display:block'>"
+                f"<figcaption style='padding:5px 8px;font-size:11px;color:#475569'>{html.escape(cap)}</figcaption></figure>"
+            )
+
+    # 2. Mapa SVG vetorial da rota
+    map_svg = ""
+    if len(tr_pts) >= 2:
+        lats = [p[1] for p in tr_pts]
+        lons = [p[2] for p in tr_pts]
+        min_la, max_la = min(lats), max(lats)
+        min_lo, max_lo = min(lons), max(lons)
+        span = max(max_la - min_la, (max_lo - min_lo) * cos(radians((min_la + max_la) / 2.0)), 1e-5)
+        W, H, pad = 420, 240, 22
+        cx, cy = (min_lo + max_lo) / 2.0, (min_la + max_la) / 2.0
+        cos_lat = max(0.2, cos(radians(cy)))
+        sc = (min(W, H) - 2 * pad) / span
+        px = lambda lo: W / 2.0 + (lo - cx) * cos_lat * sc
+        py = lambda la: H / 2.0 - (la - cy) * sc
+        poly = " ".join(f"{px(p[2]):.1f},{py(p[1]):.1f}" for p in tr_pts)
+        im_idx = max(range(len(tr_pts)), key=lambda i: tr_pts[i][3] or 0)
+        map_svg = (
+            f"<svg viewBox='0 0 {W} {H}' style='width:100%;height:220px;background:#0f172a;border-radius:8px;display:block'>"
+            f"<polyline points='{poly}' fill='none' stroke='#38bdf8' stroke-width='2.5' stroke-linejoin='round'/>"
+            f"<circle cx='{px(tr_pts[0][2]):.1f}' cy='{py(tr_pts[0][1]):.1f}' r='5' fill='#10b981' stroke='#fff' stroke-width='1.5'/>"
+            f"<circle cx='{px(tr_pts[-1][2]):.1f}' cy='{py(tr_pts[-1][1]):.1f}' r='5' fill='#ef4444' stroke='#fff' stroke-width='1.5'/>"
+            f"<circle cx='{px(tr_pts[im_idx][2]):.1f}' cy='{py(tr_pts[im_idx][1]):.1f}' r='4.5' fill='#f59e0b' stroke='#fff' stroke-width='1.2'/>"
+            f"<text x='10' y='{H-10}' fill='#94a3b8' font-size='11'>🟢 Decolagem · 🟠 Alt. Máx ({py_fmt_alt(tr_pts[im_idx][3] or 0, L)}) · 🔴 Pouso</text></svg>"
+        )
+
+    # 3. Gráfico SVG de Altitude & Bateria
+    chart_svg = ""
+    if len(tr_pts) >= 2:
+        W, H, pad = 420, 220, 20
+        max_t = max(1, tr_pts[-1][0] or 1)
+        max_a = max(10.0, max((p[3] or 0) for p in tr_pts))
+        x_at = lambda t: pad + (t / max_t) * (W - 2 * pad)
+        y_alt = lambda a: H - pad - (a / max_a) * (H - 2 * pad)
+        alt_pts = " ".join(f"{x_at(p[0]):.1f},{y_alt(p[3] or 0):.1f}" for p in tr_pts)
+        bat_pts = " ".join(f"{x_at(p[0]):.1f},{H - pad - ((p[5] or 0) / 100.0) * (H - 2 * pad):.1f}" for p in tr_pts if p[5] is not None)
+        chart_svg = (
+            f"<svg viewBox='0 0 {W} {H}' style='width:100%;height:220px;background:#0f172a;border-radius:8px;display:block'>"
+            f"<polyline points='{alt_pts}' fill='none' stroke='#00d2ff' stroke-width='2.2'/>"
+            + (f"<polyline points='{bat_pts}' fill='none' stroke='#10b981' stroke-width='1.8' stroke-dasharray='4 3'/>" if bat_pts else "")
+            + f"<text x='10' y='18' fill='#00d2ff' font-size='11'>— Altitude (máx {py_fmt_alt(max_a, L)})</text>"
+            + (f"<text x='180' y='18' fill='#10b981' font-size='11'>-- Bateria (%)</text>" if bat_pts else "")
+            + "</svg>"
+        )
+
+    # 4. Espaço Aéreo DECEA
+    if not air or not air.get("checked"):
+        air_html = "<span style='color:#64748b'>Não verificado no DECEA.</span>"
+    else:
+        sev = air.get("sev", 0)
+        badge = "🟢 Livre" if sev == 0 else ("🟡 Atenção (aeródromo próximo)" if sev == 2 else "🔴 Restrito / Proibido")
+        items = [f"{z.get('layer','')}: {z.get('name') or z.get('id') or ''}" for z in (air.get("hits") or [])]
+        items += [f"Aeródromo próximo: {z.get('name','')} ({z.get('dist_km','?')} km)" for z in (air.get("near") or [])]
+        air_html = f"<b>{badge}</b>" + (" — " + html.escape("; ".join(items[:5])) if items else "")
+
+    wx_html = (f"{py_fmt_temp(w['temperature_2m'], L)}, {tr(L, 'fdet.wind_lbl')} {py_fmt_spd(w['wind_speed_10m'], L)} "
+               f"({tr(L, 'fdet.gust_short')} {py_fmt_spd(w['wind_gusts_10m'], L)}), {w['precipitation']} mm") if w else tr(L, "report.no_data")
+    ev_html = "".join(f"<li><b>{e['t']//60}m{e['t']%60:02d}s</b> — {html.escape(tr_event(e['label'], L))}</li>" for e in f["events"][:40])
+    dur_s = int(f["duration"] or 0)
+    title = html.escape(f["name"] or tr(L, "report.flight_default"))
+    dt_str = (f.get("start_local") or "")[:16].replace("T", " ")
+    hl_txt = f"{hl['score']}/100 ({tr(L, 'fdet.health_' + hl['status'])})" if hl else "—"
+    bat_txt = f"{bat.get('start','?')}% → {bat.get('end','?')}%" if bat.get("start") is not None else "—"
+
+    doc = f"""<!doctype html><html lang="{L}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pacote de Voo #{fid} — {title}</title>
+<style>
+body{{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#0f172a;margin:0;padding:24px}}
+.wrap{{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;padding:24px 28px;box-shadow:0 4px 20px rgba(15,23,42,.08)}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}}
+.card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px}}
+.card small{{display:block;color:#64748b;font-size:11.5px}}.card b{{font-size:15px}}
+.cols{{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin:14px 0}}
+.photos{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-top:10px}}
+@media print{{body{{background:#fff;padding:0}}.wrap{{box-shadow:none}}.noprint{{display:none}}}}
+</style></head><body><div class="wrap">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+  <div><h1 style="margin:0;font-size:22px">🛸 {title}</h1>
+  <div style="color:#475569;font-size:13.5px;margin-top:4px">{html.escape(dt_str)} · {html.escape(f.get('place') or '—')} · {html.escape(drone.get('type') or 'Drone')}</div></div>
+  <button class="noprint" onclick="window.print()" style="padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#0f172a;color:#fff;cursor:pointer">🖨 Imprimir / PDF</button>
+</div>
+<div class="grid">
+  <div class="card"><small>{tr(L,'report.duration')}</small><b>{dur_s//60} min {dur_s%60:02d} s</b></div>
+  <div class="card"><small>{tr(L,'report.distance')}</small><b>{py_fmt_dist(f['distance'] or 0, L)}</b></div>
+  <div class="card"><small>{tr(L,'report.max_alt')}</small><b>{py_fmt_alt(f['max_alt'] or 0, L)}</b></div>
+  <div class="card"><small>{tr(L,'report.max_speed')}</small><b>{py_fmt_kmh(f['max_speed'] or 0, L)}</b></div>
+  <div class="card"><small>{tr(L,'report.battery')}</small><b>{bat_txt}</b></div>
+  <div class="card"><small>{tr(L,'fdet.health_title')}</small><b>{hl_txt}</b></div>
+</div>
+<div class="card" style="margin-bottom:10px"><small>Espaço Aéreo (DECEA / GEOAISWEB)</small>{air_html}</div>
+<div class="card" style="margin-bottom:14px"><small>{tr(L,'report.weather')}</small>{wx_html}</div>
+<div class="cols">{map_svg}{chart_svg}</div>
+<h3>{tr(L,'report.notes')}</h3><p style="color:#334155">{html.escape(f.get('notes') or '—')}</p>
+<h3>{tr(L,'report.events')}</h3><ul style="columns:2;column-gap:24px;font-size:13px;color:#334155">{ev_html}</ul>
+{f"<h3>Fotos ({len(imgs_html)})</h3><div class='photos'>{''.join(imgs_html)}</div>" if imgs_html else ""}
+<hr style="border:0;border-top:1px solid #e2e8f0;margin:20px 0 8px">
+<div style="font-size:11.5px;color:#94a3b8">Pacote Portátil Offline gerado pelo Drone Manager · Voo #{fid} · {datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+</div></body></html>"""
+    return attach(doc, f"pacote_voo_{fid}.html", "text/html; charset=utf-8")
 
 @app.get("/api/flights/{fid}/report", response_class=HTMLResponse)
 def report(fid: int, lang: str = ""):
@@ -3417,6 +3556,119 @@ def delete_ortho(oid: int):
                 pass
     return {"ok": True}
 
+def _line_length_m(pts: list[list[float]], closed: bool = False) -> float:
+    if len(pts) < 2: return 0.0
+    total = sum(hav(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]) for i in range(len(pts) - 1))
+    if closed and len(pts) >= 3:
+        total += hav(pts[-1][0], pts[-1][1], pts[0][0], pts[0][1])
+    return round(total, 2)
+
+def _poly_area_m2(pts: list[list[float]]) -> float:
+    if len(pts) < 3: return 0.0
+    lat0 = sum(p[0] for p in pts) / len(pts)
+    kx = 111320.0 * cos(radians(lat0))
+    ky = 110540.0
+    xy = [(p[1] * kx, p[0] * ky) for p in pts]
+    acc = sum(xy[i][0] * xy[(i + 1) % len(xy)][1] - xy[(i + 1) % len(xy)][0] * xy[i][1] for i in range(len(xy)))
+    return round(abs(acc) * 0.5, 2)
+
+class AnnotationIn(BaseModel):
+    kind: str
+    name: str
+    notes: str = ""
+    coords: list[list[float]]
+    ortho_id: Optional[int] = None
+    color: str = "#00d2ff"
+
+def _annot_out(r) -> dict:
+    d = dict(r)
+    if isinstance(d.get("coords"), str):
+        try: d["coords"] = json.loads(d["coords"])
+        except Exception: d["coords"] = []
+    return d
+
+@app.get("/api/annotations")
+def list_annotations(ortho_id: Optional[int] = None):
+    with db() as c:
+        if ortho_id is not None:
+            rows = c.execute("SELECT * FROM ortho_annotations WHERE ortho_id=? ORDER BY id DESC", (ortho_id,)).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM ortho_annotations ORDER BY id DESC").fetchall()
+    return [_annot_out(r) for r in rows]
+
+@app.post("/api/annotations")
+def create_annotation(b: AnnotationIn):
+    kind = b.kind.strip().lower()
+    if kind not in ("line", "polygon", "pin"):
+        raise HTTPException(400, "Tipo inválido. Use line, polygon ou pin.")
+    pts = [[round(float(p[0]), 7), round(float(p[1]), 7)] for p in b.coords if len(p) >= 2 and valid_gps(p[0], p[1])]
+    if kind == "pin" and len(pts) < 1: raise HTTPException(400, "Informe 1 coordenada para o pino.")
+    if kind == "line" and len(pts) < 2: raise HTTPException(400, "Informe pelo menos 2 pontos para medir distância.")
+    if kind == "polygon" and len(pts) < 3: raise HTTPException(400, "Informe pelo menos 3 pontos para medir área.")
+    length_m = _line_length_m(pts, closed=(kind == "polygon")) if kind in ("line", "polygon") else 0.0
+    area_m2 = _poly_area_m2(pts) if kind == "polygon" else 0.0
+    name = (b.name or "").strip() or ("Pino de Inspeção" if kind == "pin" else ("Área Medida" if kind == "polygon" else "Distância Medida"))
+    color = b.color if re.match(r"^#[0-9a-fA-F]{6}$", b.color or "") else "#00d2ff"
+    now = datetime.now().isoformat(timespec="seconds")
+    with db() as c:
+        cur = c.execute(
+            "INSERT INTO ortho_annotations(ortho_id,kind,name,notes,coords,length_m,area_m2,color,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (b.ortho_id, kind, name, (b.notes or "").strip(), json.dumps(pts), length_m, area_m2, color, now)
+        )
+        return _annot_out(c.execute("SELECT * FROM ortho_annotations WHERE id=?", (cur.lastrowid,)).fetchone())
+
+@app.delete("/api/annotations/{aid:int}")
+def delete_annotation(aid: int):
+    with db() as c:
+        c.execute("DELETE FROM ortho_annotations WHERE id=?", (aid,))
+    return {"ok": True}
+
+@app.get("/api/annotations/geojson")
+def annotations_geojson(ortho_id: Optional[int] = None):
+    items = list_annotations(ortho_id=ortho_id)
+    feats = []
+    for a in items:
+        pts = a["coords"]
+        props = {"id": a["id"], "kind": a["kind"], "name": a["name"], "notes": a["notes"],
+                 "length_m": a["length_m"], "area_m2": a["area_m2"], "area_ha": round(a["area_m2"] / 10000.0, 4),
+                 "ortho_id": a["ortho_id"], "created_at": a["created_at"]}
+        if a["kind"] == "pin" and pts:
+            geom = {"type": "Point", "coordinates": [pts[0][1], pts[0][0]]}
+        elif a["kind"] == "line" and len(pts) >= 2:
+            geom = {"type": "LineString", "coordinates": [[p[1], p[0]] for p in pts]}
+        elif a["kind"] == "polygon" and len(pts) >= 3:
+            ring = [[p[1], p[0]] for p in pts]
+            if ring[0] != ring[-1]: ring.append(ring[0])
+            geom = {"type": "Polygon", "coordinates": [ring]}
+        else:
+            continue
+        feats.append({"type": "Feature", "properties": props, "geometry": geom})
+    return attach(json.dumps({"type": "FeatureCollection", "features": feats}, ensure_ascii=False, indent=2),
+                  "anotacoes_gis.geojson", "application/geo+json")
+
+@app.get("/api/annotations/report", response_class=HTMLResponse)
+def annotations_report(ortho_id: Optional[int] = None):
+    items = list_annotations(ortho_id=ortho_id)
+    rows_html = "".join(
+        f"<tr><td>{html.escape(a['kind'])}</td><td><b>{html.escape(a['name'])}</b><br><small>{html.escape(a['notes'])}</small></td>"
+        f"<td>{a['length_m']:.1f} m</td><td>{a['area_m2']:.1f} m² ({a['area_m2']/10000.0:.3f} ha)</td>"
+        f"<td>{a['coords'][0][0]:.5f}, {a['coords'][0][1]:.5f}</td></tr>"
+        for a in items if a["coords"]
+    ) or "<tr><td colspan='5'>Nenhuma medição ou anotação cadastrada.</td></tr>"
+    return (
+        "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>"
+        "<title>Relatório GIS — Medições & Anotações</title>"
+        "<style>body{font-family:system-ui,sans-serif;margin:28px;color:#0f172a}h1{font-size:20px;margin:0 0 6px}"
+        "table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}"
+        "th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left}th{background:#f1f5f9}"
+        "@media print{.noprint{display:none}}</style></head><body>"
+        "<div style='display:flex;justify-content:space-between;align-items:center'>"
+        f"<div><h1>Relatório GIS — Medições &amp; Anotações</h1><div style='color:#475569;font-size:13px'>Total: {len(items)} item(ns) · Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}</div></div>"
+        "<button class='noprint' onclick='window.print()' style='padding:8px 14px;cursor:pointer'>🖨 Imprimir / PDF</button></div>"
+        "<table><thead><tr><th>Tipo</th><th>Nome / Notas</th><th>Distância / Perímetro</th><th>Área</th><th>Coordenada Ref.</th></tr></thead>"
+        f"<tbody>{rows_html}</tbody></table></body></html>"
+    )
+
 @app.get("/api/orthos/{oid:int}/png")
 def ortho_png(oid: int):
     with db() as c:
@@ -3839,6 +4091,73 @@ def _get_mission(mid: int):
     with db() as c: r = c.execute("SELECT * FROM missions WHERE id=?", (mid,)).fetchone()
     if not r: raise HTTPException(404, "missão não encontrada")
     return _mission_out(r)
+
+class ElevationIn(BaseModel):
+    waypoints: list[list[float]]
+
+@app.post("/api/missions/elevation")
+def mission_elevation(b: ElevationIn):
+    """Consulta elevação do terreno (DEM) via Open-Meteo para os waypoints da missão."""
+    wps = [[float(w[0]), float(w[1])] for w in b.waypoints if len(w) >= 2 and valid_gps(w[0], w[1])]
+    if len(wps) < 2:
+        raise HTTPException(400, "Informe pelo menos 2 waypoints válidos.")
+    n = len(wps)
+    if n <= 100:
+        sample_idx = list(range(n))
+    else:
+        sample_idx = sorted(set([int(i * (n - 1) / 99) for i in range(100)]))
+    lats = ",".join(f"{wps[i][0]:.6f}" for i in sample_idx)
+    lons = ",".join(f"{wps[i][1]:.6f}" for i in sample_idx)
+    try:
+        j = http_json(f"https://api.open-meteo.com/v1/elevation?latitude={lats}&longitude={lons}")
+        elev_s = j.get("elevation") or []
+        if len(elev_s) != len(sample_idx):
+            raise ValueError("Resposta incompleta da API de elevação.")
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao consultar elevação do terreno: {e}")
+
+    if n <= 100:
+        ground = [round(float(v), 1) for v in elev_s]
+    else:
+        ground = []
+        si = 0
+        for i in range(n):
+            while si + 1 < len(sample_idx) and sample_idx[si + 1] < i:
+                si += 1
+            i0, i1 = sample_idx[si], sample_idx[min(si + 1, len(sample_idx) - 1)]
+            if i1 == i0:
+                ground.append(round(float(elev_s[si]), 1))
+            else:
+                f = (i - i0) / (i1 - i0)
+                ground.append(round(float(elev_s[si]) * (1 - f) + float(elev_s[si + 1]) * f, 1))
+    home_elev = ground[0]
+    rel = [round(e - home_elev, 1) for e in ground]
+    return {
+        "home_elev": home_elev,
+        "ground_elev": ground,
+        "rel_ground": rel,
+        "min_rel": min(rel),
+        "max_rel": max(rel),
+    }
+
+@app.get("/api/geocode")
+def geocode_search(q: str = ""):
+    """Busca endereços e locais via Nominatim (OpenStreetMap) para a barra de pesquisa do mapa."""
+    term = (q or "").strip()
+    if len(term) < 2:
+        return []
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q={urllib.parse.quote_plus(term)}"
+        res = http_json(url)
+        return [{
+            "label": r.get("display_name") or term,
+            "lat": float(r["lat"]),
+            "lon": float(r["lon"]),
+            "bbox": [float(x) for x in r["boundingbox"]] if isinstance(r.get("boundingbox"), list) and len(r["boundingbox"]) == 4 else None,
+            "type": r.get("type") or r.get("class") or "",
+        } for r in (res or []) if "lat" in r and "lon" in r]
+    except Exception as e:
+        raise HTTPException(502, f"Falha ao buscar endereço: {e}")
 
 @app.get("/api/missions")
 def missions_list():
