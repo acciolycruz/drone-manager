@@ -745,7 +745,7 @@ def sha1(p):
 
 def exif_batch(paths):
     r = subprocess.run(["exiftool", "-j", "-n", "-DateTimeOriginal", "-CreateDate", "-GPSLatitude", "-GPSLongitude",
-                        "-GPSAltitude", "-GPSAltitudeRef", "-ImageWidth", "-ImageHeight", "-Make", "-Model", "-ISO", "-ExposureTime",
+                        "-GPSAltitude", "-GPSAltitudeRef", "-ImageWidth", "-ImageHeight", "-Duration", "-Make", "-Model", "-ISO", "-ExposureTime",
                         "-FNumber", "-ExposureCompensation", "-FocalLength", "-FocalLengthIn35mmFormat",
                         "-GimbalYawDegree", "-GimbalPitchDegree", "-GimbalRollDegree", "-FlightYawDegree",
                         "-RelativeAltitude", "-ProjectionType", "--", *paths], capture_output=True, text=True)
@@ -830,7 +830,23 @@ def _build_media_meta(x, kind, w, h, s=None):
         "has_srt": bool(s and s.get("pts_count")),
         "srt_pts": s.get("pts_count", 0) if s else 0
     }
+    if kind == "video" and isinstance(x.get("Duration"), (int, float)) and x["Duration"] > 0:
+        m["dur"] = round(float(x["Duration"]), 2)
     return {k: v for k, v in m.items() if v not in (None, "", False, 0)}
+
+def _probe_video_duration(p: Path) -> Optional[float]:
+    """Obtém a duração do vídeo em segundos via ffprobe."""
+    if not p.is_file(): return None
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(p)],
+            capture_output=True, text=True, timeout=8
+        )
+        val = float((r.stdout or "").strip())
+        return round(val, 2) if val > 0 else None
+    except Exception:
+        return None
 
 def index_media(errors):
     with db() as c: known = {r[0] for r in c.execute("SELECT path FROM media")}
@@ -1356,6 +1372,20 @@ def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: in
     if q: rows = [r for r in rows if q.lower() in f'{r["tags"]} {r["path"]} {r["place"] or ""}'.lower()]
     with db() as c: offp = [r["path"].rstrip("/") + "/" for r in c.execute("SELECT path FROM media_roots") if not Path(r["path"]).is_dir()]
     for r in rows: r["offline"] = bool(offp) and any(r["path"].startswith(o) for o in offp)
+    if flight_id:
+        upd = []
+        for r in rows:
+            if r["kind"] == "video" and not r["offline"]:
+                m = r.get("meta") if isinstance(r.get("meta"), dict) else {}
+                if not m.get("dur"):
+                    d = _probe_video_duration(Path(r["path"]))
+                    if d:
+                        m = dict(m); m["dur"] = d; r["meta"] = m
+                        upd.append((json.dumps(m), r["id"]))
+        if upd:
+            with db() as c:
+                for mj, mid in upd:
+                    c.execute("UPDATE media SET meta=? WHERE id=?", (mj, mid))
     return rows
 
 @app.get("/api/media/{mid:int}")
@@ -1507,6 +1537,109 @@ def media_hud_video(mid: int, start_s: float = 0.0, dur_s: float = 20.0):
         filename=f"dji_hud_{mid}_{int(start_s)}s.mp4",
         background=BackgroundTask(_unlink_quiet, out_mp4)
     )
+
+class MergeVideosBody(BaseModel):
+    media_ids: Optional[list[int]] = None
+    mode: str = "download"       # "download" (temporário) | "save" (salva na pasta do voo sem apagar originais)
+    index_to_db: bool = True     # quando mode == "save", indexar o novo arquivo no voo
+
+@app.post("/api/flights/{fid:int}/merge-videos")
+def merge_flight_videos(fid: int, b: MergeVideosBody):
+    """Unifica opcionalmente múltiplos clipes MP4/MOV do mesmo voo sem perda (-c copy)."""
+    if b.mode not in ("download", "save"):
+        raise HTTPException(400, "Modo inválido. Use 'download' ou 'save'.")
+    f = dict(get_flight(fid))
+    with db() as c:
+        if b.media_ids:
+            qmarks = ",".join("?" for _ in b.media_ids)
+            rows = [dict(r) for r in c.execute(
+                f"SELECT * FROM media WHERE flight_id=? AND kind='video' AND id IN ({qmarks}) ORDER BY taken ASC, id ASC",
+                (fid, *b.media_ids)
+            )]
+        else:
+            rows = [dict(r) for r in c.execute(
+                "SELECT * FROM media WHERE flight_id=? AND kind='video' ORDER BY taken ASC, id ASC",
+                (fid,)
+            )]
+    if len(rows) < 2:
+        raise HTTPException(400, "Selecione pelo menos 2 vídeos do voo para unificar.")
+    paths = [Path(r["path"]) for r in rows]
+    missing = [r["path"] for r, p in zip(rows, paths) if not p.is_file()]
+    if missing:
+        raise HTTPException(400, f"Arquivo(s) indisponível(is) no disco (HD desconectado?): {missing[0]}")
+
+    # Nome base amigável para o arquivo unificado
+    base_name = re.sub(r"[^\w\-]+", "_", (f.get("name") or f.get("place") or f"voo_{fid}")).strip("_") or f"voo_{fid}"
+    ts_part = (f.get("start") or "")[:10].replace("-", "")
+    dl_name = f"{base_name}_{ts_part}_unificado.mp4" if ts_part else f"{base_name}_unificado.mp4"
+
+    tmp_dir = Path("data/thumbs")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    list_txt = tmp_dir / f"concat_{fid}_{int(time.time() * 1000)}.txt"
+    if b.mode == "save":
+        parent = paths[0].parent
+        if not _is_allowed_fs_path(parent):
+            raise HTTPException(403, "Pasta de destino não permitida.")
+        out_mp4 = parent / f"{paths[0].stem}_unificado.mp4"
+        n = 2
+        while out_mp4.exists():
+            out_mp4 = parent / f"{paths[0].stem}_unificado_{n}.mp4"
+            n += 1
+    else:
+        out_mp4 = tmp_dir / f"merged_{fid}_{int(time.time() * 1000)}.mp4"
+
+    try:
+        # Escapa aspas simples para o formato concat demuxer do FFmpeg
+        lines = ["file '" + str(p.resolve()).replace("'", "'\\''") + "'" for p in paths]
+        list_txt.write_text("\n".join(lines), encoding="utf-8")
+        cmd = [
+            "ffmpeg", "-nostdin", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(list_txt), "-c", "copy", "-movflags", "+faststart", str(out_mp4)
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if res.returncode != 0 or not out_mp4.exists():
+            _unlink_quiet(out_mp4)
+            err = (res.stderr or "").strip().splitlines()[-1:] or ["Erro desconhecido"]
+            raise HTTPException(500, f"Falha ao unificar com FFmpeg (-c copy): {err[0]}")
+    finally:
+        _unlink_quiet(list_txt)
+
+    if b.mode == "download":
+        return FileResponse(
+            out_mp4,
+            media_type="video/mp4",
+            filename=dl_name,
+            background=BackgroundTask(_unlink_quiet, out_mp4)
+        )
+
+    # mode == "save": arquivo salvo ao lado dos originais; indexa opcionalmente sem alterar os originais
+    new_id = None
+    if b.index_to_db:
+        try:
+            ex = exif_batch([str(out_mp4)]).get(str(out_mp4), {})
+        except Exception:
+            ex = {}
+        first = rows[0]
+        w, h = ex.get("ImageWidth") or first.get("w"), ex.get("ImageHeight") or first.get("h")
+        dur = ex.get("Duration") if isinstance(ex.get("Duration"), (int, float)) else _probe_video_duration(out_mp4)
+        meta = _build_media_meta(ex, "video", w, h, None)
+        if dur: meta["dur"] = round(float(dur), 2)
+        meta["merged_from"] = [r["id"] for r in rows]
+        st = out_mp4.stat()
+        with db() as c:
+            cur = c.execute(
+                "INSERT OR IGNORE INTO media(path,kind,taken,lat,lon,alt,w,h,size,sha1,flight_id,manual,tags,meta) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (str(out_mp4), "video", first["taken"], first.get("lat"), first.get("lon"), first.get("alt"),
+                 w, h, st.st_size, sha1(out_mp4), fid, 1, first.get("tags") or "", json.dumps(meta))
+            )
+            new_id = cur.lastrowid
+    return {
+        "ok": True,
+        "path": str(out_mp4),
+        "win_path": to_win(str(out_mp4)),
+        "size": out_mp4.stat().st_size,
+        "media_id": new_id,
+    }
 
 class MediaPatch(BaseModel):
     tags: Optional[str] = None

@@ -621,6 +621,78 @@ h4 {
   border: 1px solid var(--border);
   object-fit: contain;
 }
+#vgap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(11, 14, 19, 0.9);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #e2e8f0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  z-index: 4;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+#vgap.hide { display: none; }
+#fvcur {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+  pointer-events: none;
+  z-index: 2;
+}
+#fvtimeline {
+  position: relative;
+  height: 14px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.fvseg {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  background: rgba(56, 189, 248, 0.45);
+  border: 1px solid rgba(56, 189, 248, 0.75);
+  border-radius: 4px;
+  transition: background .15s;
+}
+.fvseg:hover { background: rgba(56, 189, 248, 0.7); }
+.fvseg.on { background: rgba(16, 185, 129, 0.65); border-color: #34d399; }
+#mergemodal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 7, 10, 0.76);
+  backdrop-filter: blur(4px);
+  z-index: 9500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#mergemodal.hide { display: none; }
+.mrg-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  width: min(560px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+}
 #vcamhud {
   position: absolute;
   left: 10px;
@@ -1069,10 +1141,13 @@ input[type=range] {
           <div class="prow">
             <span style="color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em" data-i18n="fdet.video_title">Vídeo do voo</span>
             <span id="fvsel" class="row" style="margin:0;flex-wrap:nowrap"></span>
+            <label id="fvcontlbl" class="hide" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--mut);white-space:nowrap;cursor:pointer" data-i18n-title="fdet.cont_timeline_title" title="Alterna automaticamente entre os clipes e avança nos intervalos sem gravação"><input type="checkbox" id="fvcont" checked onchange="setContTimeline(this.checked)"><span data-i18n="fdet.cont_timeline">Timeline contínua</span></label>
+            <button id="fvmerge" class="hide" onclick="openMergeModal()" style="font-size:12px;padding:3px 9px;white-space:nowrap" title="Opcional: unificar múltiplos clipes em um único MP4 sem perda (originais preservados)" data-i18n="fdet.merge_btn" data-i18n-title="fdet.merge_btn_title">🎞 Unificar (.MP4)</button>
             <button onclick="grabFrameCoord()" style="margin-left:auto;font-size:12px;padding:3px 9px" title="Extrai a coordenada GPS exata do frame atual do vídeo" data-i18n="fdet.grab_coord" data-i18n-title="fdet.grab_coord_title">📍 Coordenada do frame</button>
             <button onclick="exportHudVideo()" style="font-size:12px;padding:3px 9px" title="Gera um clipe MP4 com telemetria DJI embutida via FFmpeg" data-i18n="fdet.export_hud" data-i18n-title="fdet.export_hud_title">🎬 Exportar clipe com HUD</button>
           </div>
           <video id="vid" controls playsinline></video>
+          <div id="vgap" class="hide"></div>
           <div id="vcamhud" class="hide"></div>
         </div>
         <div id="fmapbox">
@@ -1081,6 +1156,7 @@ input[type=range] {
         </div>
       </div>
       <div class="row"><button id="play" data-i18n="fdet.replay">▶ Replay</button><select id="rate" onchange="setRate(this.value)"><option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><input id="slider" type="range" min="0" max="0" value="0" style="flex:1"><span id="rd"></span><button onclick="grabFrameCoord()" data-i18n="fdet.extract_coord">📍 Extrair coordenada</button></div>
+      <div id="fvtlwrap" class="hide" style="margin:2px 0 8px"><div id="fvtimeline" onclick="clickClipTimeline(event)"></div></div>
       <div id="fcoordbar" class="row hide" style="background:var(--card);border:1px solid var(--acc);padding:8px 12px;border-radius:8px;margin:4px 0 8px"></div>
       <div id="fsync" class="row" style="margin:0 0 8px;font-size:12px;color:var(--mut)"><span data-i18n="fdet.video_sync">Sincronia do vídeo:</span> <button onclick="adjV(-5)">−5 s</button><button onclick="adjV(-1)">−1 s</button><b id="sadj">0 s</b><button onclick="adjV(1)">+1 s</button><button onclick="adjV(5)">+5 s</button><button onclick="adjV(0,true)" data-i18n="fdet.zero">Zerar</button><span title="Se no mapa o drone aparece adiantado em relação ao vídeo, use −. Se aparece atrasado, use +." data-i18n-title="fdet.sync_help">ⓘ</span></div>
 
@@ -1187,6 +1263,25 @@ input[type=range] {
   <section id="config" class="hide"></section>
 </main>
 <div id="modal" class="hide" onclick="if(event.target.id=='modal')closeM()"></div>
+<div id="mergemodal" class="hide" onclick="if(event.target.id=='mergemodal')closeMergeModal()">
+  <div class="mrg-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <h3 style="margin:0" data-i18n="fdet.merge_title">Unificar clipes do voo (.MP4)</h3>
+      <button onclick="closeMergeModal()">✕</button>
+    </div>
+    <p style="font-size:13px;color:var(--mut);margin:0 0 10px" data-i18n="fdet.merge_desc">A reprodução contínua na barra de replay já funciona sem unir arquivos. Se desejar gerar um único MP4 (cópia direta sem perda, originais nunca são apagados), escolha abaixo:</p>
+    <div id="mrg-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="mrg-idx" checked>
+      <span data-i18n="fdet.merge_index">Adicionar o arquivo unificado à biblioteca deste voo</span>
+    </label>
+    <div id="mrg-status" style="font-size:12.5px;color:var(--acc-cyan);margin-bottom:10px" class="hide"></div>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin:0">
+      <button id="mrg-dl" onclick="runMergeVideos('download')" data-i18n="fdet.merge_dl">⬇ Apenas baixar MP4 unificado</button>
+      <button id="mrg-sv" class="on" onclick="runMergeVideos('save')" data-i18n="fdet.merge_save">💾 Salvar na pasta do voo</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* Configuração global do Chart.js para estética DJI Cockpit */
@@ -1991,6 +2086,8 @@ function seek(i){
   const hdist=FHOME?Math.round(havDist(FHOME.lat,FHOME.lon,p[1],p[2])):0;
   $('#slider').value=i;window.CI=i;ch&&ch.draw();
   $('#rd').textContent=`${fmt.t(p[0])} · Alt ${fmt.alt(p[3])} · ${fmt.kmh(p[4])} · Dist H ${fmt.alt(hdist)} · Bat ${p[5]??'–'}%`;
+  const fc=$('#fvcur');
+  if(fc&&T.length){const pct=Math.max(0,Math.min(100,(p[0]/Math.max(1,T[T.length-1][0]))*100));fc.style.left=pct.toFixed(2)+'%'}
   updateCockpitHud(i);
 }
 function seekT(t){let i=T.findIndex(p=>p[0]>=t);if(i<0)i=T.length-1;seek(i);window.TNOW=t}
@@ -1999,12 +2096,103 @@ function vOff(v){ /* início do vídeo em segundos de voo; encaixa no evento "In
   FEV.filter(e=>e.label.startsWith('Início de gravação')&&e.t>0).forEach(e=>{
     if(Math.abs(e.t-off)<=30&&(b==null||Math.abs(e.t-off)<Math.abs(b-off)))b=e.t});
   return b==null?off:b}
+let CONT_TL=true;
+try{CONT_TL=localStorage.getItem('dji_cont_tl')!=='0'}catch(e){}
+function setContTimeline(on){
+  CONT_TL=!!on;
+  try{localStorage.setItem('dji_cont_tl',CONT_TL?'1':'0')}catch(e){}
+  if(!CONT_TL){const vg=$('#vgap');if(vg)vg.classList.add('hide')}
+}
+const vDur=v=>(v&&Number(v.dur||((v.meta&&v.meta.dur)||0)))||0;
+function findClipAt(t){
+  let next=-1;
+  for(let i=0;i<FV.length;i++){
+    const v=FV[i],d=vDur(v),end=d>0?v.off+d:(i+1<FV.length?FV[i+1].off:Infinity);
+    if(t>=v.off&&t<end)return{idx:i,nextIdx:i+1<FV.length?i+1:-1};
+    if(v.off>t&&next<0)next=i;
+  }
+  return{idx:-1,nextIdx:next};
+}
+function renderClipButtons(){
+  $('#fvsel').innerHTML=FV.length>1?FV.map((v,i)=>{
+    const d=vDur(v),dl=d>0?' ('+fmt.t(Math.round(d))+')':'';
+    return`<button class="vb${i==CV?' on':''}" onclick="loadV(${i},false)">${i+1}·${fmt.d(v.taken).slice(-5)}${dl}</button>`;
+  }).join(''):'';
+}
+function renderClipTimeline(){
+  const wrap=$('#fvtlwrap'),tl=$('#fvtimeline');
+  if(!wrap||!tl)return;
+  if(!FV.length||!T.length){wrap.classList.add('hide');return}
+  const fdur=Math.max(1,T[T.length-1][0]);
+  wrap.classList.remove('hide');
+  tl.innerHTML=FV.map((v,i)=>{
+    const d=vDur(v)||Math.max(5,((i+1<FV.length?FV[i+1].off:fdur)-v.off));
+    const s=Math.max(0,Math.min(fdur,v.off)),e=Math.max(s+0.5,Math.min(fdur,v.off+d));
+    const l=(s/fdur)*100,w=Math.max(1.2,((e-s)/fdur)*100);
+    const fn=(v.path||'').split(/[\\/]/).pop();
+    const tip=`${fn} · ${fmt.d(v.taken).slice(-5)}${vDur(v)?' ('+fmt.t(Math.round(vDur(v)))+')':''}`;
+    return`<div class="fvseg${i==CV?' on':''}" data-idx="${i}" style="left:${l.toFixed(2)}%;width:${w.toFixed(2)}%" title="${esc(tip)}"></div>`;
+  }).join('')+'<div id="fvcur" style="left:0%"></div>';
+}
+function clickClipTimeline(ev){
+  if(!T.length)return;
+  const r=$('#fvtimeline').getBoundingClientRect();
+  const pct=Math.max(0,Math.min(1,(ev.clientX-r.left)/Math.max(1,r.width)));
+  goT(pct*T[T.length-1][0]);
+}
+function updateGapOverlay(sec){
+  const vg=$('#vgap');if(!vg)return;
+  if(!CONT_TL||!FV.length){vg.classList.add('hide');return}
+  const r=findClipAt(sec);
+  if(r.idx>=0){vg.classList.add('hide');return}
+  if(r.nextIdx>=0){
+    const rem=Math.max(0,Math.ceil(FV[r.nextIdx].off-sec));
+    vg.innerHTML=`<span>${esc(t('fdet.gap_next',{s:fmt.t(rem)}))}</span><button onclick="loadV(${r.nextIdx},true)" style="padding:3px 9px;font-size:12px">${esc(t('fdet.gap_skip'))}</button>`;
+  }else{
+    vg.textContent=t('fdet.gap_end');
+  }
+  vg.classList.remove('hide');
+}
+function stopGapTimer(){if(tm){clearInterval(tm);tm=null}}
+function startGapTimer(){
+  stopGapTimer();
+  const sl=$('#slider');
+  if(!T.length)return;
+  if(+sl.value>=+sl.max)seek(0);
+  $('#play').textContent=t('fdet.pause');
+  tm=setInterval(()=>{
+    const end=T[T.length-1][0],t0=(window.TNOW||0)+0.1*RATE;
+    if(t0>=end){seekT(end);stopGapTimer();$('#play').textContent=t('fdet.replay');updateGapOverlay(end);return}
+    seekT(t0);
+    if(CONT_TL&&FV.length){
+      const r=findClipAt(t0);
+      if(r.idx>=0){
+        stopGapTimer();
+        $('#vgap')?.classList.add('hide');
+        loadV(r.idx,true,t0);
+        return;
+      }
+      updateGapOverlay(t0);
+    }
+  },100);
+}
 async function loadV(i,play,t){
+  stopGapTimer();
   CV=i;const v=FV[i],el=$('#vid');$('#sadj').textContent=((v.sync_adj||0)>0?'+':'')+(v.sync_adj||0)+' s';
+  $('#vgap')?.classList.add('hide');
   document.querySelectorAll('.vb').forEach((b,k)=>b.classList.toggle('on',k==i));
+  document.querySelectorAll('.fvseg').forEach((b,k)=>b.classList.toggle('on',+b.dataset.idx===i));
   scrubUntil=performance.now()+500;
   if(t===undefined)seekT(Math.max(0,v.off));
-  el.onloadedmetadata=()=>{el.currentTime=t===undefined?0:Math.max(0,Math.min(t-v.off,el.duration-0.05));if(play)el.play().catch(()=>{})};
+  el.onloadedmetadata=()=>{
+    if(isFinite(el.duration)&&el.duration>0&&!vDur(v)){
+      v.dur=Math.round(el.duration*100)/100;
+      renderClipButtons();renderClipTimeline();
+    }
+    el.currentTime=t===undefined?0:Math.max(0,Math.min(t-v.off,el.duration-0.05));
+    el.defaultPlaybackRate=RATE;el.playbackRate=RATE;
+    if(play)el.play().catch(()=>{});
+  };
   el.src='/api/media/'+v.id+'/file';el.load();
   /* Carrega trilha .SRT do vídeo para mostrar parâmetros da câmera em tempo real */
   if(!VSRT[v.id]){try{VSRT[v.id]=await api('/media/'+v.id+'/srt')}catch(e){VSRT[v.id]=[]}}
@@ -2026,9 +2214,24 @@ function updateVideoCamHud(sec){
   box.classList.toggle('hide',!parts.length);
 }
 function syncV(i){
-  if(!FV.length||!T.length||!T[i])return;const t=T[i][0];let k=0;FV.forEach((v,j)=>{if(v.off<=t)k=j});
-  if(k!==CV){loadV(k,!$('#vid').paused,t);return}
-  const el=$('#vid'),x=t-FV[CV].off,d=el.duration;scrubUntil=performance.now()+300;
+  if(!FV.length||!T.length||!T[i])return;const t=T[i][0];
+  const el=$('#vid'),wasPlaying=(!el.paused&&!el.ended)||!!tm;
+  if(CONT_TL){
+    const r=findClipAt(t);
+    if(r.idx<0){
+      if(!el.paused)el.pause();
+      updateGapOverlay(t);
+      if(wasPlaying&&!tm)startGapTimer();
+      return;
+    }
+    $('#vgap')?.classList.add('hide');
+    if(r.idx!==CV){loadV(r.idx,wasPlaying,t);return}
+    if(tm)stopGapTimer();
+  }else{
+    let k=0;FV.forEach((v,j)=>{if(v.off<=t)k=j});
+    if(k!==CV){loadV(k,!el.paused,t);return}
+  }
+  const x=t-FV[CV].off,d=el.duration;scrubUntil=performance.now()+300;
   el.currentTime=Math.max(0,isFinite(d)?Math.min(x,d-0.05):x);
   updateVideoCamHud(el.currentTime);
 }
@@ -2038,20 +2241,37 @@ function goT(t){seekT(t);syncV(+$('#slider').value)}
   el.onpause=()=>{if(!tm)$('#play').textContent=t('fdet.replay')};
   el.ontimeupdate=()=>{
     updateVideoCamHud(el.currentTime);
-    if(performance.now()<scrubUntil||!FV.length||!T.length)return;
+    if(tm||el.ended||performance.now()<scrubUntil||!FV.length||!T.length)return;
     seekT(el.currentTime+FV[CV].off)};
-  el.onended=()=>{if(CV+1<FV.length)loadV(CV+1,true)};
+  el.onended=()=>{
+    if(CONT_TL){
+      const curEnd=FV[CV].off+(vDur(FV[CV])||el.duration||0);
+      if(CV+1<FV.length){
+        const gap=FV[CV+1].off-curEnd;
+        if(gap<=1.5){loadV(CV+1,true);return}
+        seekT(curEnd);updateGapOverlay(curEnd);startGapTimer();return;
+      }
+      if(T.length&&curEnd<T[T.length-1][0]-1.5){
+        seekT(curEnd);updateGapOverlay(curEnd);startGapTimer();return;
+      }
+    }else if(CV+1<FV.length){loadV(CV+1,true)}
+  };
   $('#play').onclick=()=>{const sl=$('#slider');
     if(!T.length)return;
     if(FV.length){
       if(!el.paused){el.pause();return}
-      const x=T[+sl.value][0]-FV[CV].off;
+      if(tm){stopGapTimer();$('#play').textContent=t('fdet.replay');return}
+      const curT=T[+sl.value][0];
+      if(CONT_TL){
+        const r=findClipAt(curT);
+        if(r.idx<0){updateGapOverlay(curT);startGapTimer();return}
+        if(r.idx!==CV){loadV(r.idx,true,curT);return}
+      }
+      const x=curT-FV[CV].off;
       el.currentTime=(x<0||(isFinite(el.duration)&&x>=el.duration-0.1))?0:x;
       el.play().catch(()=>{});return}
-    if(tm){clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');return}
-    if(+sl.value>=+sl.max)seek(0);
-    $('#play').textContent=t('fdet.pause');
-    tm=setInterval(()=>{const end=T[T.length-1][0],t0=(window.TNOW||0)+0.1*RATE;if(t0>=end){seekT(end);clearInterval(tm);tm=null;$('#play').textContent=t('fdet.replay');return}seekT(t0)},100)};
+    if(tm){stopGapTimer();$('#play').textContent=t('fdet.replay');return}
+    startGapTimer()};
 })();
 
 function renderFlightChart(){
@@ -2139,8 +2359,12 @@ async function openFlight(id){
   const ms=await api('/media?flight_id='+id);
   if(seq!==FSEQ)return;
   window.FMED=ms;fotos2d(ms);
-  FV=ms.filter(m=>m.kind=='video').map(v=>{const b=vOff(v),a=v.sync_adj||0;return{...v,base:b,off:b+a}}).sort((a,b)=>a.off-b.off);CV=0;
+  FV=ms.filter(m=>m.kind=='video').map(v=>{const b=vOff(v),a=v.sync_adj||0;return{...v,base:b,off:b+a,dur:(v.meta&&v.meta.dur)||0}}).sort((a,b)=>a.off-b.off);CV=0;
   $('#fplayer').classList.toggle('one',!FV.length);$('#fvbox').classList.toggle('hide',!FV.length);
+  $('#fvcontlbl').classList.toggle('hide',FV.length<2);
+  $('#fvmerge').classList.toggle('hide',FV.length<2);
+  $('#fvcont').checked=CONT_TL;
+  $('#vgap').classList.add('hide');
   fm.invalidateSize();
   if(line)fm.fitBounds(line.getBounds());
   else if(FHOME)fm.setView([FHOME.lat,FHOME.lon],15);
@@ -2152,8 +2376,63 @@ async function openFlight(id){
   $('#fmedia').innerHTML=ms.map(m=>mediaCard(m)).join('')||`<span style="color:var(--mut)">${t('fdet.no_media')}</span>`;
   const vid=$('#vid');vid.pause();vid.removeAttribute('src');$('#vcamhud').classList.add('hide');
   const cb=$('#fcoordbar');if(cb){cb.classList.add('hide');cb.innerHTML=''}
-  $('#fvsel').innerHTML=FV.length>1?FV.map((v,i)=>`<button class="vb${i==0?' on':''}" onclick="loadV(${i},false)">${fmt.d(v.taken).slice(-5)}</button>`).join(''):'';
+  renderClipButtons();
+  renderClipTimeline();
   if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderAir(f);
+}
+
+function openMergeModal(){
+  if(FV.length<2)return;
+  $('#mrg-status').classList.add('hide');
+  $('#mrg-list').innerHTML=FV.map((v,i)=>{
+    const fn=(v.path||'').split(/[\\/]/).pop();
+    const d=vDur(v);
+    return`<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;cursor:${v.offline?'not-allowed':'pointer'};opacity:${v.offline?0.55:1}">
+      <input type="checkbox" class="mrg-cb" value="${v.id}" ${v.offline?'disabled':'checked'}>
+      <span style="font-weight:600">#${i+1}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(fn)}</span>
+      <span style="color:var(--mut);font-size:12px">${fmt.d(v.taken).slice(-5)}${d?' · '+fmt.t(Math.round(d)):''}${v.offline?' '+t('fdet.merge_offline'):''}</span>
+    </label>`;
+  }).join('');
+  $('#mergemodal').classList.remove('hide');
+}
+function closeMergeModal(){$('#mergemodal').classList.add('hide')}
+async function runMergeVideos(mode){
+  const ids=[...document.querySelectorAll('.mrg-cb:checked')].map(el=>+el.value);
+  if(ids.length<2){toast(t('fdet.merge_need2'));return}
+  const st=$('#mrg-status'),b1=$('#mrg-dl'),b2=$('#mrg-sv');
+  st.textContent=t('fdet.merge_working');st.classList.remove('hide');
+  b1.disabled=true;b2.disabled=true;
+  try{
+    const res=await fetch('/api/flights/'+window.CURF+'/merge-videos',J('POST',{
+      media_ids:ids,mode,index_to_db:!!$('#mrg-idx').checked
+    }));
+    if(!res.ok){
+      let msg=await res.text();
+      try{msg=JSON.parse(msg).detail||msg}catch(e){}
+      throw new Error(msg);
+    }
+    if(mode==='download'){
+      const blob=await res.blob();
+      const cd=res.headers.get('content-disposition')||'';
+      const m=cd.match(/filename="?([^"]+)"?/i);
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=m?m[1]:`voo_${window.CURF}_unificado.mp4`;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      closeMergeModal();
+    }else{
+      const j=await res.json();
+      closeMergeModal();
+      toast(t('fdet.merge_saved',{path:j.win_path||j.path}));
+      if(j.media_id)openFlight(window.CURF);
+    }
+  }catch(e){
+    st.textContent='⚠ '+(e.message||e);
+  }finally{
+    b1.disabled=false;b2.disabled=false;
+  }
 }
 
 /* ---------- Extração de Coordenada Geográfica do Frame Exibido (e link para Google Maps) ---------- */
@@ -2813,6 +3092,7 @@ async function adjV(d,reset){
   v.off=v.base+v.sync_adj;
   await api('/media/'+v.id,J('PATCH',{sync_adj:v.sync_adj}));
   $('#sadj').textContent=(v.sync_adj>0?'+':'')+v.sync_adj+' s';
+  renderClipTimeline();
   syncV(+$('#slider').value);
 }
 /* ---------- saúde das baterias e potência elétrica ---------- */
