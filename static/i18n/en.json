@@ -457,5 +457,21 @@
   "media.compare_none": "No other photos found within {r} m of this GPS.",
   "media.compare_none_retry": "No other photos within {r} m of this GPS. Expand search to 500 m?",
   "media.compare_need2": "Select exactly 2 photos in the gallery to compare Before / After.",
-  "media.compare_photos_only": "Before / After comparison only works with photos."
+  "media.compare_photos_only": "Before / After comparison only works with photos.",
+  "map.bbox_filter": "📐 Filter in current map view",
+  "map.bbox_active": "📐 Spatial filter active (R-Tree)",
+  "map.bbox_clear": "✕ Clear area",
+  "config.gis_title": "🌐 Spatial GIS Engine (SQLite R-Tree + SpatiaLite)",
+  "config.gis_desc": "Native 2D spatial indexing (<b>Level 1: R-Tree + B-Tree</b>) and OGC geodesic/cartographic functions (<b>Level 2: SpatiaLite / GEOS / PROJ</b>) running directly on <code>data/drone.db</code>.",
+  "config.gis_rebuild": "⟳ Rebuild spatial indexes (R-Tree)",
+  "config.gis_rebuilt": "✓ R-Tree spatial indexes rebuilt!",
+  "fdet.color_lbl": "Color:",
+  "fdet.color.solid": "🎨 Default (Cyan)",
+  "fdet.color.rc": "📶 RC Signal (%)",
+  "fdet.color.alt": "⛰️ Altitude",
+  "fdet.color.spd": "🚀 Speed",
+  "fdet.color.sats": "🛰️ GPS Satellites",
+  "fdet.color.watts": "⚡ Power (W)",
+  "fdet.color.bat": "🔋 Battery (%)",
+  "fdet.color_nodata": "No data for this metric in this flight (re-import .txt log)"
 }

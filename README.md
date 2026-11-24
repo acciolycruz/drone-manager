@@ -170,8 +170,11 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
   - **Consultar espaço aéreo:** Ativa a mira de inspeção direta no GeoServer do DECEA/GEOAISWEB ao clicar em qualquer ponto do mapa geral ou do mapa de detalhe do voo.
   - **Previsão de janela de voo ("Posso Voar?"):** Consulta previsão horária de 1 a 7 dias via Open-Meteo (vento a 10m, 80m e 120m, rajadas, chuva, nuvens, visibilidade, nascer/pôr do sol) e índice geomagnético **Kp** (NOAA SWPC), gerando semáforo por hora (🟢/🟡/🔴/🌙) e resumo das melhores janelas diurnas a partir do mapa, do planejador pré-voo ou da aba Locais.
   - **Busca em Linguagem Natural (sem IA externa):** Interpreta consultas em português como *"voos acima de 80 m em 2025"*, *"fotos sem voo"* ou *"voos perto de aeroporto"*.
-- **Mapa Geral & Fotogrametria (`📐 Footprint / GSD`):** Polilinhas dos voos (otimizadas via Ramer-Douglas-Peucker), clusters de fotos, projeção do polígono real coberto por cada foto no solo, cálculo de **GSD (`cm/pixel`)** e **% de sobreposição**, e camadas WMS do DECEA.
-- **Cockpit HUD ao Vivo no Replay 2D/3D:**
+- **Mapa Geral, Motor Espacial GIS & Fotogrametria (`📐 Footprint / GSD`):**
+  - Polilinhas dos voos (otimizadas via Ramer-Douglas-Peucker), clusters de fotos, projeção do polígono real coberto por cada foto no solo, cálculo de **GSD (`cm/pixel`)** e **% de sobreposição**, e camadas WMS do DECEA.
+  - **Motor Espacial Nível 1 + Nível 2 no SQLite:** Índices espaciais 2D nativos **SQLite R-Tree** (`rtree_flights` com o envelope completo de cada rota, `rtree_media`, `rtree_spots`) + funções geodésicas e cartográficas **SpatiaLite / GEOS / PROJ** (`ST_Distance_Sphere`, `ST_MakePointGeoJSON`, `ST_MakeEnvelopeGeoJSON`, `ST_UTM_EPSG`, `ST_Area_UTM`) com filtro instantâneo por janela visível (`📐 Filtrar nesta área do mapa`).
+- **Cockpit HUD ao Vivo e Coloração Dinâmica da Rota no Replay 2D/3D:**
+  - **Coloração Dinâmica da Rota por Telemetria:** Seletor no mapa do voo (2D e 3D) para colorir o trajeto em gradiente por **Sinal RC (`%`)**, **Altitude**, **Velocidade**, **Satélites GPS**, **Consumo (`W`)** ou **Bateria (`%`)**, com legenda de escala mín./máx., *tooltip* ao passar o mouse e clique direto no trecho para saltar ao instante do voo.
   - **Joysticks do Controle Remoto (RC Sticks):** Movimento em tempo real dos dois sticks (`Acel./Giro` e `Frente/Lado`), **Sinal RC (%)** e **Satélites**.
   - **Horizonte Artificial (SVG):** Indicador dinâmico de `Pitch` e `Roll`, `Proa (Yaw)`, `Gimbal` e `Velocidade Vertical (m/s)`.
   - **Telemetria Elétrica:** Potência instantânea (`W`), tensão (`V`), corrente (`A`), tensão individual por célula (`C1`, `C2`...) e gráfico comutável (**Voo** vs **Elétrica**).
@@ -221,6 +224,7 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 | `GET` | `/api/stats` & `/api/battery-health` | Estatísticas gerais, frota de drones, alertas mecânicos de hélices e saúde das baterias. |
 | `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Gerenciamento seguro de pastas de mídia (`media_roots`) restrito a discos montados (`/mnt`, `/media`, `/run/media`, `/Volumes`) e `data/media`. |
 | `POST` | `/api/backup` | Executa `backup.sh --no-pause` para copiar logs, banco SQLite e código para o HD externo. |
+| `GET/POST` | `/api/gis/status` & `/api/gis/rebuild` | Diagnóstico e reconstrução do motor espacial GIS (Nível 1: SQLite R-Tree 2D + B-Tree; Nível 2: SpatiaLite / GEOS / PROJ). |
 | `GET/POST` | `/api/lang` | Lê ou salva o idioma ativo (`pt-BR`, `en`, `es`) na tabela `kv` do SQLite. |
 
 ---

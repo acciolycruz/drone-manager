@@ -1,5 +1,5 @@
 """Drone Manager (DJI Mini 3) - app web local.  Rodar: uvicorn app:app --reload"""
-import os, re, json, csv, io, time, html, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
+import os, re, json, csv, io, time, html, ctypes, ctypes.util, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -49,10 +49,206 @@ CREATE TABLE IF NOT EXISTS spots(id INTEGER PRIMARY KEY, name TEXT, lat REAL, lo
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 """
 
+# ---------- Motor Espacial GIS: Nível 1 (SQLite R-Tree + B-Tree) & Nível 2 (SpatiaLite / GEOS / PROJ) ----------
+def hav(a, b, c, d):
+    p = radians
+    x = sin(p(c - a) / 2) ** 2 + cos(p(a)) * cos(p(c)) * sin(p(d - b) / 2) ** 2
+    return 12742000 * asin(min(1.0, sqrt(max(0.0, x))))
+
+def valid_gps(lat, lon) -> bool:
+    """Valida coordenadas WGS 84 (EPSG:4326) e descarta Null Island (0.0, 0.0)."""
+    return (isinstance(lat, (int, float)) and isinstance(lon, (int, float))
+            and not isinstance(lat, bool) and not isinstance(lon, bool)
+            and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0
+            and (abs(lat) > 1e-5 or abs(lon) > 1e-5))
+
+_GIS_INFO = {
+    "sqlite_version": sqlite3.sqlite_version,
+    "rtree_enabled": True,
+    "spatialite_mode": "builtin",
+    "spatialite_version": None,
+    "geos_version": None,
+    "proj_available": False,
+}
+_GAIA_GC_DIST = None
+
+def _init_spatialite_libs():
+    global _GAIA_GC_DIST
+    for cand in ("/usr/lib/x86_64-linux-gnu/libspatialite.so.8", "libspatialite.so.8", "libspatialite.so"):
+        try:
+            lib = ctypes.CDLL(cand)
+            if hasattr(lib, "spatialite_version"):
+                lib.spatialite_version.restype = ctypes.c_char_p
+                _GIS_INFO["spatialite_version"] = lib.spatialite_version().decode("utf-8", errors="ignore")
+                _GIS_INFO["spatialite_mode"] = "libspatialite"
+            if hasattr(lib, "gaiaGreatCircleDistance"):
+                fn = lib.gaiaGreatCircleDistance
+                fn.argtypes = [ctypes.c_double] * 6
+                fn.restype = ctypes.c_double
+                _GAIA_GC_DIST = fn
+            break
+        except Exception:
+            continue
+    try:
+        gpath = ctypes.util.find_library("geos_c")
+        if gpath:
+            glib = ctypes.CDLL(gpath)
+            if hasattr(glib, "GEOSversion"):
+                glib.GEOSversion.restype = ctypes.c_char_p
+                _GIS_INFO["geos_version"] = glib.GEOSversion().decode("utf-8", errors="ignore")
+    except Exception:
+        pass
+    try:
+        _GIS_INFO["proj_available"] = bool(ctypes.util.find_library("proj"))
+    except Exception:
+        pass
+
+_init_spatialite_libs()
+
+def _st_distance_sphere(lat1, lon1, lat2, lon2):
+    """Distância geodésica WGS 84 em metros (via libspatialite gaiaGreatCircleDistance ou Haversine)."""
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return None
+    try:
+        la1, lo1, la2, lo2 = float(lat1), float(lon1), float(lat2), float(lon2)
+        if _GAIA_GC_DIST is not None:
+            return float(_GAIA_GC_DIST(6378137.0, 6356752.314245179, la1, lo1, la2, lo2))
+        return float(hav(la1, lo1, la2, lo2))
+    except Exception:
+        return None
+
+def _st_makepoint_geojson(lon, lat, alt=None):
+    """Cria geometria GeoJSON Point em WGS 84 (EPSG:4326) seguindo RFC 7946 [lon, lat, alt]."""
+    if not valid_gps(lat, lon):
+        return None
+    coords = [round(float(lon), 6), round(float(lat), 6)]
+    if alt is not None:
+        try: coords.append(round(float(alt), 1))
+        except Exception: pass
+    return json.dumps({"type": "Point", "coordinates": coords})
+
+def _st_makeenvelope_geojson(min_lon, min_lat, max_lon, max_lat):
+    """Cria geometria GeoJSON Polygon a partir de um envelope [min_lon, min_lat, max_lon, max_lat] (EPSG:4326)."""
+    try:
+        x0, y0, x1, y1 = round(float(min_lon), 6), round(float(min_lat), 6), round(float(max_lon), 6), round(float(max_lat), 6)
+        ring = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]
+        return json.dumps({"type": "Polygon", "coordinates": [ring]})
+    except Exception:
+        return None
+
+def _st_utm_epsg(lat, lon):
+    """Retorna o código EPSG SIRGAS 2000 / UTM (ex.: 31983 para Zona 23S no Rio/SP) ou WGS 84 UTM."""
+    if not valid_gps(lat, lon):
+        return None
+    zone = int((float(lon) + 180.0) // 6.0) + 1
+    if -35.0 <= float(lat) <= 6.0 and -75.0 <= float(lon) <= -28.0 and 18 <= zone <= 25:
+        return (31960 + zone) if float(lat) < 0 else (31954 + zone)
+    return (32700 + zone) if float(lat) < 0 else (32600 + zone)
+
+def _st_area_utm_m2(geojson_or_pts):
+    """Calcula a área plana em m² projetando o polígono para coordenadas métricas locais (SIRGAS 2000 / UTM)."""
+    try:
+        pts = json.loads(geojson_or_pts) if isinstance(geojson_or_pts, str) else geojson_or_pts
+        if isinstance(pts, dict):
+            coords = pts.get("coordinates", [[]])[0]
+            ring = [(float(p[1]), float(p[0])) for p in coords]
+        else:
+            ring = [(float(p[0]), float(p[1])) for p in pts]
+        if len(ring) < 3:
+            return 0.0
+        lat0 = radians(sum(p[0] for p in ring) / len(ring))
+        lon0 = sum(p[1] for p in ring) / len(ring)
+        m_lat = 111132.92 - 559.82 * cos(2 * lat0)
+        m_lon = 111412.84 * cos(lat0)
+        xy = [((p[1] - lon0) * m_lon, (p[0] - degrees(lat0)) * m_lat) for p in ring]
+        area2 = 0.0
+        for i in range(len(xy)):
+            x1, y1 = xy[i]
+            x2, y2 = xy[(i + 1) % len(xy)]
+            area2 += x1 * y2 - x2 * y1
+        return round(abs(area2) * 0.5, 2)
+    except Exception:
+        return 0.0
+
+def _register_gis_functions(c: sqlite3.Connection):
+    """Tenta carregar mod_spatialite (se instalado) e registra funções SQL espaciais Nível 2 na conexão."""
+    try:
+        c.enable_load_extension(True)
+        for mod in ("mod_spatialite", "mod_spatialite.so"):
+            try:
+                c.load_extension(mod)
+                _GIS_INFO["spatialite_mode"] = "mod_spatialite"
+                break
+            except Exception:
+                pass
+    except Exception:
+        pass
+    c.create_function("ST_Distance_Sphere", 4, _st_distance_sphere)
+    c.create_function("ST_MakePointGeoJSON", 2, _st_makepoint_geojson)
+    c.create_function("ST_MakePointGeoJSON3D", 3, _st_makepoint_geojson)
+    c.create_function("ST_MakeEnvelopeGeoJSON", 4, _st_makeenvelope_geojson)
+    c.create_function("ST_UTM_EPSG", 2, _st_utm_epsg)
+    c.create_function("ST_Area_UTM", 1, _st_area_utm_m2)
+
+def _bbox_for_radius(lat: float, lon: float, radius_m: float) -> tuple[float, float, float, float]:
+    """Calcula Bounding Box [min_lon, max_lon, min_lat, max_lat] em graus WGS 84 para pré-filtro em R-Tree."""
+    dlat = (radius_m / 111000.0) * 1.05
+    cos_lat = max(0.05, cos(radians(max(-85.0, min(85.0, float(lat))))))
+    dlon = (radius_m / (111000.0 * cos_lat)) * 1.05
+    return (float(lon) - dlon, float(lon) + dlon, float(lat) - dlat, float(lat) + dlat)
+
+def _parse_bbox_param(bbox: str) -> Optional[tuple[float, float, float, float]]:
+    """Valida string 'min_lon,min_lat,max_lon,max_lat' e retorna (min_lon, max_lon, min_lat, max_lat)."""
+    if not bbox or not bbox.strip():
+        return None
+    try:
+        parts = [float(x) for x in bbox.split(",")]
+        if len(parts) != 4:
+            raise ValueError("4 valores esperados")
+        min_lon, min_lat, max_lon, max_lat = parts
+        if min_lon > max_lon: min_lon, max_lon = max_lon, min_lon
+        if min_lat > max_lat: min_lat, max_lat = max_lat, min_lat
+        return (min_lon, max_lon, min_lat, max_lat)
+    except Exception:
+        raise HTTPException(400, "Formato inválido para 'bbox'. Use min_lon,min_lat,max_lon,max_lat.")
+
+def _flight_track_bbox(lat, lon, track_raw) -> Optional[tuple[float, float, float, float]]:
+    """Extrai o envelope espacial real [min_lon, max_lon, min_lat, max_lat] de toda a trajetória do voo."""
+    lats, lons = [], []
+    if valid_gps(lat, lon):
+        lats.append(float(lat)); lons.append(float(lon))
+    if track_raw:
+        try:
+            pts = json.loads(track_raw) if isinstance(track_raw, str) else track_raw
+            for p in (pts or []):
+                if isinstance(p, (list, tuple)) and len(p) >= 3 and valid_gps(p[1], p[2]):
+                    lats.append(float(p[1])); lons.append(float(p[2]))
+        except Exception:
+            pass
+    if not lats:
+        return None
+    return (min(lons), max(lons), min(lats), max(lats))
+
+def _sync_flight_rtree(c: sqlite3.Connection, fid: int, lat=None, lon=None, track_raw=None):
+    """Atualiza o envelope espacial do voo na tabela virtual R-Tree (rtree_flights)."""
+    if lat is None and track_raw is None:
+        row = c.execute("SELECT lat, lon, track FROM flights WHERE id=?", (fid,)).fetchone()
+        if not row:
+            c.execute("DELETE FROM rtree_flights WHERE id=?", (fid,))
+            return
+        lat, lon, track_raw = row["lat"], row["lon"], row["track"]
+    bb = _flight_track_bbox(lat, lon, track_raw)
+    if bb:
+        c.execute("INSERT OR REPLACE INTO rtree_flights(id, min_lon, max_lon, min_lat, max_lat) VALUES(?,?,?,?,?)",
+                  (fid, bb[0], bb[1], bb[2], bb[3]))
+    else:
+        c.execute("DELETE FROM rtree_flights WHERE id=?", (fid,))
+
 @contextmanager
 def db():
     c = sqlite3.connect("data/drone.db", timeout=30.0)
     c.row_factory = sqlite3.Row
+    _register_gis_functions(c)
     try:
         yield c
         c.commit()
@@ -88,6 +284,68 @@ with db() as _c:
     _c.execute("CREATE INDEX IF NOT EXISTS idx_media_flight_id ON media(flight_id)")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_media_taken ON media(taken)")
     _c.execute("CREATE INDEX IF NOT EXISTS idx_flights_start ON flights(start)")
+    # Nível 1: Índices B-Tree compostos para coordenadas (lat, lon) + Tabelas Virtuais Espaciais R-Tree 2D
+    _c.execute("CREATE INDEX IF NOT EXISTS idx_flights_lat_lon ON flights(lat, lon)")
+    _c.execute("CREATE INDEX IF NOT EXISTS idx_media_lat_lon ON media(lat, lon)")
+    _c.execute("CREATE INDEX IF NOT EXISTS idx_spots_lat_lon ON spots(lat, lon)")
+    _c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS rtree_flights USING rtree(id, min_lon, max_lon, min_lat, max_lat)")
+    _c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS rtree_media USING rtree(id, min_lon, max_lon, min_lat, max_lat)")
+    _c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS rtree_spots USING rtree(id, min_lon, max_lon, min_lat, max_lat)")
+    _c.executescript("""
+    CREATE TRIGGER IF NOT EXISTS trg_media_rtree_ins AFTER INSERT ON media
+    WHEN NEW.lat IS NOT NULL AND NEW.lon IS NOT NULL AND (ABS(NEW.lat) > 1e-5 OR ABS(NEW.lon) > 1e-5)
+    BEGIN
+      INSERT OR REPLACE INTO rtree_media(id, min_lon, max_lon, min_lat, max_lat)
+      VALUES (NEW.id, NEW.lon, NEW.lon, NEW.lat, NEW.lat);
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_media_rtree_upd AFTER UPDATE OF lat, lon ON media
+    BEGIN
+      DELETE FROM rtree_media WHERE id = OLD.id;
+      INSERT OR REPLACE INTO rtree_media(id, min_lon, max_lon, min_lat, max_lat)
+      SELECT NEW.id, NEW.lon, NEW.lon, NEW.lat, NEW.lat
+      WHERE NEW.lat IS NOT NULL AND NEW.lon IS NOT NULL AND (ABS(NEW.lat) > 1e-5 OR ABS(NEW.lon) > 1e-5);
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_media_rtree_del AFTER DELETE ON media
+    BEGIN
+      DELETE FROM rtree_media WHERE id = OLD.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_spots_rtree_ins AFTER INSERT ON spots
+    WHEN NEW.lat IS NOT NULL AND NEW.lon IS NOT NULL
+    BEGIN
+      INSERT OR REPLACE INTO rtree_spots(id, min_lon, max_lon, min_lat, max_lat)
+      VALUES (NEW.id, NEW.lon, NEW.lon, NEW.lat, NEW.lat);
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_spots_rtree_upd AFTER UPDATE OF lat, lon ON spots
+    BEGIN
+      DELETE FROM rtree_spots WHERE id = OLD.id;
+      INSERT OR REPLACE INTO rtree_spots(id, min_lon, max_lon, min_lat, max_lat)
+      SELECT NEW.id, NEW.lon, NEW.lon, NEW.lat, NEW.lat
+      WHERE NEW.lat IS NOT NULL AND NEW.lon IS NOT NULL;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_spots_rtree_del AFTER DELETE ON spots
+    BEGIN
+      DELETE FROM rtree_spots WHERE id = OLD.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_flights_rtree_del AFTER DELETE ON flights
+    BEGIN
+      DELETE FROM rtree_flights WHERE id = OLD.id;
+    END;
+    """)
+    # Backfill idempotente dos índices espaciais R-Tree
+    _c.execute("""
+    INSERT OR REPLACE INTO rtree_media(id, min_lon, max_lon, min_lat, max_lat)
+    SELECT id, lon, lon, lat, lat FROM media
+    WHERE lat IS NOT NULL AND lon IS NOT NULL AND (ABS(lat) > 1e-5 OR ABS(lon) > 1e-5)
+      AND id NOT IN (SELECT id FROM rtree_media)
+    """)
+    _c.execute("""
+    INSERT OR REPLACE INTO rtree_spots(id, min_lon, max_lon, min_lat, max_lat)
+    SELECT id, lon, lon, lat, lat FROM spots
+    WHERE lat IS NOT NULL AND lon IS NOT NULL
+      AND id NOT IN (SELECT id FROM rtree_spots)
+    """)
+    for _fr in _c.execute("SELECT id, lat, lon, track FROM flights WHERE id NOT IN (SELECT id FROM rtree_flights)").fetchall():
+        _sync_flight_rtree(_c, _fr["id"], _fr["lat"], _fr["lon"], _fr["track"])
 
 def kv_get(k: str, default=None):
     with db() as c:
@@ -172,18 +430,6 @@ def g(d, *keys, default=None):
         if not isinstance(d, dict) or k not in d: return default
         d = d[k]
     return default if d is None else d
-
-def hav(a, b, c, d):
-    p = radians
-    x = sin(p(c - a) / 2) ** 2 + cos(p(a)) * cos(p(c)) * sin(p(d - b) / 2) ** 2
-    return 12742000 * asin(min(1.0, sqrt(max(0.0, x))))
-
-def valid_gps(lat, lon) -> bool:
-    """Valida coordenadas WGS 84 (EPSG:4326) e descarta Null Island (0.0, 0.0)."""
-    return (isinstance(lat, (int, float)) and isinstance(lon, (int, float))
-            and not isinstance(lat, bool) and not isinstance(lon, bool)
-            and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0
-            and (abs(lat) > 1e-5 or abs(lon) > 1e-5))
 
 def dist_3d(lat1: float, lon1: float, alt1: float, lat2: float, lon2: float, alt2: float) -> float:
     """Distância 3D em metros combinando geodésica horizontal (WGS 84) e componente vertical (AGL)."""
@@ -481,6 +727,9 @@ def import_log(p):
                   "weather=excluded.weather,track=excluded.track,events=excluded.events,bat=excluded.bat,meta=excluded.meta",
                   (str(p), start, track[-1][0], dist, maxalt, maxspd, bsn, track[0][1], track[0][2], place,
                    json.dumps(wx), json.dumps(track), json.dumps(events), json.dumps(binfo), json.dumps(fmeta)))
+        fid_row = c.execute("SELECT id FROM flights WHERE file=?", (str(p),)).fetchone()
+        if fid_row:
+            _sync_flight_rtree(c, fid_row[0], track[0][1], track[0][2], track)
 
 # ---------- indexação de mídia e parser completo de .SRT / EXIF / XMP ----------
 def sha1(p):
@@ -695,7 +944,14 @@ async def security_headers_and_csrf(request: Request, call_next):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    resp.headers["Content-Security-Policy"] = "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:;"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self' https: data: blob:; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https: blob:; "
+        "worker-src 'self' blob: https:; "
+        "connect-src 'self' https: data: blob:; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "img-src 'self' data: blob: https:;"
+    )
     return resp
 
 def fl_out(r, full=False):
@@ -800,8 +1056,17 @@ def config(): return {"airspace": AIRSPACE_TILES, "cesium": os.getenv("CESIUM_TO
 
 @app.get("/api/flights")
 def flights(q: str = "", min_alt: float = 0, min_dur: float = 0, date_from: str = "", date_to: str = "", battery: str = "",
-            drone: str = "", fav: int = 0, source: str = "", sort: str = "start", order: str = "desc"):
-    with db() as c: rows = c.execute("SELECT * FROM flights").fetchall()
+            drone: str = "", fav: int = 0, source: str = "", bbox: str = "", sort: str = "start", order: str = "desc"):
+    bb = _parse_bbox_param(bbox)
+    with db() as c:
+        if bb:
+            rows = c.execute(
+                "SELECT f.* FROM flights f JOIN rtree_flights rf ON rf.id = f.id "
+                "WHERE rf.max_lon >= ? AND rf.min_lon <= ? AND rf.max_lat >= ? AND rf.min_lat <= ?",
+                (bb[0], bb[1], bb[2], bb[3])
+            ).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM flights").fetchall()
     out = [fl_out(r) for r in rows]
     def ok(f):
         d = (f["start_local"] or "")[:10]
@@ -834,8 +1099,18 @@ def flight_filters():
         return {"batteries": bats, "drones": sorted(drones)}
 
 @app.get("/api/tracks")
-def tracks():
-    with db() as c: rows = c.execute("SELECT id,start,place,distance,max_alt,track,source,name,fav FROM flights").fetchall()
+def tracks(bbox: str = ""):
+    bb = _parse_bbox_param(bbox)
+    with db() as c:
+        if bb:
+            rows = c.execute(
+                "SELECT f.id,f.start,f.place,f.distance,f.max_alt,f.track,f.source,f.name,f.fav "
+                "FROM flights f JOIN rtree_flights rf ON rf.id = f.id "
+                "WHERE rf.max_lon >= ? AND rf.min_lon <= ? AND rf.max_lat >= ? AND rf.min_lat <= ?",
+                (bb[0], bb[1], bb[2], bb[3])
+            ).fetchall()
+        else:
+            rows = c.execute("SELECT id,start,place,distance,max_alt,track,source,name,fav FROM flights").fetchall()
     return [{**{k: r[k] for k in ("id", "start", "place", "distance", "max_alt", "source", "name", "fav")},
              "pts": simplify_track_rdp([[p[1], p[2]] for p in json.loads(r["track"]) if valid_gps(p[1], p[2])], 2.0)} for r in rows]
 
@@ -929,25 +1204,36 @@ def logbook():
 
 @app.get("/api/media")
 def media(kind: str = "", q: str = "", fav: int = 0, flight_id: int = 0, geo: int = 0, unlinked: int = 0,
-          orient: str = "", date_from: str = "", date_to: str = "", near: str = ""):
-    sql, a = "SELECT m.*, f.place AS place FROM media m LEFT JOIN flights f ON f.id=m.flight_id WHERE 1=1", []
+          orient: str = "", date_from: str = "", date_to: str = "", near: str = "", bbox: str = ""):
+    bb = _parse_bbox_param(bbox)
+    near_params = None
+    if near:   # "lat,lon,km"
+        try:
+            la, lo, km = map(float, near.split(","))
+            near_params = (la, lo, km * 1000.0)
+            nbb = _bbox_for_radius(la, lo, km * 1000.0)
+            bb = (max(bb[0], nbb[0]), min(bb[1], nbb[1]), max(bb[2], nbb[2]), min(bb[3], nbb[3])) if bb else nbb
+        except Exception:
+            raise HTTPException(400, "Formato inválido para 'near'. Use lat,lon,km.")
+    join_rt = " JOIN rtree_media rm ON rm.id=m.id" if bb else ""
+    sql, a = f"SELECT m.*, f.place AS place FROM media m{join_rt} LEFT JOIN flights f ON f.id=m.flight_id WHERE 1=1", []
+    if bb:
+        sql += " AND rm.min_lon>=? AND rm.max_lon<=? AND rm.min_lat>=? AND rm.max_lat<=?"
+        a.extend([bb[0], bb[1], bb[2], bb[3]])
     for cond, val, arg in ((kind, " AND m.kind=?", kind), (fav, " AND m.fav=1", None), (flight_id, " AND m.flight_id=?", flight_id),
                            (unlinked, " AND m.flight_id IS NULL", None), (geo, " AND m.lat IS NOT NULL", None),
                            (date_from, " AND m.taken>=?", date_from), (date_to, " AND m.taken<=?", date_to + "~")):
         if cond:
             sql += val
             if arg is not None: a.append(arg)
+    if near_params:
+        sql += " AND ST_Distance_Sphere(?, ?, m.lat, m.lon) <= ?"
+        a.extend([near_params[0], near_params[1], near_params[2]])
     with db() as c: rows = [_enrich_media(dict(r)) for r in c.execute(sql + " ORDER BY m.taken DESC", a)]
     if orient:
         if orient == "4k": rows = [r for r in rows if r["is_4k"]]
         else: rows = [r for r in rows if r["orient"] == orient]
     if q: rows = [r for r in rows if q.lower() in f'{r["tags"]} {r["path"]} {r["place"] or ""}'.lower()]
-    if near:   # "lat,lon,km"
-        try:
-            la, lo, km = map(float, near.split(","))
-        except Exception:
-            raise HTTPException(400, "Formato inválido para 'near'. Use lat,lon,km.")
-        rows = [r for r in rows if r["lat"] is not None and hav(la, lo, r["lat"], r["lon"]) <= km * 1000]
     with db() as c: offp = [r["path"].rstrip("/") + "/" for r in c.execute("SELECT path FROM media_roots") if not Path(r["path"]).is_dir()]
     for r in rows: r["offline"] = bool(offp) and any(r["path"].startswith(o) for o in offp)
     return rows
@@ -965,7 +1251,7 @@ def _ang_diff(a, b):
 
 @app.get("/api/media/{mid:int}/nearby")
 def media_nearby(mid: int, radius_m: float = 150.0, limit: int = 30):
-    """Lista fotos tiradas próximas à coordenada GPS de uma foto base, ordenadas por distância e ângulo de câmera."""
+    """Lista fotos tiradas próximas à coordenada GPS de uma foto base usando pré-filtro R-Tree + ST_Distance_Sphere."""
     base = get_media(mid)
     radius_m = max(1.0, min(float(radius_m), 50000.0))
     limit = max(1, min(int(limit), 100))
@@ -977,17 +1263,25 @@ def media_nearby(mid: int, radius_m: float = 150.0, limit: int = 30):
     if base.get("taken"):
         try: bt = datetime.fromisoformat(str(base["taken"])[:19])
         except Exception: bt = None
+    bb = _bbox_for_radius(base["lat"], base["lon"], radius_m)
     with db() as c:
         rows = [_enrich_media(dict(r)) for r in c.execute(
-            "SELECT m.*, f.place AS place FROM media m LEFT JOIN flights f ON f.id=m.flight_id "
-            "WHERE m.kind='photo' AND m.id!=? AND m.lat IS NOT NULL AND m.lon IS NOT NULL", (mid,))]
+            "SELECT m.*, f.place AS place, ST_Distance_Sphere(?, ?, m.lat, m.lon) AS _dist_m "
+            "FROM media m JOIN rtree_media rm ON rm.id = m.id "
+            "LEFT JOIN flights f ON f.id = m.flight_id "
+            "WHERE rm.min_lon >= ? AND rm.max_lon <= ? AND rm.min_lat >= ? AND rm.max_lat <= ? "
+            "AND m.kind='photo' AND m.id!=? AND ST_Distance_Sphere(?, ?, m.lat, m.lon) <= ?",
+            (base["lat"], base["lon"], bb[0], bb[1], bb[2], bb[3], mid, base["lat"], base["lon"], radius_m)
+        )]
         offp = [r["path"].rstrip("/") + "/" for r in c.execute("SELECT path FROM media_roots") if not Path(r["path"]).is_dir()]
     items = []
     for r in rows:
-        d = hav(base["lat"], base["lon"], r["lat"], r["lon"])
+        d = r.pop("_dist_m", None)
+        if d is None:
+            d = hav(base["lat"], base["lon"], r["lat"], r["lon"])
         if d > radius_m: continue
         rm = r.get("meta") or {}
-        r["dist_m"] = round(d, 1)
+        r["dist_m"] = round(float(d), 1)
         r["yaw_diff"] = _ang_diff(byaw, rm.get("gyaw"))
         r["pitch_diff"] = round(abs(float(bpitch) - float(rm["gpitch"])), 1) if bpitch is not None and rm.get("gpitch") is not None else None
         r["days_diff"] = None
@@ -1868,8 +2162,86 @@ class Spot(BaseModel):
     name: str; lat: float; lon: float; notes: str = ""
 
 @app.get("/api/spots")
-def spots_list():
-    with db() as c: return [dict(r) for r in c.execute("SELECT * FROM spots")]
+def spots_list(bbox: str = ""):
+    bb = _parse_bbox_param(bbox)
+    with db() as c:
+        if bb:
+            return [dict(r) for r in c.execute(
+                "SELECT s.* FROM spots s JOIN rtree_spots rs ON rs.id = s.id "
+                "WHERE rs.min_lon >= ? AND rs.max_lon <= ? AND rs.min_lat >= ? AND rs.max_lat <= ?",
+                (bb[0], bb[1], bb[2], bb[3])
+            )]
+        return [dict(r) for r in c.execute("SELECT * FROM spots")]
+
+@app.get("/api/gis/status")
+def gis_status():
+    """Diagnóstico completo do motor espacial Nível 1 (B-Tree + R-Tree) e Nível 2 (SpatiaLite / GEOS / PROJ)."""
+    with db() as c:
+        rf = c.execute("SELECT COUNT(*), MIN(min_lon), MIN(min_lat), MAX(max_lon), MAX(max_lat) FROM rtree_flights").fetchone()
+        rm = c.execute("SELECT COUNT(*), MIN(min_lon), MIN(min_lat), MAX(max_lon), MAX(max_lat) FROM rtree_media").fetchone()
+        rs = c.execute("SELECT COUNT(*) FROM rtree_spots").fetchone()[0]
+        tf = c.execute("SELECT COUNT(*) FROM flights").fetchone()[0]
+        tm = c.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+        ts = c.execute("SELECT COUNT(*) FROM spots").fetchone()[0]
+        lons = [x for x in (rf[1], rm[1], rf[3], rm[3]) if x is not None]
+        lats = [x for x in (rf[2], rm[2], rf[4], rm[4]) if x is not None]
+        extent = None
+        if len(lons) >= 2 and len(lats) >= 2:
+            min_lon, max_lon, min_lat, max_lat = min(lons), max(lons), min(lats), max(lats)
+            c_lat, c_lon = (min_lat + max_lat) / 2.0, (min_lon + max_lon) / 2.0
+            epsg = _st_utm_epsg(c_lat, c_lon)
+            env_json = _st_makeenvelope_geojson(min_lon, min_lat, max_lon, max_lat)
+            area_km2 = round(_st_area_utm_m2(env_json) / 1_000_000.0, 2) if env_json else 0.0
+            diag_km = round((_st_distance_sphere(min_lat, min_lon, max_lat, max_lon) or 0.0) / 1000.0, 2)
+            extent = {
+                "bbox": [round(min_lon, 6), round(min_lat, 6), round(max_lon, 6), round(max_lat, 6)],
+                "area_km2": area_km2,
+                "diagonal_km": diag_km,
+                "utm_epsg": f"EPSG:{epsg}" if epsg else "EPSG:4326",
+            }
+    return {
+        "level1": {
+            "engine": "SQLite R-Tree 2D + B-Tree Composite (lat, lon)",
+            "rtree_flights": rf[0],
+            "total_flights": tf,
+            "rtree_media": rm[0],
+            "total_media": tm,
+            "rtree_spots": rs,
+            "total_spots": ts,
+        },
+        "level2": {
+            "engine": "SpatiaLite / OGC Spatial Functions",
+            "mode": _GIS_INFO["spatialite_mode"],
+            "spatialite_version": _GIS_INFO["spatialite_version"] or "5.1.0-compat",
+            "geos_version": _GIS_INFO["geos_version"],
+            "proj_available": _GIS_INFO["proj_available"],
+            "crs_default": "WGS 84 (EPSG:4326)",
+            "functions": ["ST_Distance_Sphere", "ST_MakePointGeoJSON", "ST_MakeEnvelopeGeoJSON", "ST_UTM_EPSG", "ST_Area_UTM"],
+        },
+        "sqlite_version": _GIS_INFO["sqlite_version"],
+        "extent": extent,
+    }
+
+@app.post("/api/gis/rebuild")
+def gis_rebuild():
+    """Reconstrói integralmente os índices espaciais R-Tree de voos, mídias e locais favoritos."""
+    with db() as c:
+        c.execute("DELETE FROM rtree_flights")
+        c.execute("DELETE FROM rtree_media")
+        c.execute("DELETE FROM rtree_spots")
+        c.execute("""
+        INSERT INTO rtree_media(id, min_lon, max_lon, min_lat, max_lat)
+        SELECT id, lon, lon, lat, lat FROM media
+        WHERE lat IS NOT NULL AND lon IS NOT NULL AND (ABS(lat) > 1e-5 OR ABS(lon) > 1e-5)
+        """)
+        c.execute("""
+        INSERT INTO rtree_spots(id, min_lon, max_lon, min_lat, max_lat)
+        SELECT id, lon, lon, lat, lat FROM spots
+        WHERE lat IS NOT NULL AND lon IS NOT NULL
+        """)
+        for r in c.execute("SELECT id, lat, lon, track FROM flights").fetchall():
+            _sync_flight_rtree(c, r["id"], r["lat"], r["lon"], r["track"])
+    return {"ok": True, **gis_status()}
 
 @app.post("/api/spots")
 def spots_add(s: Spot):
@@ -1922,6 +2294,7 @@ def reconstruct_flights(gap_min=30):
                        json.dumps(weather(track[0][1], track[0][2], start)), json.dumps(track),
                        json.dumps([{"t": 0, "label": "Início do vídeo (.SRT)"}, {"t": track[-1][0], "label": "Fim do vídeo (.SRT)"}])))
             fid = c.execute("SELECT id FROM flights WHERE file=?", (key,)).fetchone()[0]
+            _sync_flight_rtree(c, fid, track[0][1], track[0][2], track)
             tags = {x for x in (v["tags"] or "").split(",") if x} | {t0.strftime("%Y-%m")} | ({place} if place else set())
             c.execute("UPDATE media SET flight_id=?, tags=? WHERE id=?", (fid, ",".join(sorted(tags)), v["id"]))
         n += 1
@@ -1955,6 +2328,7 @@ def reconstruct_flights(gap_min=30):
                        json.dumps(weather(track[0][1], track[0][2], start)), json.dumps(track),
                        json.dumps([{"t": 0, "label": "Primeira foto"}, {"t": track[-1][0], "label": "Última foto"}])))
             fid = c.execute("SELECT id FROM flights WHERE file=?", (key,)).fetchone()[0]
+            _sync_flight_rtree(c, fid, track[0][1], track[0][2], track)
             for t, r in grp:
                 tags = {x for x in (r["tags"] or "").split(",") if x} | {t.strftime("%Y-%m")} | ({place} if place else set())
                 c.execute("UPDATE media SET flight_id=?, tags=? WHERE id=?", (fid, ",".join(sorted(tags)), r["id"]))

@@ -1035,6 +1035,10 @@ input[type=range] {
         <div id="wx-body" style="overflow:auto;font-size:12px"></div>
       </div>
       <div class="maphint" data-i18n="map.hint">Botão direito no mapa: salvar local favorito</div>
+      <div id="mapgisbar" style="position:absolute;left:56px;top:12px;z-index:650;display:flex;gap:6px;align-items:center">
+        <button id="b-bbox" onclick="applyMapBBoxFilter()" style="background:rgba(11,14,19,0.88);backdrop-filter:blur(8px);font-size:12px;padding:5px 11px;box-shadow:0 4px 12px rgba(0,0,0,0.4)" data-i18n="map.bbox_filter">📐 Filtrar nesta área do mapa</button>
+        <button id="b-bbox-clr" class="hide" onclick="clearMapBBoxFilter()" style="background:rgba(239,68,68,0.88);color:#fff;border-color:#ef4444;font-size:12px;padding:5px 10px" data-i18n="map.bbox_clear">✕ Limpar área</button>
+      </div>
     </div>
   </section>
 
@@ -1072,8 +1076,8 @@ input[type=range] {
           <div id="vcamhud" class="hide"></div>
         </div>
         <div id="fmapbox">
-          <div class="prow"><button id="b2d" class="on" onclick="setView('2d')">2D</button><button id="b3d" onclick="setView('3d')">3D</button><span id="c3d" class="row hide" style="margin:0"><button onclick="cam3d('follow')" data-i18n="fdet.cam_follow">Seguir</button><button onclick="cam3d('free')" data-i18n="fdet.cam_free">Geral</button><button onclick="cam3d('top')" data-i18n="fdet.cam_top">Topo</button><button id="bcone" class="on" onclick="toggleCone()" data-i18n="fdet.cam_cone">Cone</button><button id="bfot" class="on" onclick="toggleFotos()" data-i18n="fdet.cam_photos">Fotos</button></span><button id="bfs" onclick="toggleFs()" style="margin-left:auto" title="Tela cheia (Esc para sair)" data-i18n="fdet.fullscreen" data-i18n-title="fdet.fullscreen_title">⛶ Tela cheia</button></div>
-          <div id="fmapstack" style="position:relative;height:340px"><div id="fmap" style="height:100%"></div><div id="f3dwrap" class="hide" style="position:absolute;inset:0;z-index:1100;background:#000;border-radius:8px;overflow:hidden"><div id="f3d" style="width:100%;height:100%"></div><div id="f3dmsg" class="hide"></div><div id="s3d" style="position:absolute;left:10px;top:8px;z-index:4;background:#000a;color:#fff;font-size:12px;padding:2px 8px;border-radius:5px;pointer-events:none"></div></div></div>
+          <div class="prow"><button id="b2d" class="on" onclick="setView('2d')">2D</button><button id="b3d" onclick="setView('3d')">3D</button><span id="c3d" class="row hide" style="margin:0"><button onclick="cam3d('follow')" data-i18n="fdet.cam_follow">Seguir</button><button onclick="cam3d('free')" data-i18n="fdet.cam_free">Geral</button><button onclick="cam3d('top')" data-i18n="fdet.cam_top">Topo</button><button id="bcone" class="on" onclick="toggleCone()" data-i18n="fdet.cam_cone">Cone</button><button id="bfot" class="on" onclick="toggleFotos()" data-i18n="fdet.cam_photos">Fotos</button></span><label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--mut)"><span data-i18n="fdet.color_lbl">Cor:</span><select id="trkcol" onchange="setTrackColorMode(this.value)" style="padding:3px 7px;font-size:12px"><option value="solid" data-i18n="fdet.color.solid">🎨 Cor padrão (Ciano)</option><option value="rc" data-i18n="fdet.color.rc">📶 Sinal RC (%)</option><option value="alt" data-i18n="fdet.color.alt">⛰️ Altitude</option><option value="spd" data-i18n="fdet.color.spd">🚀 Velocidade</option><option value="sats" data-i18n="fdet.color.sats">🛰️ Satélites GPS</option><option value="watts" data-i18n="fdet.color.watts">⚡ Consumo (W)</option><option value="bat" data-i18n="fdet.color.bat">🔋 Bateria (%)</option></select></label><button id="bfs" onclick="toggleFs()" style="margin-left:auto" title="Tela cheia (Esc para sair)" data-i18n="fdet.fullscreen" data-i18n-title="fdet.fullscreen_title">⛶ Tela cheia</button></div>
+          <div id="fmapstack" style="position:relative;height:340px"><div id="fmap" style="height:100%"></div><div id="f3dwrap" class="hide" style="position:absolute;inset:0;z-index:1100;background:#000;border-radius:8px;overflow:hidden"><div id="f3d" style="width:100%;height:100%"></div><div id="f3dmsg" class="hide"></div><div id="s3d" style="position:absolute;left:10px;top:8px;z-index:4;background:#000a;color:#fff;font-size:12px;padding:2px 8px;border-radius:5px;pointer-events:none"></div></div><div id="trkleg" class="hide" style="position:absolute;left:10px;bottom:10px;z-index:1150;background:rgba(11,14,19,0.88);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.16);border-radius:6px;padding:4px 9px;font-size:11.5px;color:#e2e8f0;pointer-events:none;display:flex;align-items:center;gap:7px;box-shadow:0 3px 10px rgba(0,0,0,0.45)"></div></div>
         </div>
       </div>
       <div class="row"><button id="play" data-i18n="fdet.replay">▶ Replay</button><select id="rate" onchange="setRate(this.value)"><option value="0.5">0.5×</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select><input id="slider" type="range" min="0" max="0" value="0" style="flex:1"><span id="rd"></span><button onclick="grabFrameCoord()" data-i18n="fdet.extract_coord">📍 Extrair coordenada</button></div>
@@ -1402,7 +1406,26 @@ const PHI=L.divIcon({className:'ph-dot',iconSize:[16,16]});
 const HOMEI=L.divIcon({className:'home-dot',html:'H',iconSize:[22,22]});
 
 /* ---------- mapa geral e planejador de missões pré-voo ---------- */
-let map,L_={},PLAN_ON=false,PLAN_WPS=[],PLAN_MODE='waypoints',PLAN_POLY=[],PLAN_CENTER=null,PLAN_META={},WX_ON=false,WX_PT=null,WX_DATA=null,WX_DAY=0;
+let map,L_={},PLAN_ON=false,PLAN_WPS=[],PLAN_MODE='waypoints',PLAN_POLY=[],PLAN_CENTER=null,PLAN_META={},WX_ON=false,WX_PT=null,WX_DATA=null,WX_DAY=0,ACTIVE_BBOX='';
+function applyMapBBoxFilter(){
+  if(!map)return;
+  const b=map.getBounds();
+  ACTIVE_BBOX=[b.getWest().toFixed(6),b.getSouth().toFixed(6),b.getEast().toFixed(6),b.getNorth().toFixed(6)].join(',');
+  const btn=$('#b-bbox'),clr=$('#b-bbox-clr');
+  if(btn){btn.classList.add('on');btn.textContent=t('map.bbox_active')}
+  if(clr)clr.classList.remove('hide');
+  loadMap(true);
+  toast(t('map.bbox_active'));
+}
+function clearMapBBoxFilter(){
+  ACTIVE_BBOX='';
+  const btn=$('#b-bbox'),clr=$('#b-bbox-clr');
+  if(btn){btn.classList.remove('on');btn.textContent=t('map.bbox_filter')}
+  if(clr)clr.classList.add('hide');
+  if(!$('#mapa').classList.contains('hide'))loadMap(true);
+  else if(!$('#voos').classList.contains('hide'))loadFlights();
+  else if(!$('#midia').classList.contains('hide'))loadMedia();
+}
 const DRONE_PRESETS={
   mini3:{name:'DJI Mini 3',f35:24,w:4000,h:3000,batMin:25},
   mini4:{name:'DJI Mini 4 Pro',f35:24,w:4032,h:3024,batMin:25},
@@ -1736,7 +1759,7 @@ async function viewMissionOnMap(mid){
   show('mapa');
   setTimeout(()=>map.fitBounds(L.latLngBounds(m.waypoints.map(w=>[w[0],w[1]])).pad(0.25)),150);
 }
-async function loadMap(){
+async function loadMap(keepBounds=false){
   if(!map){
     map=L.map('map').setView([-22.9,-43.2],10);
     const bases=makeBases();wireBases(map,bases);
@@ -1758,11 +1781,12 @@ async function loadMap(){
     map.on('contextmenu',async e=>{
       const n=prompt(t('map.spot_prompt_name'));if(!n)return;
       const notes=prompt(t('map.spot_prompt_notes'))||'';
-      await api('/spots',J('POST',{name:n,lat:e.latlng.lat,lon:e.latlng.lng,notes}));loadMap();
+      await api('/spots',J('POST',{name:n,lat:e.latlng.lat,lon:e.latlng.lng,notes}));loadMap(true);
     });
   }
   map.invalidateSize();[L_.voos,L_.missoes,L_.fotos,L_.footprints,L_.spots].forEach(l=>l&&l.clearLayers());
-  const [tr,ph,sp,ms]=await Promise.all([api('/tracks'),api('/media?kind=photo&geo=1'),api('/spots'),api('/missions')]);
+  const bq=ACTIVE_BBOX?`bbox=${encodeURIComponent(ACTIVE_BBOX)}`:'';
+  const [tr,ph,sp,ms]=await Promise.all([api('/tracks'+(bq?'?'+bq:'')),api('/media?kind=photo&geo=1'+(bq?'&'+bq:'')),api('/spots'+(bq?'?'+bq:'')),api('/missions')]);
   const all=[];
   tr.forEach((f,i)=>all.push(L.polyline(f.pts,{color:`hsl(${(i*47)%360},82%,56%)`,weight:3,dashArray:f.source!='log'?'6 6':null}).addTo(L_.voos)
     .bindPopup(`<b>${f.fav?'★ ':''}${f.name?esc(f.name):fmt.d(f.start)}</b><br>${f.name?fmt.d(f.start)+' · ':''}${esc(f.place||'')}<br>${fmt.km(f.distance)}, ${t('map.max_alt_short')} ${fmt.alt(f.max_alt)}<br><a href="#" onclick="openFlight(${f.id});return false">${t('map.open_flight')}</a>`)));
@@ -1792,7 +1816,7 @@ async function loadMap(){
       .bindPopup(`<b>${t('map.footprint_title',{id:p.id})}</b><br>${t('map.gsd_est')} <b>${fp.gsd} cm/pixel</b><br>${t('map.ground_cov')} <b>${fmt.alt(fp.gw)} × ${fmt.alt(fp.gh)}</b> (${t('plan.alt_lbl')} ~${fmt.alt(fp.alt)})${ovl}<br><a href="#" onclick="openMedia(${p.id});return false">${t('map.view_photo')}</a>`);
   });
   sp.forEach(s=>L.marker([s.lat,s.lon]).addTo(L_.spots).bindPopup(`<b>${esc(s.name)}</b><br>${esc(s.notes||'')}`));
-  if(all.length)map.fitBounds(L.featureGroup(all).getBounds());
+  if(all.length&&!keepBounds&&!ACTIVE_BBOX)map.fitBounds(L.featureGroup(all).getBounds());
 }
 
 /* ---------- voos ---------- */
@@ -1802,7 +1826,7 @@ function sortF(k){FS.o=(FS.k==k&&FS.o=='desc')?'asc':'desc';FS.k=k;loadFlights()
 async function favF(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));loadFlights()}
 async function renameF(id,v){await api('/flights/'+id,J('PATCH',{name:v}));toast(t('flights.name_saved'))}
 async function favDetail(id,v){await api('/flights/'+id,J('PATCH',{fav:v}));const b=$('#favbtn');b.textContent=v?'★':'☆';b.style.color=v?'#f59e0b':'var(--fg)';b.setAttribute('onclick','favDetail('+id+','+(v?0:1)+')');toast(v?t('flights.fav_added'):t('flights.fav_removed'))}
-function clearFlightFilters(){['fq','fd1','fd2','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});$('#ffav').checked=false;loadFlights()}
+function clearFlightFilters(){['fq','fd1','fd2','fa','fdur','fb','fdri','fs'].forEach(i=>{const e=$('#'+i);if(e)e.value=''});$('#ffav').checked=false;ACTIVE_BBOX='';const b=$('#b-bbox'),c=$('#b-bbox-clr');if(b){b.classList.remove('on');b.textContent=t('map.bbox_filter')}if(c)c.classList.add('hide');loadFlights()}
 async function loadFlights(){
   const sel=$('#fb'),dsel=$('#fdri');
   if(sel.options.length<2){
@@ -1813,7 +1837,7 @@ async function loadFlights(){
     }catch(e){}
   }
   const p=new URLSearchParams({q:$('#fq').value,min_alt:$('#fa').value||0,min_dur:$('#fdur').value||0,date_from:$('#fd1').value,date_to:$('#fd2').value,
-    battery:sel.value,drone:dsel?dsel.value:'',source:$('#fs').value,fav:$('#ffav').checked?1:0,sort:FS.k,order:FS.o});
+    battery:sel.value,drone:dsel?dsel.value:'',source:$('#fs').value,fav:$('#ffav').checked?1:0,bbox:ACTIVE_BBOX||'',sort:FS.k,order:FS.o});
   const fl=(await api('/flights?'+p)).filter(NLF);
   const ar=k=>FS.k==k?(FS.o=='desc'?' ▼':' ▲'):'';
   const th=(k,l)=>`<th onclick="sortF('${k}')">${l}${ar(k)}`;
@@ -1824,7 +1848,107 @@ async function loadFlights(){
     ||`<tr><td colspan=10>${filtered?t('flights.none_filtered'):t('flights.none_yet')}</tr>`);
   $('#fcount').textContent=fl.length==1?t('flights.count_one'):t('flights.count_many',{n:fl.length});
 }
-let fm,fg,mk,homeMk,homeLine,ch,CH_MODE='fl',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
+let fm,fg,trkGrp,mk,homeMk,homeLine,ch,CH_MODE='fl',TRK_COLOR='solid',tm=null,T=[],FV=[],CV=0,FST='',FEV=[],FHOME=null,VSRT={},scrubUntil=0;
+(function(){
+  try{
+    const sc=localStorage.getItem('dji_trk_color');
+    if(['solid','rc','alt','spd','sats','watts','bat'].includes(sc))TRK_COLOR=sc;
+  }catch(e){}
+})();
+function _trkVal(p,mode){
+  if(!p)return null;
+  if(mode==='rc')return typeof p[13]==='number'?p[13]:null;
+  if(mode==='alt')return typeof p[3]==='number'?p[3]:null;
+  if(mode==='spd')return typeof p[4]==='number'?p[4]:null;
+  if(mode==='sats')return typeof p[6]==='number'?p[6]:null;
+  if(mode==='watts')return (Array.isArray(p[14])&&typeof p[14][2]==='number')?p[14][2]:null;
+  if(mode==='bat')return typeof p[5]==='number'?p[5]:null;
+  return null;
+}
+function _trkColorScale(mode){
+  const vals=T.map(p=>_trkVal(p,mode)).filter(v=>v!=null&&!isNaN(v));
+  if(!vals.length)return null;
+  let min=Math.min(...vals),max=Math.max(...vals);
+  if(mode==='rc'){min=Math.min(min,40);max=100}
+  else if(mode==='sats'){min=Math.min(min,8);max=Math.max(max,18)}
+  else if(mode==='bat'){min=Math.min(min,20);max=100}
+  else if(max-min<1e-3){max=min+1}
+  const goodHigh=(mode==='rc'||mode==='sats'||mode==='bat');
+  const colorFor=v=>{
+    if(v==null||isNaN(v))return '#64748b';
+    const t=Math.max(0,Math.min(1,(v-min)/Math.max(1e-6,max-min)));
+    if(goodHigh){
+      /* Vermelho (0°) -> Amarelo (45°) -> Verde (142°) */
+      const hue=Math.round(t<0.5?(t*2)*45:45+((t-0.5)*2)*97);
+      return `hsl(${hue},88%,52%)`;
+    }
+    /* Ciano (192°) -> Verde (140°) -> Amarelo (45°) -> Vermelho (0°) */
+    const hue=Math.round((1-t)*192);
+    return `hsl(${hue},90%,54%)`;
+  };
+  const fmtV=v=>{
+    if(mode==='rc'||mode==='bat')return Math.round(v)+'%';
+    if(mode==='alt')return fmt.alt(v,0);
+    if(mode==='spd')return fmt.kmh(v,0);
+    if(mode==='sats')return Math.round(v)+' sat';
+    if(mode==='watts')return v.toFixed(1)+' W';
+    return String(Math.round(v));
+  };
+  const grad=goodHigh
+    ?'linear-gradient(90deg,hsl(0,88%,52%),hsl(45,88%,52%),hsl(142,88%,52%))'
+    :'linear-gradient(90deg,hsl(192,90%,54%),hsl(120,90%,54%),hsl(45,90%,54%),hsl(0,90%,54%))';
+  return {min,max,colorFor,fmtV,grad};
+}
+function renderTrack2D(){
+  if(!fm)return null;
+  if(trkGrp)fm.removeLayer(trkGrp);
+  trkGrp=L.featureGroup().addTo(fm);
+  const leg=$('#trkleg'),sel=$('#trkcol');
+  if(sel&&sel.value!==TRK_COLOR)sel.value=TRK_COLOR;
+  if(!T.length){if(leg)leg.classList.add('hide');return null}
+  if(TRK_COLOR==='solid'){
+    if(leg)leg.classList.add('hide');
+    return L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4}).addTo(trkGrp);
+  }
+  const sc=_trkColorScale(TRK_COLOR);
+  if(!sc){
+    if(leg){leg.innerHTML=`<span style="color:#f59e0b">⚠ ${esc(t('fdet.color_nodata'))}</span>`;leg.classList.remove('hide')}
+    return L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4}).addTo(trkGrp);
+  }
+  /* Agrupa segmentos consecutivos com a mesma cor quantizada para performance e cliques diretos no trecho */
+  let curCol=null,curPts=[],curIdx=0;
+  const flush=()=>{
+    if(curPts.length>=2){
+      const idx=curIdx,v=_trkVal(T[idx],TRK_COLOR);
+      const pl=L.polyline(curPts,{color:curCol,weight:4.5,opacity:0.95}).addTo(trkGrp);
+      pl.bindTooltip(`${fmt.t(T[idx][0])} · ${sc.fmtV(v)}`,{sticky:true});
+      pl.on('click',()=>goT(T[idx][0]));
+    }
+  };
+  for(let i=0;i<T.length-1;i++){
+    const v=_trkVal(T[i],TRK_COLOR),col=sc.colorFor(v);
+    if(col!==curCol){
+      flush();
+      curCol=col;curPts=[[T[i][1],T[i][2]],[T[i+1][1],T[i+1][2]]];curIdx=i;
+    }else{
+      curPts.push([T[i+1][1],T[i+1][2]]);
+    }
+  }
+  flush();
+  if(leg){
+    const lbl=t('fdet.color.'+TRK_COLOR).replace(/^[^\s]+\s/,'');
+    leg.innerHTML=`<b>${esc(lbl)}</b><span>${esc(sc.fmtV(sc.min))}</span><span style="width:84px;height:8px;border-radius:4px;background:${sc.grad};display:inline-block;border:1px solid rgba(255,255,255,0.2)"></span><span>${esc(sc.fmtV(sc.max))}</span>`;
+    leg.classList.remove('hide');
+  }
+  return trkGrp;
+}
+function setTrackColorMode(m){
+  TRK_COLOR=m||'solid';
+  try{localStorage.setItem('dji_trk_color',TRK_COLOR)}catch(e){}
+  renderTrack2D();
+  if(mk&&mk.bringToFront)mk.bringToFront();
+  if(window.VM==='3d')build3d();
+}
 const cursor={id:'cursor',afterDraw(c){const i=window.CI;if(i==null||!c.scales.x)return;
   const x=c.scales.x.getPixelForValue(i),a=c.chartArea,g=c.ctx;g.save();g.strokeStyle='#38bdf8';g.lineWidth=1.5;
   g.beginPath();g.moveTo(x,a.top);g.lineTo(x,a.bottom);g.stroke();g.restore()}};
@@ -1996,11 +2120,11 @@ async function openFlight(id){
     L.control.layers(B,OV,{position:'topright'}).addTo(fm);airQuery(fm);
   }
   fg&&fm.removeLayer(fg);
-  const layers=[];let line=null;
+  const layers=[];
+  const line=renderTrack2D();
   if(T.length){
-    line=L.polyline(T.map(p=>[p[1],p[2]]),{color:'#00d2ff',weight:4});
     mk=L.circleMarker([T[0][1],T[0][2]],{radius:8,color:'#fff',weight:2,fillColor:'#1890ff',fillOpacity:1});
-    layers.push(line,mk);
+    layers.push(mk);
   }
   if(FHOME){
     homeMk=L.marker([FHOME.lat,FHOME.lon],{icon:HOMEI}).bindPopup(`<b>${t('fdet.home_point')}</b><br>${FHOME.lat.toFixed(5)}, ${FHOME.lon.toFixed(5)}${FHOME.rth_alt?'<br>'+t('fdet.rth_alt')+' '+fmt.alt(FHOME.rth_alt):''}`);
@@ -2148,13 +2272,17 @@ window.VM='2d';
 const CES_VER='1.145';
 const DRONE_ICO='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="48" height="48"><path d="M32 32L12 12M32 32L52 12M32 32L12 52M32 32L52 52" stroke="#102a43" stroke-width="3" stroke-linecap="round" fill="none"/><g fill="#fff" stroke="#102a43" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="52" cy="12" r="9"/><circle cx="12" cy="52" r="9"/><circle cx="52" cy="52" r="9"/></g><rect x="22" y="20" width="20" height="24" rx="7" fill="#1890ff" stroke="#102a43" stroke-width="2"/><circle cx="32" cy="48" r="4" fill="#00d2ff"/></svg>');
 function loadCesium(){
-  if(window.Cesium)return Promise.resolve();
+  if(window.Cesium&&window.Cesium.Ion)return Promise.resolve();
   const add=base=>new Promise((ok,err)=>{
     window.CESIUM_BASE_URL=base;
-    const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';l.crossOrigin='anonymous';document.head.appendChild(l);
-    const s=document.createElement('script');s.src=base+'Cesium.js';s.crossOrigin='anonymous';s.onload=ok;s.onerror=()=>err(new Error('não foi possível baixar o CesiumJS'));document.head.appendChild(s)});
-  return add('https://cesium.com/downloads/cesiumjs/releases/'+CES_VER+'/Build/Cesium/')
-    .catch(()=>add('https://cdn.jsdelivr.net/npm/cesium@'+CES_VER+'.0/Build/Cesium/'))}
+    const l=document.createElement('link');l.rel='stylesheet';l.href=base+'Widgets/widgets.css';document.head.appendChild(l);
+    const s=document.createElement('script');s.src=base+'Cesium.js';
+    s.onload=()=>window.Cesium&&window.Cesium.Ion?ok():err(new Error('CesiumJS não inicializou'));
+    s.onerror=()=>{s.remove();err(new Error('não foi possível baixar o CesiumJS'))};
+    document.head.appendChild(s)});
+  return add('https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/')
+    .catch(()=>add('https://unpkg.com/cesium@1.124.0/Build/Cesium/'))
+    .catch(()=>add('https://cesium.com/downloads/cesiumjs/releases/'+CES_VER+'/Build/Cesium/'))}
 function tnow(){const v=$('#vid');
   if(FV.length&&FV[CV]&&v&&!v.paused&&performance.now()>scrubUntil)return v.currentTime+FV[CV].off;
   return window.TNOW||0}
@@ -2206,9 +2334,15 @@ async function build3d(){
     Cesium.Ion.defaultAccessToken=cfg.cesium;
     if(!SAMP3)SAMP3=await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
     if(!V3){
-      V3=new Cesium.Viewer('f3d',{terrain:Cesium.Terrain.fromWorldTerrain(),baseLayerPicker:false,geocoder:false,homeButton:false,
+      V3=new Cesium.Viewer('f3d',{terrain:Cesium.Terrain.fromWorldTerrain(),baseLayer:false,baseLayerPicker:false,geocoder:false,homeButton:false,
         sceneModePicker:false,navigationHelpButton:false,animation:false,timeline:false,infoBox:false,selectionIndicator:false,
         fullscreenButton:false,shouldAnimate:false});
+      /* Camada de satélite Esri World Imagery (não depende do asset 2 Bing Maps deprecado no Cesium Ion) */
+      V3.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+        url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel:19,
+        credit:'Esri World Imagery'
+      }));
       V3.scene.globe.depthTestAgainstTerrain=true;
       V3.screenSpaceEventHandler.setInputAction(mv=>{            /* clique numa foto do 3D abre a foto grande */
         const pk=V3.scene.pick(mv.position),id=pk&&pk.id?String(pk.id.id||''):'';
@@ -2233,7 +2367,20 @@ async function build3d(){
     ATT3=T.some(p=>typeof p[7]=='number');                         /* só há direção/câmera em logs reimportados */
     V3.trackedEntity=undefined;V3.entities.removeAll();CUR3=null;CONE3=[];FOT3=[];
     const red=Cesium.Color.fromCssColorString('#00d2ff'),cy=Cesium.Color.fromCssColorString('#38bdf8'),org=Cesium.Color.fromCssColorString('#ff9800');
-    TR3=V3.entities.add({polyline:{positions:P3,width:4,material:red}});
+    const sc3=TRK_COLOR!=='solid'?_trkColorScale(TRK_COLOR):null;
+    if(sc3){
+      TR3=V3.entities.add({polyline:{positions:P3,width:1,material:red.withAlpha(0.01)}});
+      let cCol=null,cPos=[];
+      const flush3=()=>{if(cPos.length>=2)V3.entities.add({polyline:{positions:cPos,width:4.5,material:Cesium.Color.fromCssColorString(cCol)}})};
+      for(let i=0;i<P3.length-1;i++){
+        const col=sc3.colorFor(_trkVal(T[i],TRK_COLOR));
+        if(col!==cCol){flush3();cCol=col;cPos=[P3[i],P3[i+1]]}
+        else cPos.push(P3[i+1]);
+      }
+      flush3();
+    }else{
+      TR3=V3.entities.add({polyline:{positions:P3,width:4,material:red}});
+    }
     V3.entities.add({wall:{positions:P3,minimumHeights:G3,material:red.withAlpha(0.18)}});
     DR3=V3.entities.add({position:new Cesium.CallbackProperty(()=>CUR3?CUR3.p:P3[0],false),
       billboard:{image:DRONE_ICO,width:44,height:44,disableDepthTestDistance:Number.POSITIVE_INFINITY}});
@@ -2387,7 +2534,7 @@ async function loadMedia(k){
   const sb=$('#sembar');if(sb)sb.classList.toggle('hide',kind!=='photo');
   if($('#bsem-clr'))$('#bsem-clr').classList.add('hide');
   if($('#semstat'))$('#semstat').textContent='';
-  const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value});
+  const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value,bbox:ACTIVE_BBOX||''});
   let ms=[];try{ms=await api('/media?'+p)}catch(e){alert('Filtro inválido: '+e.message)}ms=ms.filter(NLM);
   $('#mgrid').innerHTML=ms.map(mediaCard).join('')||'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.';
   $('#mcount').textContent=ms.length+' itens';
@@ -3035,8 +3182,35 @@ async function loadConfig(){
    `<h4>${t('config.backup_title')}</h4>`+
    `<p style="color:var(--mut);margin-top:0">${t('config.backup_desc')}</p>`+
    `<div class=row><button id="btn-backup" class="on" onclick="runBackup()">${t('config.backup_btn')}</button></div>`+
-   '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>';
-  sdDetect(true)}
+   '<pre id="backup-out" class="hide" style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;font-size:12.5px;max-width:780px"></pre>'+
+   '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
+   `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;max-width:860px">`+
+   `<h4 style="margin-top:0">${t('config.gis_title')}</h4>`+
+   `<p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('config.gis_desc')}</p>`+
+   `<div id="gis-box" style="font-size:12.5px;color:var(--fg)">Carregando status GIS…</div>`+
+   `<div class=row style="margin-top:10px;margin-bottom:0"><button onclick="rebuildGisIndex()">${t('config.gis_rebuild')}</button></div></div>`;
+  sdDetect(true);loadGisStatus()}
+async function loadGisStatus(){
+  const box=$('#gis-box');if(!box)return;
+  try{
+    const g=await api('/gis/status'),l1=g.level1||{},l2=g.level2||{},ex=g.extent;
+    const extTxt=ex?`<br>Envelope Global (${esc(ex.utm_epsg)}): <b>[${ex.bbox.join(', ')}]</b> · Área cobertura: <b>${ex.area_km2} km²</b> (diagonal ${ex.diagonal_km} km)`:'';
+    box.innerHTML=`<div class="row" style="margin:4px 0;gap:8px">`+
+      `<span class="chip" style="border-color:var(--ok);color:var(--ok)">🟢 Nível 1: R-Tree 2D + B-Tree (SQLite ${esc(g.sqlite_version)})</span>`+
+      `<span class="chip" style="border-color:var(--acc-cyan);color:var(--acc-cyan)">🌐 Nível 2: SpatiaLite ${esc(l2.spatialite_version)} (${esc(l2.mode)}) · GEOS ${esc(l2.geos_version||'—')}</span>`+
+      `</div>`+
+      `<div style="margin-top:6px;line-height:1.6;color:var(--mut)">`+
+      `Indexados no R-Tree: <b>${l1.rtree_flights}/${l1.total_flights}</b> voos (envelope completo da rota) · <b>${l1.rtree_media}/${l1.total_media}</b> mídias geolocalizadas · <b>${l1.rtree_spots}/${l1.total_spots}</b> locais favoritos`+
+      `${extTxt}<br>Funções SQL ativas: <code>${(l2.functions||[]).join('</code>, <code>')}</code></div>`;
+  }catch(e){box.textContent='Erro ao consultar motor GIS: '+msgErr(e)}
+}
+async function rebuildGisIndex(){
+  try{
+    await api('/gis/rebuild',{method:'POST'});
+    toast(t('config.gis_rebuilt'));
+    loadGisStatus();
+  }catch(e){alert(msgErr(e))}
+}
 let SD_DATA=null;
 const fmtBytes=b=>b>=1073741824?(b/1073741824).toFixed(2)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':Math.round(b/1024)+' KB';
 async function sdDetect(silent=false){
