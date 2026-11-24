@@ -1021,8 +1021,8 @@ input[type=range] {
   <button id="b-config" onclick="show('config')" data-i18n="nav.config">Configurações</button>
   <input id="nlq" placeholder="Buscar voos, fotos, locais…" data-i18n-ph="nav.nlq_placeholder" title="Ex.: voos acima de 80 m em 2025, fotos verticais, panoramas 360…" data-i18n-title="nav.nlq_title" onkeydown="if(event.key==='Enter')nlRun()"><button onclick="nlHelp()" title="Exemplos de busca" data-i18n-title="nav.nlq_help">?</button><span class="sp"></span>
   <a href="/api/logbook.csv" data-i18n="nav.logbook">⬇ Diário de voo (CSV)</a>
-  <input type="file" id="logup" accept=".txt" multiple class="hide" onchange="uploadLogs(this.files)">
-  <button id="uplog" onclick="$('#logup').click()" style="width:100%;margin-bottom:4px;font-size:12.5px" title="Enviar arquivos DJIFlightRecord_*.txt direto pelo navegador" data-i18n="nav.uplog" data-i18n-title="nav.uplog_title">⬆ Enviar logs (.txt)</button>
+  <input type="file" id="logup" accept=".txt,.csv,.ulg,.bin" multiple class="hide" onchange="uploadLogs(this.files)">
+  <button id="uplog" onclick="$('#logup').click()" style="width:100%;margin-bottom:4px;font-size:12.5px" title="Enviar logs DJI (.txt), Litchi/Airdata (.csv), PX4 (.ulg) ou ArduPilot (.bin)" data-i18n="nav.uplog" data-i18n-title="nav.uplog_title">⬆ Enviar logs (.txt/.csv/.ulg/.bin)</button>
   <button id="scan" onclick="scan()" data-i18n="nav.scan">Escanear pastas</button>
   <button id="themetog" onclick="toggleTheme()" title="Alternar tema Escuro (DJI Cockpit) / Claro" data-i18n-title="nav.theme_title">◐ <span data-i18n="nav.theme">Tema Claro / Escuro</span></button>
   <select id="langsel" onchange="setLang(this.value)" style="width:100%;margin-top:4px;font-size:12px" title="Idioma / Language">

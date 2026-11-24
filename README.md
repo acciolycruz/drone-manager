@@ -206,8 +206,8 @@ O script [`backup.sh`](backup.sh) copia logs novos, gera um backup atômico e co
 
 | Método | Rota | Descrição |
 | :---: | :--- | :--- |
-| `POST` | `/api/scan?force=0\|1` | Importa logs `.txt`, indexa mídias/EXIF/XMP/SRT, vincula mídias a voos e reconstrói voos. |
-| `POST` | `/api/logs/upload?name=...` | Recebe arquivos `DJIFlightRecord_*.txt` via streaming pelo navegador e importa automaticamente. |
+| `POST` | `/api/scan?force=0\|1` | Importa logs (`.txt` DJI, `.csv` Litchi/Airdata, `.ulg` PX4, `.bin` ArduPilot), indexa mídias/EXIF/XMP/SRT, vincula mídias a voos e reconstrói voos. |
+| `POST` | `/api/logs/upload?name=...` | Recebe arquivos de log (`.txt`, `.csv`, `.ulg`, `.bin`) via streaming pelo navegador e importa automaticamente. |
 | `GET` | `/api/flights` | Lista voos com filtros (texto, datas, altura, duração, bateria, aeronave, origem, favoritos). |
 | `GET` | `/api/flights/{fid}` | Detalhe completo do voo, incluindo `track` (15 posições/s), `events`, `bat`, `air` e `meta`. |
 | `POST` | `/api/flights/{fid}/airspace-check` | Consulta WFS no GeoServer do DECEA (GEOAISWEB) para o trajeto do voo. |

@@ -527,7 +527,180 @@ ACTION_PT = {"AppAutoTakeoff": "Decolagem automática (app)", "AppAutoLanding": 
              "SmartPowerGoHome": "Retorno automático por bateria baixa", "SmartPowerLanding": "Pouso automático por bateria crítica",
              "PGoHomeFinish": "Retorno automático concluído", "VertLowLimitLanding": "Pouso por limite vertical baixo"}
 
-def import_log(p):
+def _finalize_log_import(p: Path, rows: list[dict], bsn=None, dsn=None, dname=None, rcsn=None, camsn=None, dtype=None, log_format: str = "dji"):
+    if not rows: raise RuntimeError("log sem pontos de GPS")
+    real_time = sum(x.get("ep") is not None for x in rows) >= len(rows) / 2     # usa uma única fonte de hora
+    if real_time: rows = [x for x in rows if x.get("ep") is not None]
+    for i, x in enumerate(rows):
+        x.setdefault("i", i)
+        x["t"] = x["ep"] if real_time else (x["ft"] if x.get("ft") is not None else x["i"] * 0.1)
+    air = [i for i, x in enumerate(rows) if x.get("air", True)]
+    if not air: raise RuntimeError("sem decolagem (o drone ficou no solo)")
+    rows = rows[air[0]: air[-1] + 1]                    # só o tempo no ar
+    t0 = rows[0]["t"]
+    rcs = [x["rc"] for x in rows if isinstance(x.get("rc"), (int, float))]
+    use_rc = bool(rcs) and max(rcs) > 50                # só confia no sinal se a escala parecer 0-100
+    track, events, flags, warns = [], [], set(), set()
+    dist = maxalt = maxspd = max_hdist = 0.0; prev = None; last = -1; nsig = photos = 0
+    st0 = cand = low0 = home0 = rth_h = act0 = None; cand_t = 0; sig_low = vid0 = pho0 = False
+    mech = {"vib_s": 0, "force_s": 0, "comp_s": 0, "gimb_s": 0}
+    wind_samples, watts_list, amps_list = [], [], []
+    for x in rows:
+        sec = int(x["t"] - t0)
+        alt_v = float(x.get("alt") or 0)
+        spd_v = float(x.get("spd") or 0)
+        maxalt, maxspd = max(maxalt, alt_v), max(maxspd, spd_v)
+        ev = lambda label: events.append({"t": sec, "label": label})
+        st = x.get("state")
+        if st:                                          # um modo só vale se durar pelo menos 2 s
+            if st != cand: cand, cand_t = st, sec
+            if cand != st0 and sec - cand_t >= 2:
+                if st0 not in (None, "AutoTakeoff", "EngineStart"):
+                    lbl = STATE_PT.get(cand, str(cand))
+                    if log_format == "dji" and cand not in STATE_PT:
+                        lbl = None
+                    if lbl:
+                        events.append({"t": cand_t, "label": lbl})
+                st0 = cand
+        act = x.get("act")
+        if act and act != act0 and act in ACTION_PT and sec >= 0: ev(ACTION_PT[act])
+        act0 = act
+        bat = x.get("bat")
+        for th in (20, 10):
+            if bat is not None and bat <= th and th not in flags: flags.add(th); ev(f"Bateria em {th}%")
+        vw = str(x.get("vw") or "")
+        if vw in ("1", "2") and vw not in flags:
+            flags.add(vw); ev("Aviso de bateria baixa (nível 1)" if vw == "1" else "Aviso de bateria crítica (nível 2)")
+        if x.get("sats") is not None and x["sats"] < 8 and "gps" not in flags:
+            flags.add("gps"); ev(f"Sinal GPS fraco ({x['sats']} satélites)")
+        if use_rc and isinstance(x.get("rc"), (int, float)):
+            if x["rc"] <= 20:
+                if low0 is None: low0 = sec
+                if sec - low0 >= 3 and low0 >= 10 and not sig_low and nsig < 5:
+                    sig_low = True; nsig += 1; events.append({"t": low0, "label": f"Sinal do controle fraco ({x['rc']}%)"})
+            else:
+                low0 = None
+                if x["rc"] > 50: sig_low = False
+        if bool(x.get("vid")) != vid0:
+            ev("Início de gravação de vídeo" if x.get("vid") else "Fim da gravação de vídeo"); vid0 = bool(x.get("vid"))
+        if x.get("pho") and not pho0 and photos < 30: photos += 1; ev("Foto")
+        pho0 = bool(x.get("pho"))
+        w = str(x.get("warn") or "")
+        if w and w not in warns and len(warns) < 6: warns.add(w); ev(f"Aviso do app: {w[:80]}")
+        # Ponto Home e distância VLOS
+        hla, hlo = x.get("hlat"), x.get("hlon")
+        if isinstance(hla, (int, float)) and isinstance(hlo, (int, float)) and abs(hla) > 1e-6 and abs(hlo) > 1e-6:
+            if home0 is None: home0 = (hla, hlo)
+            elif hav(home0[0], home0[1], hla, hlo) > 15 and "home_upd" not in flags:
+                flags.add("home_upd"); home0 = (hla, hlo); ev("Ponto Home atualizado")
+        if x.get("rth_h") and not rth_h: rth_h = int(x["rth_h"])
+        ref_h = home0 or (rows[0]["lat"], rows[0]["lon"])
+        hdist = hav(ref_h[0], ref_h[1], x["lat"], x["lon"])
+        max_hdist = max(max_hdist, hdist)
+        if hdist > 500 and "vlos" not in flags:
+            flags.add("vlos"); ev("Distância > 500 m do Ponto Home (VLOS)")
+        # Diagnósticos mecânicos e sensores
+        if x.get("vib") and "vib" not in flags: flags.add("vib"); ev("Alerta: Vibração nas hélices detectada")
+        if x.get("noforce") and "noforce" not in flags: flags.add("noforce"); ev("Alerta: Força de propulsão insuficiente")
+        if x.get("comperr") and "comperr" not in flags: flags.add("comperr"); ev("Alerta: Interferência na bússola")
+        if x.get("motblk") and "motblk" not in flags: flags.add("motblk"); ev("Alerta: Motor bloqueado")
+        if x.get("gimbstk") and "gimbstk" not in flags: flags.add("gimbstk"); ev("Alerta: Gimbal travado")
+        if sec != last:                                  # 1 ponto por segundo no trajeto
+            last = sec
+            if prev: dist += dist_3d(prev[0], prev[1], prev[2], x["lat"], x["lon"], alt_v)
+            prev = (x["lat"], x["lon"], alt_v)
+            if x.get("vib"): mech["vib_s"] += 1
+            if x.get("noforce"): mech["force_s"] += 1
+            if x.get("comperr"): mech["comp_s"] += 1
+            if x.get("gimbstk"): mech["gimb_s"] += 1
+            zspd_v = float(x.get("zspd") or 0)
+            pt, rl, yw = x.get("pitch"), x.get("roll"), x.get("yaw")
+            if alt_v >= 5 and spd_v < 1.5 and abs(zspd_v) < 0.8 and all(isinstance(v, (int, float)) for v in (pt, rl, yw)):
+                tilt = degrees(acos(max(-1.0, min(1.0, cos(radians(pt)) * cos(radians(rl))))))
+                if 1.0 <= tilt <= 35.0:
+                    w_spd = round(12.0 * sqrt(tan(radians(tilt))), 1)
+                    w_dir = (yw + degrees(atan2(rl, -pt))) % 360
+                    wind_samples.append((w_spd, w_dir))
+            bv, bcur = x.get("bv"), x.get("bcur")
+            vv = (bv / 1000.0 if bv > 100 else float(bv)) if isinstance(bv, (int, float)) and bv > 0 else None
+            aa = (abs(bcur) / 1000.0 if abs(bcur) > 100 else abs(float(bcur))) if isinstance(bcur, (int, float)) else None
+            ww = round(vv * aa, 1) if (vv is not None and aa is not None) else None
+            if ww is not None and ww > 0: watts_list.append(ww)
+            if aa is not None and aa > 0: amps_list.append(aa)
+            cells = [round(c / 1000.0 if c > 20 else float(c), 3) for c in (x.get("bcells") or [])[:4] if isinstance(c, (int, float)) and c > 0]
+            pwr = [round(vv, 2) if vv else None, round(aa, 1) if aa is not None else None, ww, *cells] if (vv or aa or cells) else None
+            stk = [x.get("thr"), x.get("rud"), x.get("ele"), x.get("ail")] if any(x.get(k) is not None for k in ("thr", "rud", "ele", "ail")) else None
+            track.append([sec, x["lat"], x["lon"], round(alt_v, 1), round(spd_v, 1), bat, x.get("sats"),
+                          round(yw, 1) if isinstance(yw, (int, float)) else None,
+                          round(x["gp"], 1) if isinstance(x.get("gp"), (int, float)) else None,
+                          round(pt, 1) if isinstance(pt, (int, float)) else None,
+                          round(rl, 1) if isinstance(rl, (int, float)) else None,
+                          round(zspd_v, 1),
+                          stk,
+                          int(x["rc"]) if isinstance(x.get("rc"), (int, float)) else None,
+                          pwr])
+    if maxalt < 1: raise RuntimeError("sem voo (altura máxima menor que 1 m)")
+    def _nums(k): return [x[k] for x in rows if isinstance(x.get(k), (int, float)) and not isinstance(x.get(k), bool)]
+    _lv, _tp = _nums("bat"), _nums("btemp")
+    _vv, _dv, _fc = [v for v in _nums("bv") if v > 0], [v for v in _nums("bdev") if v > 0], [v for v in _nums("bfull") if v > 0]
+    _est = sum(1 for x in rows if x.get("best") in (True, "True")) > len(rows) / 2
+    _ts = 10 if _tp and max(_tp) > 100 else 1
+    dur_h = (track[-1][0] or 1) / 3600.0
+    wavg = round(sum(watts_list) / len(watts_list), 1) if watts_list else None
+    wmax = round(max(watts_list), 1) if watts_list else None
+    amax = round(max(amps_list), 1) if amps_list else None
+    wh = round(wavg * dur_h, 2) if wavg else None
+    wh_km = round(wh / (dist / 1000.0), 1) if (wh and dist >= 100) else None
+    binfo = {"start": _lv[0] if _lv else None, "end": _lv[-1] if _lv else None,
+             "vmin": round(min(_vv) * (1000 if min(_vv) < 100 else 1)) if _vv else None,
+             "dev": round(max(_dv) * (1000 if max(_dv) < 1 else 1), 1) if _dv and not _est else None,
+             "est": _est, "full": sorted(_fc)[len(_fc) // 2] if _fc else None,
+             "tmax": max(_tp) / _ts if _tp else None, "tmin": min(_tp) / _ts if _tp else None,
+             "wmax": wmax, "wavg": wavg, "amax": amax, "wh": wh, "wh_km": wh_km}
+    wind_est = None
+    if wind_samples:
+        ws = [s[0] for s in wind_samples]
+        sx = sum(cos(radians(s[1])) for s in wind_samples)
+        sy = sum(sin(radians(s[1])) for s in wind_samples)
+        wdeg = round(degrees(atan2(sy, sx)) % 360)
+        wind_est = {"spd": round(sum(ws) / len(ws), 1), "max": round(max(ws), 1), "deg": wdeg, "card": _cardinal(wdeg)}
+    fmeta = {
+        "home": {"lat": (home0 or (track[0][1], track[0][2]))[0], "lon": (home0 or (track[0][1], track[0][2]))[1],
+                 "rth_alt": rth_h, "max_dist": round(max_hdist, 1)},
+        "wind_est": wind_est,
+        "mech": mech,
+        "log_format": log_format,
+        "drone": {"sn": dsn or "", "name": dname or "", "type": str(dtype or "DJI Mini 3"), "rc_sn": rcsn or "", "cam_sn": camsn or ""}
+    }
+    fmeta["health"] = _calc_flight_health(track, binfo, fmeta, "log")
+    im = max(range(len(track)), key=lambda i: track[i][3])
+    events = ([{"t": 0, "label": "Decolagem"}] + events +
+              [{"t": track[-1][0], "label": "Pouso"}, {"t": track[im][0], "label": f"Altura máxima ({track[im][3]} m)"}])
+    events.sort(key=lambda e: e["t"])
+    start = datetime.fromtimestamp(t0, timezone.utc).isoformat() if real_time else None
+    if not start:                                        # plano B: data e hora do nome do arquivo
+        m = re.search(r"(\d{4}-\d\d-\d\d)[_T\s-]?\[?(\d\d)-(\d\d)-(\d\d)\]?", p.name)
+        if m:
+            lt = datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}")
+            start = (lt - timedelta(hours=TZ_OFFSET)).isoformat() + "Z"
+    with db() as c:
+        old = c.execute("SELECT place, weather FROM flights WHERE file=?", (str(p),)).fetchone()
+    place = (old["place"] if old and old["place"] else None) or geocode(track[0][1], track[0][2])
+    if not (old and old["place"]): time.sleep(1)
+    wx = (json.loads(old["weather"]) if old and old["weather"] and old["weather"] != "null" else None) or weather(track[0][1], track[0][2], start)
+    with db() as c:
+        c.execute("INSERT INTO flights(file,start,duration,distance,max_alt,max_speed,battery_sn,lat,lon,place,weather,track,events,bat,meta,source)"
+                  " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(file) DO UPDATE SET start=excluded.start,"
+                  "duration=excluded.duration,distance=excluded.distance,max_alt=excluded.max_alt,max_speed=excluded.max_speed,"
+                  "battery_sn=excluded.battery_sn,lat=excluded.lat,lon=excluded.lon,place=excluded.place,"
+                  "weather=excluded.weather,track=excluded.track,events=excluded.events,bat=excluded.bat,meta=excluded.meta,source=excluded.source",
+                  (str(p), start, track[-1][0], dist, maxalt, maxspd, bsn, track[0][1], track[0][2], place,
+                   json.dumps(wx), json.dumps(track), json.dumps(events), json.dumps(binfo), json.dumps(fmeta), "log"))
+        fid_row = c.execute("SELECT id FROM flights WHERE file=?", (str(p),)).fetchone()
+        if fid_row:
+            _sync_flight_rtree(c, fid_row[0], track[0][1], track[0][2], track)
+
+def _import_dji_log(p: Path):
     r = subprocess.run([DJI_LOG_BIN, str(p), "--api-key", API_KEY], capture_output=True, text=True, timeout=600)
     if r.returncode: raise RuntimeError(r.stderr[:200])
     raw = json.loads(r.stdout)
@@ -576,169 +749,333 @@ def import_log(p):
                      "vib": B(g(f, "osd", "isVibrating")), "noforce": B(g(f, "osd", "isNotEnoughForce")),
                      "comperr": B(g(f, "osd", "isCompassError")), "motblk": B(g(f, "osd", "isMotorBlocked")),
                      "gimbstk": B(g(f, "gimbal", "isStuck"))})
-    if not rows: raise RuntimeError("log sem pontos de GPS")
-    real_time = sum(x["ep"] is not None for x in rows) >= len(rows) / 2     # usa uma única fonte de hora
-    if real_time: rows = [x for x in rows if x["ep"] is not None]
-    for x in rows: x["t"] = x["ep"] if real_time else (x["ft"] if x["ft"] is not None else x["i"] * 0.1)
-    air = [i for i, x in enumerate(rows) if x["air"]]
-    if not air: raise RuntimeError("sem decolagem (o drone ficou no solo)")
-    rows = rows[air[0]: air[-1] + 1]                    # só o tempo no ar
-    t0 = rows[0]["t"]
-    rcs = [x["rc"] for x in rows if isinstance(x["rc"], (int, float))]
-    use_rc = bool(rcs) and max(rcs) > 50                # só confia no sinal se a escala parecer 0-100
-    track, events, flags, warns = [], [], set(), set()
-    dist = maxalt = maxspd = max_hdist = 0.0; prev = None; last = -1; nsig = photos = 0
-    st0 = cand = low0 = home0 = rth_h = act0 = None; cand_t = 0; sig_low = vid0 = pho0 = False
-    mech = {"vib_s": 0, "force_s": 0, "comp_s": 0, "gimb_s": 0}
-    wind_samples, watts_list, amps_list = [], [], []
-    for x in rows:
-        sec = int(x["t"] - t0)
-        maxalt, maxspd = max(maxalt, x["alt"]), max(maxspd, x["spd"])
-        ev = lambda label: events.append({"t": sec, "label": label})
-        st = x["state"]
-        if st:                                          # um modo só vale se durar pelo menos 2 s
-            if st != cand: cand, cand_t = st, sec
-            if cand != st0 and sec - cand_t >= 2:
-                if st0 not in (None, "AutoTakeoff", "EngineStart") and cand in STATE_PT:
-                    events.append({"t": cand_t, "label": STATE_PT[cand]})
-                st0 = cand
-        act = x["act"]
-        if act and act != act0 and act in ACTION_PT and sec >= 0: ev(ACTION_PT[act])
-        act0 = act
-        bat = x["bat"]
-        for th in (20, 10):
-            if bat is not None and bat <= th and th not in flags: flags.add(th); ev(f"Bateria em {th}%")
-        vw = str(x["vw"])
-        if vw in ("1", "2") and vw not in flags:
-            flags.add(vw); ev("Aviso de bateria baixa (nível 1)" if vw == "1" else "Aviso de bateria crítica (nível 2)")
-        if x["sats"] is not None and x["sats"] < 8 and "gps" not in flags:
-            flags.add("gps"); ev(f"Sinal GPS fraco ({x['sats']} satélites)")
-        if use_rc and isinstance(x["rc"], (int, float)):
-            if x["rc"] <= 20:
-                if low0 is None: low0 = sec
-                if sec - low0 >= 3 and low0 >= 10 and not sig_low and nsig < 5:
-                    sig_low = True; nsig += 1; events.append({"t": low0, "label": f"Sinal do controle fraco ({x['rc']}%)"})
-            else:
-                low0 = None
-                if x["rc"] > 50: sig_low = False
-        if x["vid"] != vid0:
-            ev("Início de gravação de vídeo" if x["vid"] else "Fim da gravação de vídeo"); vid0 = x["vid"]
-        if x["pho"] and not pho0 and photos < 30: photos += 1; ev("Foto")
-        pho0 = x["pho"]
-        w = str(x["warn"] or "")
-        if w and w not in warns and len(warns) < 6: warns.add(w); ev(f"Aviso do app: {w[:80]}")
-        # Ponto Home e distância VLOS
-        hla, hlo = x.get("hlat"), x.get("hlon")
-        if isinstance(hla, (int, float)) and isinstance(hlo, (int, float)) and abs(hla) > 1e-6 and abs(hlo) > 1e-6:
-            if home0 is None: home0 = (hla, hlo)
-            elif hav(home0[0], home0[1], hla, hlo) > 15 and "home_upd" not in flags:
-                flags.add("home_upd"); home0 = (hla, hlo); ev("Ponto Home atualizado")
-        if x.get("rth_h") and not rth_h: rth_h = int(x["rth_h"])
-        ref_h = home0 or (rows[0]["lat"], rows[0]["lon"])
-        hdist = hav(ref_h[0], ref_h[1], x["lat"], x["lon"])
-        max_hdist = max(max_hdist, hdist)
-        if hdist > 500 and "vlos" not in flags:
-            flags.add("vlos"); ev("Distância > 500 m do Ponto Home (VLOS)")
-        # Diagnósticos mecânicos e sensores
-        if x["vib"] and "vib" not in flags: flags.add("vib"); ev("Alerta: Vibração nas hélices detectada")
-        if x["noforce"] and "noforce" not in flags: flags.add("noforce"); ev("Alerta: Força de propulsão insuficiente")
-        if x["comperr"] and "comperr" not in flags: flags.add("comperr"); ev("Alerta: Interferência na bússola")
-        if x["motblk"] and "motblk" not in flags: flags.add("motblk"); ev("Alerta: Motor bloqueado")
-        if x["gimbstk"] and "gimbstk" not in flags: flags.add("gimbstk"); ev("Alerta: Gimbal travado")
-        if sec != last:                                  # 1 ponto por segundo no trajeto
-            last = sec
-            if prev: dist += dist_3d(prev[0], prev[1], prev[2], x["lat"], x["lon"], x["alt"])
-            prev = (x["lat"], x["lon"], x["alt"])
-            if x["vib"]: mech["vib_s"] += 1
-            if x["noforce"]: mech["force_s"] += 1
-            if x["comperr"]: mech["comp_s"] += 1
-            if x["gimbstk"]: mech["gimb_s"] += 1
-            # Estimativa de vento em altitude quando pairando (spd < 1.5 m/s e |zspd| < 0.8 m/s)
-            pt, rl, yw = x.get("pitch"), x.get("roll"), x.get("yaw")
-            if x["alt"] >= 5 and x["spd"] < 1.5 and abs(x["zspd"]) < 0.8 and all(isinstance(v, (int, float)) for v in (pt, rl, yw)):
-                tilt = degrees(acos(max(-1.0, min(1.0, cos(radians(pt)) * cos(radians(rl))))))
-                if 1.0 <= tilt <= 35.0:
-                    w_spd = round(12.0 * sqrt(tan(radians(tilt))), 1)
-                    w_dir = (yw + degrees(atan2(rl, -pt))) % 360
-                    wind_samples.append((w_spd, w_dir))
-            # Telemetria elétrica (V, A, W e células)
-            bv, bcur = x.get("bv"), x.get("bcur")
-            vv = (bv / 1000.0 if bv > 100 else float(bv)) if isinstance(bv, (int, float)) and bv > 0 else None
-            aa = (abs(bcur) / 1000.0 if abs(bcur) > 100 else abs(float(bcur))) if isinstance(bcur, (int, float)) else None
-            ww = round(vv * aa, 1) if (vv is not None and aa is not None) else None
-            if ww is not None and ww > 0: watts_list.append(ww)
-            if aa is not None and aa > 0: amps_list.append(aa)
-            cells = [round(c / 1000.0 if c > 20 else float(c), 3) for c in (x.get("bcells") or [])[:4] if isinstance(c, (int, float)) and c > 0]
-            pwr = [round(vv, 2) if vv else None, round(aa, 1) if aa is not None else None, ww, *cells] if (vv or aa or cells) else None
-            stk = [x["thr"], x["rud"], x["ele"], x["ail"]] if any(x[k] is not None for k in ("thr", "rud", "ele", "ail")) else None
-            track.append([sec, x["lat"], x["lon"], round(x["alt"], 1), round(x["spd"], 1), bat, x["sats"],
-                          round(yw, 1) if isinstance(yw, (int, float)) else None,
-                          round(x["gp"], 1) if isinstance(x["gp"], (int, float)) else None,
-                          round(pt, 1) if isinstance(pt, (int, float)) else None,
-                          round(rl, 1) if isinstance(rl, (int, float)) else None,
-                          round(x["zspd"], 1) if isinstance(x["zspd"], (int, float)) else 0.0,
-                          stk,
-                          int(x["rc"]) if isinstance(x["rc"], (int, float)) else None,
-                          pwr])
-    if maxalt < 1: raise RuntimeError("sem voo (altura máxima menor que 1 m)")
-    def _nums(k): return [x[k] for x in rows if isinstance(x.get(k), (int, float)) and not isinstance(x.get(k), bool)]
-    _lv, _tp = _nums("bat"), _nums("btemp")
-    _vv, _dv, _fc = [v for v in _nums("bv") if v > 0], [v for v in _nums("bdev") if v > 0], [v for v in _nums("bfull") if v > 0]
-    _est = sum(1 for x in rows if x.get("best") in (True, "True")) > len(rows) / 2
-    _ts = 10 if _tp and max(_tp) > 100 else 1
-    dur_h = (track[-1][0] or 1) / 3600.0
-    wavg = round(sum(watts_list) / len(watts_list), 1) if watts_list else None
-    wmax = round(max(watts_list), 1) if watts_list else None
-    amax = round(max(amps_list), 1) if amps_list else None
-    wh = round(wavg * dur_h, 2) if wavg else None
-    wh_km = round(wh / (dist / 1000.0), 1) if (wh and dist >= 100) else None
-    binfo = {"start": _lv[0] if _lv else None, "end": _lv[-1] if _lv else None,
-             "vmin": round(min(_vv) * (1000 if min(_vv) < 100 else 1)) if _vv else None,
-             "dev": round(max(_dv) * (1000 if max(_dv) < 1 else 1), 1) if _dv and not _est else None,
-             "est": _est, "full": sorted(_fc)[len(_fc) // 2] if _fc else None,
-             "tmax": max(_tp) / _ts if _tp else None, "tmin": min(_tp) / _ts if _tp else None,
-             "wmax": wmax, "wavg": wavg, "amax": amax, "wh": wh, "wh_km": wh_km}
-    wind_est = None
-    if wind_samples:
-        ws = [s[0] for s in wind_samples]
-        sx = sum(cos(radians(s[1])) for s in wind_samples)
-        sy = sum(sin(radians(s[1])) for s in wind_samples)
-        wdeg = round(degrees(atan2(sy, sx)) % 360)
-        wind_est = {"spd": round(sum(ws) / len(ws), 1), "max": round(max(ws), 1), "deg": wdeg, "card": _cardinal(wdeg)}
-    fmeta = {
-        "home": {"lat": (home0 or (track[0][1], track[0][2]))[0], "lon": (home0 or (track[0][1], track[0][2]))[1],
-                 "rth_alt": rth_h, "max_dist": round(max_hdist, 1)},
-        "wind_est": wind_est,
-        "mech": mech,
-        "drone": {"sn": dsn or "", "name": dname or "", "type": str(dtype or "DJI Mini 3"), "rc_sn": rcsn or "", "cam_sn": camsn or ""}
+    _finalize_log_import(p, rows, bsn=bsn, dsn=dsn, dname=dname, rcsn=rcsn, camsn=camsn, dtype=dtype, log_format="dji")
+
+def _import_csv_log(p: Path):
+    """Importa logs CSV do Litchi ou Airdata UAV (métrico ou imperial)."""
+    import csv
+    with open(p, "r", encoding="utf-8-sig", errors="replace", newline="") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            raise RuntimeError("CSV sem cabeçalho.")
+        hdr = [h.strip() for h in reader.fieldnames]
+        hlow = {h.lower(): h for h in hdr}
+        is_airdata = any("height_above_takeoff" in k or "compass_heading" in k or "flycstateraw" in k or "battery_percent" in k for k in hlow)
+        fmt = "airdata" if is_airdata else "litchi"
+
+        def _col(*cands):
+            for c in cands:
+                if c in hlow: return hlow[c]
+            for c in cands:
+                for k, orig in hlow.items():
+                    if c in k: return orig
+            return None
+
+        c_lat = _col("latitude", "osd.latitude")
+        c_lon = _col("longitude", "osd.longitude")
+        c_alt = _col("height_above_takeoff(meters)", "height_above_takeoff(feet)", "altitude(m)", "altitude(ft)", "altitude(meters)", "altitude(feet)", "height_above_takeoff", "altitude")
+        c_spd = _col("speed(m/s)", "speed(mph)", "speed(km/h)", "speed(kmh)", "speed(ft/s)", "hspeed", "speed")
+        c_zspd = _col("zspeed", "vspeed", "climb")
+        c_dt_utc = _col("datetime(utc)", "datetime_utc", "utc")
+        c_dt_loc = _col("datetime(local)", "datetime", "date")
+        c_tms = _col("time(millisecond)", "time(ms)")
+        c_ts = _col("time(s)", "time(sec)", "flytime")
+        c_bat = _col("battery_percent", "battery(%)", "battery_percentage", "chargelevel", "battery")
+        c_bv = _col("voltage(v)", "voltage", "battery_voltage")
+        c_ba = _col("current(a)", "current", "battery_current")
+        c_bt = _col("battery_temperature(c)", "battery_temperature(f)", "temperature(c)", "temperature(f)", "temperature")
+        c_sat = _col("satellites", "gps_satellites", "gpsnum")
+        c_yaw = _col("compass_heading(degrees)", "heading(deg)", "yaw", "heading")
+        c_gp = _col("gimbal_pitch(deg)", "gimbal_pitch", "gimbalpitch")
+        c_pt = _col("pitch(deg)", "pitch")
+        c_rl = _col("roll(deg)", "roll")
+        c_st = _col("flycstate", "flight_mode", "mode")
+        c_rc = _col("rc_signal", "rcsignal", "signal")
+        c_vid = _col("isvideo", "video")
+        c_pho = _col("isphoto", "photo")
+        c_hlat = _col("home_latitude", "homelatitude")
+        c_hlon = _col("home_longitude", "homelongitude")
+        c_msg = _col("message", "warn")
+        c_gnd = _col("isonground", "on_ground")
+        c_bsn = _col("battery_serial_number", "batterysn")
+        c_dsn = _col("aircraft_serial", "aircraftsn")
+        c_dnm = _col("aircraft_name", "drone_type", "model")
+
+        if not c_lat or not c_lon:
+            raise RuntimeError("CSV sem colunas de latitude/longitude.")
+
+        alt_ft = bool(c_alt and ("(ft" in c_alt.lower() or "(feet" in c_alt.lower()))
+        spd_mph = bool(c_spd and "mph" in c_spd.lower())
+        spd_kmh = bool(c_spd and ("km/h" in c_spd.lower() or "kmh" in c_spd.lower()))
+        spd_fts = bool(c_spd and "ft/s" in c_spd.lower())
+        tmp_f = bool(c_bt and "(f)" in c_bt.lower())
+
+        def _f(row, col):
+            if not col: return None
+            v = str(row.get(col) or "").strip()
+            if not v or v.lower() in ("na", "nan", "null", "none"): return None
+            try: return float(v.replace(",", ".")) if (v.count(",") == 1 and "." not in v) else float(v)
+            except Exception: return None
+
+        rows, bsn, dsn, dtype = [], None, None, None
+        for i, r in enumerate(reader):
+            lat, lon = _f(r, c_lat), _f(r, c_lon)
+            if lat is None or lon is None or abs(lat) < 1e-6 or abs(lon) < 1e-6:
+                continue
+            bsn = bsn or (str(r.get(c_bsn) or "").strip() or None if c_bsn else None)
+            dsn = dsn or (str(r.get(c_dsn) or "").strip() or None if c_dsn else None)
+            dtype = dtype or (str(r.get(c_dnm) or "").strip() or None if c_dnm else None)
+            alt = _f(r, c_alt) or 0.0
+            if alt_ft: alt *= 0.3048
+            spd = _f(r, c_spd) or 0.0
+            if spd_mph: spd *= 0.44704
+            elif spd_kmh: spd /= 3.6
+            elif spd_fts: spd *= 0.3048
+            zspd = _f(r, c_zspd) or 0.0
+            if c_zspd and "mph" in c_zspd.lower(): zspd *= 0.44704
+            elif c_zspd and "ft/s" in c_zspd.lower(): zspd *= 0.3048
+            ep = None
+            if c_dt_utc and r.get(c_dt_utc):
+                ep = _epoch(r[c_dt_utc].strip())
+            elif c_dt_loc and r.get(c_dt_loc):
+                ep0 = _epoch(r[c_dt_loc].strip())
+                if ep0 is not None: ep = ep0 - TZ_OFFSET * 3600
+            ft = _f(r, c_ts)
+            if ft is None and c_tms:
+                ms = _f(r, c_tms)
+                if ms is not None: ft = ms / 1000.0
+            bt = _f(r, c_bt)
+            if bt is not None and tmp_f:
+                bt = (bt - 32.0) * 5.0 / 9.0
+            gnd_v = str(r.get(c_gnd) or "").strip().lower() if c_gnd else ""
+            air = (gnd_v not in ("1", "true", "yes")) if gnd_v else (alt >= 0.8 or spd >= 0.8)
+            rows.append({
+                "ep": ep if (ep is not None and ep > 1.4e9) else None, "ft": ft, "i": i,
+                "lat": lat, "lon": lon, "alt": alt, "spd": spd, "zspd": zspd,
+                "pitch": _f(r, c_pt), "roll": _f(r, c_rl), "yaw": _f(r, c_yaw), "gp": _f(r, c_gp),
+                "bat": _f(r, c_bat), "bv": _f(r, c_bv), "bcur": _f(r, c_ba), "btemp": bt,
+                "sats": int(_f(r, c_sat)) if _f(r, c_sat) is not None else None,
+                "air": air, "state": str(r.get(c_st) or "").strip() if c_st else None,
+                "rc": _f(r, c_rc),
+                "vid": str(r.get(c_vid) or "").strip().lower() in ("1", "true", "yes") if c_vid else False,
+                "pho": str(r.get(c_pho) or "").strip().lower() in ("1", "true", "yes") if c_pho else False,
+                "warn": str(r.get(c_msg) or "").strip() if c_msg else "",
+                "hlat": _f(r, c_hlat), "hlon": _f(r, c_hlon),
+            })
+    _finalize_log_import(p, rows, bsn=bsn, dsn=dsn, dtype=dtype or ("Airdata CSV" if is_airdata else "Litchi CSV"), log_format=fmt)
+
+def _import_ulog(p: Path):
+    """Importa logs binários PX4 ULog (.ulg) em Python puro."""
+    import struct
+    _TYPES = {
+        "int8_t": ("b", 1), "uint8_t": ("B", 1), "bool": ("B", 1), "char": ("c", 1),
+        "int16_t": ("h", 2), "uint16_t": ("H", 2), "int32_t": ("i", 4), "uint32_t": ("I", 4),
+        "int64_t": ("q", 8), "uint64_t": ("Q", 8), "float": ("f", 4), "double": ("d", 8),
     }
-    fmeta["health"] = _calc_flight_health(track, binfo, fmeta, "log")
-    im = max(range(len(track)), key=lambda i: track[i][3])
-    events = ([{"t": 0, "label": "Decolagem"}] + events +
-              [{"t": track[-1][0], "label": "Pouso"}, {"t": track[im][0], "label": f"Altura máxima ({track[im][3]} m)"}])
-    events.sort(key=lambda e: e["t"])
-    start = datetime.fromtimestamp(t0, timezone.utc).isoformat() if real_time else None
-    if not start:                                        # plano B: data e hora do nome do arquivo
-        m = re.search(r"(\d{4}-\d\d-\d\d)_\[(\d\d)-(\d\d)-(\d\d)\]", p.name)
-        if m:
-            lt = datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}:{m.group(3)}:{m.group(4)}")
-            start = (lt - timedelta(hours=TZ_OFFSET)).isoformat() + "Z"
-    with db() as c:
-        old = c.execute("SELECT place, weather FROM flights WHERE file=?", (str(p),)).fetchone()
-    place = (old["place"] if old and old["place"] else None) or geocode(track[0][1], track[0][2])
-    if not (old and old["place"]): time.sleep(1)
-    wx = (json.loads(old["weather"]) if old and old["weather"] and old["weather"] != "null" else None) or weather(track[0][1], track[0][2], start)
-    with db() as c:
-        c.execute("INSERT INTO flights(file,start,duration,distance,max_alt,max_speed,battery_sn,lat,lon,place,weather,track,events,bat,meta)"
-                  " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(file) DO UPDATE SET start=excluded.start,"
-                  "duration=excluded.duration,distance=excluded.distance,max_alt=excluded.max_alt,max_speed=excluded.max_speed,"
-                  "battery_sn=excluded.battery_sn,lat=excluded.lat,lon=excluded.lon,place=excluded.place,"
-                  "weather=excluded.weather,track=excluded.track,events=excluded.events,bat=excluded.bat,meta=excluded.meta",
-                  (str(p), start, track[-1][0], dist, maxalt, maxspd, bsn, track[0][1], track[0][2], place,
-                   json.dumps(wx), json.dumps(track), json.dumps(events), json.dumps(binfo), json.dumps(fmeta)))
-        fid_row = c.execute("SELECT id FROM flights WHERE file=?", (str(p),)).fetchone()
-        if fid_row:
-            _sync_flight_rtree(c, fid_row[0], track[0][1], track[0][2], track)
+    data = p.read_bytes()
+    if len(data) < 16 or data[:7] != b"ULog\x01\x12\x35":
+        raise RuntimeError("Arquivo .ulg inválido (cabeçalho PX4 ULog não encontrado).")
+    pos = 16
+    formats, subs, info = {}, {}, {}
+
+    def _compile_fmt(fstr: str):
+        fields, off = [], 0
+        for part in fstr.split(";"):
+            part = part.strip()
+            if not part or " " not in part: continue
+            ftype, fname = part.split(" ", 1)
+            arr_n = 1
+            if "[" in ftype and ftype.endswith("]"):
+                base, n_s = ftype[:-1].split("[", 1)
+                arr_n = int(n_s)
+            else:
+                base = ftype
+            if base in _TYPES:
+                ch, sz = _TYPES[base]
+                if not fname.startswith("_padding"):
+                    fields.append((fname, ch, arr_n, off, sz * arr_n))
+                off += sz * arr_n
+        return fields
+
+    gps_pts, att_st, loc_st, bat_st, home_st, rc_st, mode_st = [], {}, {}, {}, {}, {}, {}
+    while pos + 3 <= len(data):
+        msize, mtype = struct.unpack_from("<HB", data, pos)
+        pos += 3
+        if pos + msize > len(data): break
+        payload = data[pos:pos + msize]
+        pos += msize
+        if mtype == ord("F"):
+            s = payload.decode("utf-8", errors="ignore")
+            if ":" in s:
+                mname, fstr = s.split(":", 1)
+                formats[mname] = _compile_fmt(fstr)
+        elif mtype == ord("I") and len(payload) >= 2:
+            klen = payload[0]
+            key = payload[1:1 + klen].decode("utf-8", errors="ignore")
+            val_b = payload[1 + klen:]
+            if "char[" in key:
+                info[key.split(" ")[-1]] = val_b.decode("utf-8", errors="ignore").rstrip("\x00")
+        elif mtype == ord("A") and len(payload) >= 4:
+            _multi, mid = struct.unpack_from("<BH", payload, 0)
+            mname = payload[3:].decode("utf-8", errors="ignore").rstrip("\x00")
+            if mname in formats:
+                subs[mid] = (mname, formats[mname])
+        elif mtype == ord("D") and len(payload) >= 2:
+            mid = struct.unpack_from("<H", payload, 0)[0]
+            if mid not in subs: continue
+            mname, flds = subs[mid]
+            if mname not in ("vehicle_gps_position", "sensor_gps", "vehicle_attitude", "vehicle_local_position",
+                             "battery_status", "home_position", "input_rc", "vehicle_status"):
+                continue
+            rec = {}
+            buf = payload[2:]
+            for fname, ch, arr_n, off, sz in flds:
+                if off + sz > len(buf): break
+                val = struct.unpack_from(f"<{arr_n}{ch}", buf, off)
+                rec[fname] = val[0] if arr_n == 1 else val
+            if mname == "vehicle_attitude" and "q" in rec:
+                q0, q1, q2, q3 = rec["q"]
+                att_st["roll"] = round(degrees(atan2(2 * (q0 * q1 + q2 * q3), 1 - 2 * (q1 * q1 + q2 * q2))), 1)
+                att_st["pitch"] = round(degrees(asin(max(-1.0, min(1.0, 2 * (q0 * q2 - q3 * q1))))), 1)
+                att_st["yaw"] = round(degrees(atan2(2 * (q0 * q3 + q1 * q2), 1 - 2 * (q2 * q2 + q3 * q3))) % 360, 1)
+            elif mname == "vehicle_local_position":
+                if "z" in rec: loc_st["alt"] = -float(rec["z"])
+                if "vz" in rec: loc_st["zspd"] = -float(rec["vz"])
+            elif mname == "battery_status":
+                if "remaining" in rec and 0 <= rec["remaining"] <= 1.05: bat_st["bat"] = round(rec["remaining"] * 100)
+                if "voltage_v" in rec: bat_st["bv"] = rec["voltage_v"]
+                if "current_a" in rec: bat_st["bcur"] = rec["current_a"]
+                if "temperature" in rec: bat_st["btemp"] = rec["temperature"]
+            elif mname == "home_position":
+                if "lat" in rec and "lon" in rec:
+                    home_st["hlat"], home_st["hlon"] = rec["lat"], rec["lon"]
+                    if "alt" in rec: home_st["halt"] = rec["alt"]
+            elif mname == "input_rc" and "rssi" in rec:
+                rc_st["rc"] = min(100, max(0, int(rec["rssi"])))
+            elif mname == "vehicle_status" and "nav_state" in rec:
+                mode_st["state"] = f"PX4 Modo {rec['nav_state']}"
+            elif mname in ("vehicle_gps_position", "sensor_gps"):
+                lat_raw, lon_raw = rec.get("lat"), rec.get("lon")
+                if lat_raw is None or lon_raw is None: continue
+                lat = lat_raw / 1e7 if abs(lat_raw) > 180 else float(lat_raw)
+                lon = lon_raw / 1e7 if abs(lon_raw) > 180 else float(lon_raw)
+                if abs(lat) < 1e-6 or abs(lon) < 1e-6: continue
+                ts_us = rec.get("timestamp", 0)
+                utc_us = rec.get("time_utc_usec", 0)
+                ep = (utc_us / 1e6) if utc_us and utc_us > 1.4e15 else None
+                alt_rel = loc_st.get("alt")
+                if alt_rel is None and "alt" in rec:
+                    halt = home_st.get("halt")
+                    alt_m = rec["alt"] / 1000.0 if abs(rec["alt"]) > 10000 else float(rec["alt"])
+                    alt_rel = (alt_m - halt) if halt is not None else alt_m
+                gps_pts.append({
+                    "ep": ep, "ft": ts_us / 1e6, "lat": lat, "lon": lon,
+                    "alt": float(alt_rel or 0), "spd": float(rec.get("vel_m_s") or 0),
+                    "zspd": float(loc_st.get("zspd") if "zspd" in loc_st else -(rec.get("vel_d_m_s") or 0)),
+                    "sats": rec.get("satellites_used"),
+                    "pitch": att_st.get("pitch"), "roll": att_st.get("roll"), "yaw": att_st.get("yaw"),
+                    "bat": bat_st.get("bat"), "bv": bat_st.get("bv"), "bcur": bat_st.get("bcur"), "btemp": bat_st.get("btemp"),
+                    "hlat": home_st.get("hlat"), "hlon": home_st.get("hlon"),
+                    "rc": rc_st.get("rc"), "state": mode_st.get("state"),
+                    "air": float(alt_rel or 0) >= 0.8 or float(rec.get("vel_m_s") or 0) >= 0.8,
+                })
+    dtype = info.get("sys_name") or info.get("ver_hw") or "PX4 ULog"
+    _finalize_log_import(p, gps_pts, dtype=dtype, log_format="ulog")
+
+def _import_ardupilot_bin(p: Path):
+    """Importa logs binários ArduPilot DataFlash (.bin) em Python puro."""
+    import struct
+    _DF_FMT = {
+        "a": ("32h", 64, 1), "b": ("b", 1, 1), "B": ("B", 1, 1), "h": ("h", 2, 1), "H": ("H", 2, 1),
+        "i": ("i", 4, 1), "I": ("I", 4, 1), "f": ("f", 4, 1), "d": ("d", 8, 1),
+        "n": ("4s", 4, 1), "N": ("16s", 16, 1), "Z": ("64s", 64, 1),
+        "c": ("h", 2, 0.01), "C": ("H", 2, 0.01), "e": ("i", 4, 0.01), "E": ("I", 4, 0.01),
+        "L": ("i", 4, 1e-7), "M": ("B", 1, 1), "q": ("q", 8, 1), "Q": ("Q", 8, 1),
+    }
+    data = p.read_bytes()
+    pos, n = 0, len(data)
+    fmts, rows = {}, []
+    att_st, baro_st, bat_st, home_st, mode_st = {}, {}, {}, {}, {}
+    while pos + 3 <= n:
+        if data[pos] != 0xA3 or data[pos + 1] != 0x95:
+            pos += 1
+            continue
+        mid = data[pos + 2]
+        if mid == 0x80:
+            if pos + 89 > n: break
+            mtype, mlen = data[pos + 3], data[pos + 4]
+            mname = data[pos + 5:pos + 9].split(b"\x00", 1)[0].decode("ascii", errors="ignore")
+            mfmt = data[pos + 9:pos + 25].split(b"\x00", 1)[0].decode("ascii", errors="ignore")
+            mlbl = data[pos + 25:pos + 89].split(b"\x00", 1)[0].decode("ascii", errors="ignore").split(",")
+            fmts[mtype] = (mname, mlen, mfmt, mlbl)
+            pos += 89
+            continue
+        if mid not in fmts:
+            pos += 3
+            continue
+        mname, mlen, mfmt, mlbl = fmts[mid]
+        if pos + mlen > n: break
+        if mname in ("GPS", "ATT", "BARO", "POS", "CTUN", "BAT", "CURR", "MODE", "ORGN"):
+            off = pos + 3
+            rec = {}
+            for ch, lbl in zip(mfmt, mlbl):
+                spec = _DF_FMT.get(ch)
+                if not spec or off + spec[1] > pos + mlen: break
+                val = struct.unpack_from("<" + spec[0], data, off)[0]
+                if isinstance(val, bytes):
+                    val = val.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+                elif spec[2] != 1:
+                    val = val * spec[2]
+                rec[lbl] = val
+                off += spec[1]
+            if mname == "ATT":
+                att_st["roll"] = round(float(rec.get("Roll") or 0), 1)
+                att_st["pitch"] = round(float(rec.get("Pitch") or 0), 1)
+                att_st["yaw"] = round(float(rec.get("Yaw") or 0), 1)
+            elif mname in ("BARO", "POS"):
+                if "Alt" in rec: baro_st["alt"] = float(rec["Alt"])
+                if "RelHomeAlt" in rec: baro_st["alt"] = float(rec["RelHomeAlt"])
+            elif mname in ("BAT", "CURR"):
+                if "Volt" in rec: bat_st["bv"] = float(rec["Volt"])
+                if "Curr" in rec: bat_st["bcur"] = float(rec["Curr"])
+                if "Temp" in rec: bat_st["btemp"] = float(rec["Temp"])
+                if "RemPct" in rec: bat_st["bat"] = float(rec["RemPct"])
+            elif mname == "ORGN":
+                if "Lat" in rec and "Lng" in rec:
+                    home_st["hlat"], home_st["hlon"] = float(rec["Lat"]), float(rec["Lng"])
+            elif mname == "MODE":
+                mode_st["state"] = str(rec.get("Mode") or rec.get("ModeNum") or "")
+            elif mname == "GPS":
+                lat, lon = rec.get("Lat"), rec.get("Lng")
+                if lat is None or lon is None or abs(lat) < 1e-6 or abs(lon) < 1e-6:
+                    pos += mlen
+                    continue
+                gwk, gms = rec.get("GWk"), rec.get("GMS")
+                ep = (315964800.0 + gwk * 604800.0 + gms / 1000.0 - 18.0) if (gwk and gwk > 1000 and gms is not None) else None
+                alt = baro_st.get("alt") if "alt" in baro_st else float(rec.get("Alt") or 0)
+                spd = float(rec.get("Spd") or 0)
+                rows.append({
+                    "ep": ep, "ft": (rec.get("TimeUS") or 0) / 1e6,
+                    "lat": float(lat), "lon": float(lon), "alt": alt, "spd": spd,
+                    "zspd": -float(rec.get("VZ") or 0),
+                    "sats": int(rec["NSats"]) if "NSats" in rec else None,
+                    "pitch": att_st.get("pitch"), "roll": att_st.get("roll"), "yaw": att_st.get("yaw"),
+                    "bat": bat_st.get("bat"), "bv": bat_st.get("bv"), "bcur": bat_st.get("bcur"), "btemp": bat_st.get("btemp"),
+                    "hlat": home_st.get("hlat"), "hlon": home_st.get("hlon"),
+                    "state": mode_st.get("state"),
+                    "air": alt >= 0.8 or spd >= 0.8,
+                })
+        pos += mlen
+    _finalize_log_import(p, rows, dtype="ArduPilot", log_format="ardupilot")
+
+def import_log(p):
+    p = Path(p)
+    ext = p.suffix.lower()
+    if ext == ".txt": return _import_dji_log(p)
+    if ext == ".csv": return _import_csv_log(p)
+    if ext == ".ulg": return _import_ulog(p)
+    if ext == ".bin": return _import_ardupilot_bin(p)
+    raise RuntimeError(f"Formato de log não suportado: {ext}")
 
 # ---------- indexação de mídia e parser completo de .SRT / EXIF / XMP ----------
 def sha1(p):
@@ -1137,7 +1474,9 @@ def scan(force: int = 0):
     with db() as c:
         known = set() if force else {r[0] for r in c.execute("SELECT file FROM flights WHERE source='log'")}
         if force: c.execute("UPDATE media SET flight_id=NULL WHERE COALESCE(manual,0)=0 AND flight_id IN (SELECT id FROM flights WHERE source='log')")
-    for p in sorted(LOGS_DIR.rglob("*FlightRecord*.txt")):
+    log_files = sorted(list(LOGS_DIR.rglob("*FlightRecord*.txt")) + list(LOGS_DIR.rglob("*.csv")) +
+                       list(LOGS_DIR.rglob("*.ulg")) + list(LOGS_DIR.rglob("*.bin")))
+    for p in log_files:
         if str(p) in known: continue
         try: import_log(p); res["logs"] += 1
         except Exception as e: res["errors"].append(f"{p.name}: {e}")
@@ -1146,12 +1485,13 @@ def scan(force: int = 0):
 
 @app.post("/api/logs/upload")
 async def upload_log(request: Request, name: str = ""):
-    """Recebe um arquivo de log (.txt) via streaming pelo navegador, salva em data/logs/ e o importa."""
+    """Recebe arquivo de log (.txt DJI, .csv Litchi/Airdata, .ulg PX4 ou .bin ArduPilot) via streaming, salva em data/logs/ e importa."""
     raw_name = Path(name or "").name
     safe_name = re.sub(r"[^A-Za-z0-9_.\-\[\]]", "_", raw_name)
-    if not safe_name.lower().endswith(".txt") or len(safe_name) < 5:
-        raise HTTPException(400, "Nome de arquivo inválido. Envie um arquivo de log .txt da DJI.")
-    if "FlightRecord" not in safe_name:
+    ext = Path(safe_name).suffix.lower()
+    if ext not in (".txt", ".csv", ".ulg", ".bin") or len(safe_name) < 5:
+        raise HTTPException(400, "Formato inválido. Envie .txt (DJI), .csv (Litchi/Airdata), .ulg (PX4) ou .bin (ArduPilot).")
+    if ext == ".txt" and "FlightRecord" not in safe_name:
         safe_name = "DJIFlightRecord_" + safe_name
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     dest = LOGS_DIR / safe_name
