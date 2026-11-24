@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS media(id INTEGER PRIMARY KEY, path TEXT UNIQUE, kind 
   w INT, h INT, size INT, sha1 TEXT, flight_id INT, tags TEXT DEFAULT '', fav INT DEFAULT 0, backed INT DEFAULT 0);
 CREATE TABLE IF NOT EXISTS spots(id INTEGER PRIMARY KEY, name TEXT, lat REAL, lon REAL, notes TEXT);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS flight_checklists(flight_id INTEGER PRIMARY KEY, pre TEXT, post TEXT, updated TEXT);
 """
 
 # ---------- Motor Espacial GIS: Nível 1 (SQLite R-Tree + B-Tree) & Nível 2 (SpatiaLite / GEOS / PROJ) ----------
@@ -2120,7 +2121,7 @@ def report(fid: int, lang: str = ""):
 <h2>{html.escape(f['name'] or tr(L, 'report.flight_default'))} — {(f.get('start_local') or '')[:16].replace('T', ' ')} — {html.escape(f['place'] or '')}</h2>
 <p>{tr(L, 'report.duration')} {int(f['duration'] or 0)//60} min {int(f['duration'] or 0)%60} s · {tr(L, 'report.distance')} {py_fmt_dist(f['distance'] or 0, L)} · {tr(L, 'report.max_alt')} {py_fmt_alt(f['max_alt'] or 0, L)} ·
 {tr(L, 'report.max_speed')} {py_fmt_kmh(f['max_speed'] or 0, L)} · {tr(L, 'report.battery')} {html.escape(f['battery_sn'] or '—')}{hl_s}</p>
-{cp_s}<p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
+{_chk_html(fid, L)}{cp_s}<p>{tr(L, 'report.weather')}: {wx}</p><h3>{tr(L, 'report.events')}</h3><ul>{ev}</ul><h3>{tr(L, 'report.notes')}</h3><p>{html.escape(f['notes'] or '—')}</p><div>{th}</div></body></html>"""
 
 def _csv_safe(v):
     s = str(v if v is not None else "")
@@ -4175,6 +4176,128 @@ def stats():
 def props_reset():
     total = stats()["hours"]
     with db() as c: c.execute("INSERT OR REPLACE INTO kv VALUES('prop_base',?)", (str(total),))
+    return {"ok": True}
+
+# Manutenção por componente: limites (horas, voos, dias) configuráveis por env
+MAINT_LIMITS = {
+    "motors": {"h": float(os.getenv("MOTOR_LIMIT_H", "100")), "n": 0, "d": 0},
+    "gimbal": {"h": float(os.getenv("GIMBAL_LIMIT_H", "200")), "n": 0, "d": 0},
+    "imu": {"h": 0, "n": int(os.getenv("IMU_LIMIT_FLIGHTS", "30")), "d": int(os.getenv("IMU_LIMIT_DAYS", "60"))},
+}
+BAT_CYCLE_LIMIT = int(os.getenv("BAT_CYCLE_LIMIT", "200"))
+
+def _maint_item(key, base, hours, flights, lim):
+    h = hours - base.get("h", 0.0); n = flights - base.get("n", 0)
+    d = (datetime.now(timezone.utc) - datetime.fromisoformat(base["ts"])).days if base.get("ts") else None
+    pcts = [h / lim["h"] if lim.get("h") else 0, n / lim["n"] if lim.get("n") else 0, d / lim["d"] if lim.get("d") and d is not None else 0]
+    p = max(pcts) * 100
+    return {"key": key, "hours": round(h, 2), "flights": n, "days": d, "limit": lim, "pct": round(p, 1),
+            "status": "alert" if p >= 100 else "watch" if p >= 80 else "ok", "reset": bool(base)}
+
+# Perfil do piloto e checklist pré/pós-voo
+PILOT_FIELDS = ("name", "sisant", "anac", "reta", "sarpas", "drone_reg", "phone")
+CHK_PRE = [f"chk.pre{i}" for i in range(1, 9)]
+CHK_POST = [f"chk.post{i}" for i in range(1, 6)]
+
+def _kv_json(k, default):
+    with db() as c: r = c.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+    try: return json.loads(r[0]) if r else default
+    except Exception: return default
+
+def _kv_set(k, v):
+    with db() as c: c.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (k, json.dumps(v, ensure_ascii=False)))
+
+def _clean_items(lst):
+    out = []
+    for x in (lst or [])[:40]:
+        t_ = str(x.get("t") if isinstance(x, dict) else x).strip()[:160]
+        if t_: out.append({"t": t_, "ok": bool(x.get("ok")) if isinstance(x, dict) else False})
+    return out
+
+@app.get("/api/pilot")
+def pilot_get():
+    d = _kv_json("pilot", {}); return {k: str(d.get(k, "")) for k in PILOT_FIELDS}
+
+@app.put("/api/pilot")
+def pilot_put(b: dict):
+    _kv_set("pilot", {k: str(b.get(k, "")).strip()[:120] for k in PILOT_FIELDS}); return {"ok": True}
+
+@app.get("/api/checklist/template")
+def chk_tpl_get():
+    d = _kv_json("chk_tpl", {})
+    return {"pre": d.get("pre") or CHK_PRE, "post": d.get("post") or CHK_POST}
+
+@app.put("/api/checklist/template")
+def chk_tpl_put(b: dict):
+    _kv_set("chk_tpl", {"pre": [i["t"] for i in _clean_items(b.get("pre"))], "post": [i["t"] for i in _clean_items(b.get("post"))]})
+    return {"ok": True}
+
+def _flight_chk(fid):
+    with db() as c: r = c.execute("SELECT pre,post FROM flight_checklists WHERE flight_id=?", (fid,)).fetchone()
+    if r: return {"saved": True, "pre": json.loads(r["pre"] or "[]"), "post": json.loads(r["post"] or "[]")}
+    tp = chk_tpl_get()
+    return {"saved": False, "pre": [{"t": x, "ok": False} for x in tp["pre"]], "post": [{"t": x, "ok": False} for x in tp["post"]]}
+
+@app.get("/api/flights/{fid}/checklist")
+def flight_chk_get(fid: int):
+    get_flight(fid); return _flight_chk(fid)
+
+@app.put("/api/flights/{fid}/checklist")
+def flight_chk_put(fid: int, b: dict):
+    get_flight(fid)
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO flight_checklists VALUES(?,?,?,?)",
+                  (fid, json.dumps(_clean_items(b.get("pre")), ensure_ascii=False), json.dumps(_clean_items(b.get("post")), ensure_ascii=False),
+                   datetime.now(timezone.utc).isoformat()))
+    return {"ok": True}
+
+def _chk_html(fid, L):
+    ck = _flight_chk(fid); pl = pilot_get()
+    lbl = lambda x: html.escape(tr(L, x) if x.startswith("chk.") else x)
+    ph = " · ".join(f"{tr(L, 'pilot.' + k)}: <b>{html.escape(pl[k])}</b>" for k in PILOT_FIELDS if pl[k])
+    out = f"<h3>{tr(L, 'pilot.title')}</h3><p>{ph}</p>" if ph else ""
+    if ck["saved"]:
+        for sec in ("pre", "post"):
+            if ck[sec]:
+                out += f"<h3>{tr(L, 'chk.' + sec + '_title')}</h3><ul style='list-style:none;padding-left:0'>" + "".join(
+                    f"<li>{'☑' if i['ok'] else '☐'} {lbl(i['t'])}</li>" for i in ck[sec]) + "</ul>"
+    return out
+
+@app.get("/api/maintenance")
+def maintenance():
+    with db() as c:
+        fl = [dict(r) for r in c.execute("SELECT duration,battery_sn FROM flights WHERE source='log'")]
+        row = c.execute("SELECT v FROM kv WHERE k='maint'").fetchone()
+    st = json.loads(row[0]) if row else {}
+    hours = sum((f["duration"] or 0) for f in fl) / 3600; n = len(fl)
+    comps = [_maint_item(k, st.get(k, {}), hours, n, lim) for k, lim in MAINT_LIMITS.items()]
+    bats = {}
+    for f in fl:
+        sn = f["battery_sn"] or "desconhecida"
+        b = bats.setdefault(sn, {"h": 0.0, "n": 0}); b["h"] += (f["duration"] or 0) / 3600; b["n"] += 1
+    bl = []
+    for sn, b in bats.items():
+        it = _maint_item("bat:" + sn, st.get("bat:" + sn, {}), b["h"], b["n"], {"h": 0, "n": BAT_CYCLE_LIMIT, "d": 0})
+        it["sn"] = sn; bl.append(it)
+    return {"components": comps, "batteries": sorted(bl, key=lambda x: -x["pct"])}
+
+class MaintReq(BaseModel):
+    key: str
+
+@app.post("/api/maintenance/reset")
+def maintenance_reset(req: MaintReq):
+    k = req.key
+    if k not in MAINT_LIMITS and not k.startswith("bat:"):
+        raise HTTPException(400, "Componente inválido.")
+    with db() as c:
+        fl = [dict(r) for r in c.execute("SELECT duration,battery_sn FROM flights WHERE source='log'")]
+        row = c.execute("SELECT v FROM kv WHERE k='maint'").fetchone()
+        st = json.loads(row[0]) if row else {}
+        if k.startswith("bat:"):
+            sub = [f for f in fl if (f["battery_sn"] or "desconhecida") == k[4:]]
+        else: sub = fl
+        st[k] = {"h": sum((f["duration"] or 0) for f in sub) / 3600, "n": len(sub), "ts": datetime.now(timezone.utc).isoformat()}
+        c.execute("INSERT OR REPLACE INTO kv VALUES('maint',?)", (json.dumps(st),))
     return {"ok": True}
 
 class LangReq(BaseModel):

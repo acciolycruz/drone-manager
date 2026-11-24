@@ -3,6 +3,13 @@
 All notable changes to **Drone Manager** are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Component maintenance** tracking and alerts in Statistics for motors, gimbal, IMU/compass calibration, and estimated battery cycles (`/api/maintenance`, `/api/maintenance/reset`).
+- **Pilot profile** (name, SISANT, ANAC, RETA, SARPAS, registration, phone) and configurable **pre/post-flight checklist** template in Settings (`/api/pilot`, `/api/checklist/template`).
+- **Per-flight checklist** in flight details (`/api/flights/{fid}/checklist`), automatically printed in HTML/PDF flight reports along with the pilot profile.
+
 ## [1.0.0] - 2026-11-24
 
 First public release.

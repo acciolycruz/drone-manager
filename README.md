@@ -198,12 +198,12 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 
 - **Continuous Multi-Clip Flight Timeline (& Optional Lossless `.MP4` Merge):** Automatically switches across multiple video clips in a flight (including 4 GB splits) and advances across recording gaps, with optional lossless merging (`ffmpeg -c copy`, preserving originals).
 - **Exports, Reports & Automatic Flight Reconstruction:**
-  - Export flights as **KML**, **GPX**, **GeoJSON (RFC 7946)**, **Print/PDF Report**, **100% Offline Portable HTML Package** (for clients/audits), and **Full CSV Logbook** (`/api/logbook.csv`).
+  - Export flights as **KML**, **GPX**, **GeoJSON (RFC 7946)**, **Print/PDF Report** (automatically including **Pilot Profile** and saved **Pre/Post-Flight Checklist**), **100% Offline Portable HTML Package** (for clients/audits), and **Full CSV Logbook** (`/api/logbook.csv`).
   - **Automatic Flight Reconstruction:** Groups legacy geotagged photos (prior to the first log) or `.SRT` tracks into approximate flights on the map (`reconstruct_flights`).
 - **Statistics Dashboard, Battery Health & Maintenance (`Statistics`):**
   - **Overview:** Year filter, clickable **GitHub-style SVG Flight Calendar**, takeoff hour/weekday/duration charts, record flight cards, and **Heatmap (`leaflet.heat`)**.<img width="1919" height="1051" alt="flights" src="https://github.com/user-attachments/assets/0428a378-95d4-46ed-b526-e58f968df178" />
 
-  - **Battery Health & Propellers:** Diagnostic table per battery serial (flights, hours, current capacity in mAh, degradation %, max cell deviation in mV, max temp) with historical charts, propeller wear tracker (`PROP_LIMIT_H`) with reset button, and **SHA-1 duplicate media detector**.
+  - **Battery Health, Propellers & Component Maintenance:** Diagnostic table per battery serial (flights, hours, current capacity in mAh, degradation %, max cell deviation in mV, max temp) with historical charts, propeller wear tracker (`PROP_LIMIT_H`) with reset button, **Component Maintenance** (hours/flights/days tracking and alerts for motors, gimbal, IMU/compass calibration, and estimated battery cycles), and **SHA-1 duplicate media detector**.
 - **Favorite Places, Address Search & SD Card Importer:**
   - Right-click the map to save **Favorite Places** (managed in **Places**) and search addresses via **Geocoding (Nominatim)**.
   - **Smart SD Card Importer:** Detects mounted SD cards/drives, filters out already-imported files via SHA-1, groups media into `YYYY-MM-DD_Place` folders, copies files + `.SRT`, and runs a scan.
@@ -247,6 +247,8 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 | `GET` | `/api/detections/report` | Generates consolidated object detection report (HTML or JSON). |
 | `GET` | `/api/export/photos` | Exports selected photos as a `.zip` archive (ready for photogrammetry / OpenDroneMap). |
 | `GET` | `/api/stats`, `/api/battery-health` & `POST /api/props/reset` | General statistics, aircraft fleet, battery health diagnostics, and propeller counter reset. |
+| `GET/POST` | `/api/maintenance` & `/api/maintenance/reset` | Component maintenance tracking (motors, gimbal, IMU/compass calibration, estimated battery cycles) and counter reset. |
+| `GET/PUT` | `/api/pilot`, `/api/checklist/template` & `/api/flights/{fid}/checklist` | Pilot profile (SISANT/ANAC/RETA/SARPAS), configurable pre/post-flight checklist template, and per-flight checklist. |
 | `GET/POST/DELETE` | `/api/spots` & `GET /api/geocode` | Favorite Places management and Nominatim address lookup. |
 | `GET/POST` | `/api/sd/detect`, `/preview` & `/import` | SD card detection, date/place/SHA-1 preview, and organized import with `.SRT`. |
 | `GET/POST/PATCH/DELETE` | `/api/roots` & `/api/fs/list` | Safe media root management restricted to mounted drives (`/mnt`, `/media`, `/run/media`, `/Volumes`) and `data/media`. |

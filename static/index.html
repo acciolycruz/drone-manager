@@ -1282,6 +1282,7 @@ input[type=range] {
         <div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)"><h4 style="margin-top:0" data-i18n="fdet.events_title">Eventos de Telemetria</h4><div id="fev" class="row"></div></div>
       </div>
       <h4 data-i18n="fdet.notes_title">Anotações de Voo</h4><textarea id="fnotes" rows="3" style="width:100%" placeholder="Vento, obstáculos, permissões, observações do voo" data-i18n-ph="fdet.notes_ph"></textarea>
+      <h4 data-i18n="chk.title">Checklist do Voo</h4><div id="fchk"></div>
       <h4 data-i18n="fdet.media_title">Mídias deste voo</h4><div id="fmedia" class="grid"></div>
     </div>
   </section>
@@ -2683,7 +2684,37 @@ async function openFlight(id){
   const cb=$('#fcoordbar');if(cb){cb.classList.add('hide');cb.innerHTML=''}
   renderClipButtons();
   renderClipTimeline();
-  if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderCompliance(f);renderAir(f);renderWindAnalysis(f);
+  if(FV.length)loadV(0,false);if(window.VM=='3d')build3d();renderCompliance(f);renderAir(f);renderWindAnalysis(f);loadFlightChk(id);
+}
+
+let FCHK={saved:false,pre:[],post:[]};
+const chkLbl=s=>String(s||'').startsWith('chk.')?t(s):String(s||'');
+async function loadFlightChk(id){
+  const el=$('#fchk');if(!el)return;
+  try{FCHK=await api('/flights/'+id+'/checklist');renderFlightChk(id)}
+  catch(e){el.innerHTML=''}
+}
+function renderFlightChk(id){
+  const el=$('#fchk');if(!el)return;
+  const col=(sec,title)=>`<div style="background:var(--card);padding:12px;border-radius:var(--radius);border:1px solid var(--border)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>${title}</b>
+    <span style="font-size:12px;color:var(--mut)">${FCHK[sec].filter(x=>x.ok).length}/${FCHK[sec].length}</span></div>
+    ${FCHK[sec].map((x,i)=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+      <label style="flex:1;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type=checkbox ${x.ok?'checked':''} onchange="FCHK['${sec}'][${i}].ok=this.checked;saveFlightChk(${id},false);renderFlightChk(${id})">
+      <span style="${x.ok?'text-decoration:line-through;color:var(--mut)':''}">${esc(chkLbl(x.t))}</span></label>
+      <button type=button onclick="FCHK['${sec}'].splice(${i},1);saveFlightChk(${id},false);renderFlightChk(${id})" style="padding:1px 6px;font-size:11px">×</button></div>`).join('')}
+    <div class=row style="margin:8px 0 0;gap:6px"><input id="chk-add-${sec}" placeholder="${esc(t('chk.add'))}" style="flex:1;min-width:140px" onkeydown="if(event.key==='Enter')addChkItem(${id},'${sec}')">
+    <button type=button onclick="addChkItem(${id},'${sec}')">+</button></div></div>`;
+  el.innerHTML=`<div class=two>${col('pre',t('chk.pre_title'))}${col('post',t('chk.post_title'))}</div>
+    <div class=row style="margin-top:8px"><button class="on" onclick="saveFlightChk(${id},true)">${t('chk.save')}</button></div>`;
+}
+function addChkItem(id,sec){
+  const inp=$('#chk-add-'+sec),v=(inp?.value||'').trim();if(!v)return;
+  FCHK[sec].push({t:v,ok:false});inp.value='';saveFlightChk(id,false);renderFlightChk(id);
+}
+async function saveFlightChk(id,notify=true){
+  await api('/flights/'+id+'/checklist',J('PUT',{pre:FCHK.pre,post:FCHK.post}));
+  FCHK.saved=true;if(notify)toast(t('chk.saved'));
 }
 
 function openMergeModal(){
@@ -4252,8 +4283,40 @@ async function loadConfig(){
    `<h4 style="margin-top:0">${t('config.gis_title')}</h4>`+
    `<p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('config.gis_desc')}</p>`+
    `<div id="gis-box" style="font-size:12.5px;color:var(--fg)">Carregando status GIS…</div>`+
-   `<div class=row style="margin-top:10px;margin-bottom:0"><button onclick="rebuildGisIndex()">${t('config.gis_rebuild')}</button></div></div>`;
-  sdDetect(true);loadGisStatus()}
+   `<div class=row style="margin-top:10px;margin-bottom:0"><button onclick="rebuildGisIndex()">${t('config.gis_rebuild')}</button></div></div>`+
+   '<hr style="border:0;border-top:1px solid var(--border);margin:22px 0">'+
+   `<div class=two style="max-width:860px">`+
+   `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">`+
+   `<h4 style="margin-top:0">${t('pilot.title')}</h4><p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('pilot.desc')}</p>`+
+   `<div id="pilot-box">…</div></div>`+
+   `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">`+
+   `<h4 style="margin-top:0">${t('chk.tpl_title')}</h4><p style="color:var(--mut);margin-top:0;font-size:12.5px">${t('chk.tpl_desc')}</p>`+
+   `<div id="chktpl-box">…</div></div></div>`;
+  sdDetect(true);loadGisStatus();loadPilotAndTpl()}
+async function loadPilotAndTpl(){
+  const pb=$('#pilot-box'),tb=$('#chktpl-box');if(!pb||!tb)return;
+  const flds=['name','sisant','anac','reta','sarpas','drone_reg','phone'];
+  try{
+    const [p,tp]=await Promise.all([api('/pilot'),api('/checklist/template')]);
+    pb.innerHTML=flds.map(k=>`<label style="display:block;margin-bottom:6px;font-size:12.5px">${t('pilot.'+k)}<input id="pl-${k}" value="${esc(p[k]||'')}" style="width:100%;margin-top:2px"></label>`).join('')+
+      `<div class=row style="margin:8px 0 0"><button class="on" onclick="savePilot()">${t('pilot.save')}</button></div>`;
+    const fmtL=a=>(a||[]).map(s=>String(s).startsWith('chk.')?t(s):s).join('\n');
+    tb.innerHTML=`<label style="display:block;margin-bottom:8px;font-size:12.5px"><b>${t('chk.pre_title')}</b><textarea id="tpl-pre" rows="6" style="width:100%;margin-top:2px">${esc(fmtL(tp.pre))}</textarea></label>`+
+      `<label style="display:block;margin-bottom:8px;font-size:12.5px"><b>${t('chk.post_title')}</b><textarea id="tpl-post" rows="5" style="width:100%;margin-top:2px">${esc(fmtL(tp.post))}</textarea></label>`+
+      `<div class=row style="margin:0"><button class="on" onclick="saveChkTpl()">${t('chk.tpl_save')}</button><button onclick="resetChkTpl()">${t('chk.tpl_reset')}</button></div>`;
+  }catch(e){}
+}
+async function savePilot(){
+  const d={};['name','sisant','anac','reta','sarpas','drone_reg','phone'].forEach(k=>d[k]=($('#pl-'+k)?.value||'').trim());
+  await api('/pilot',J('PUT',d));toast(t('pilot.saved'));
+}
+async function saveChkTpl(){
+  const lines=id=>($('#tpl-'+id)?.value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  await api('/checklist/template',J('PUT',{pre:lines('pre'),post:lines('post')}));toast(t('chk.saved'));
+}
+async function resetChkTpl(){
+  await api('/checklist/template',J('PUT',{pre:[],post:[]}));loadPilotAndTpl();toast(t('chk.saved'));
+}
 async function loadGisStatus(){
   const box=$('#gis-box');if(!box)return;
   try{
@@ -4445,6 +4508,7 @@ async function loadStats(){
      <button onclick="resetProps()">${t('stats.props_reset')}</button>
      ${mechHtml}
    </div>
+   <h4>${t('maint.title')}</h4><div id=maint></div>
    <h4>${t('stats.fleet_title')}</h4>
    <table><tr><th>${t('stats.fleet.model')}<th>${t('stats.fleet.name')}<th>${t('stats.fleet.sn')}<th>${t('stats.fleet.flights')}<th>${t('stats.fleet.hours')}<th>${t('stats.fleet.dist')}</tr>
    ${(s.drones||[]).map(d=>`<tr><td><b>${esc(d.type)}</b><td>${esc(d.name||'—')}<td>${esc(d.sn)}<td>${d.flights}<td>${d.hours.toFixed(1)} h<td>${fmt.km(d.km*1000)}</tr>`).join('')||'<tr><td colspan=6>–</tr>'}</table>
@@ -4455,9 +4519,24 @@ async function loadStats(){
      <div>${t('stats.lib_unlinked',{n:L.unlinked})}${L.not_backed!==null?t('stats.lib_not_backed',{n:L.not_backed}):t('stats.lib_no_backup_dir')}</div>
      <div style="margin-top:6px">${L.duplicates.length?`${t('stats.lib_dups',{n:L.duplicates.length})}<ul>${L.duplicates.slice(0,15).map(g=>`<li>${g.map(esc).join('<br>')}`).join('')}</ul>`:t('stats.lib_no_dups')}</div>
    </div>`;
+  loadMaint();
   mch&&mch.destroy();
   mch=new Chart($('#mc'),{type:'bar',data:{labels:s.by_month.map(x=>x[0]),datasets:[{label:t('stats.flights'),data:s.by_month.map(x=>x[1]),backgroundColor:'#1890ff',borderRadius:4}]},options:{plugins:{legend:{display:false}}}});
 }
+async function loadMaint(){
+  const m=await api('/maintenance'),col={ok:'var(--ok)',watch:'#faad14',alert:'#ef4444'};
+  const row=(label,it,btn)=>{const l=it.limit,u=[];
+    if(l.h)u.push(`<b>${it.hours.toFixed(1)} h</b> ${t('maint.of')} ${l.h} h`);
+    if(l.n)u.push(`<b>${it.flights}</b> ${t('maint.of')} ${l.n} ${t(it.key.startsWith('bat:')?'maint.cycles':'maint.flights')}`);
+    if(l.d&&it.days!==null)u.push(`<b>${it.days}</b> ${t('maint.of')} ${l.d} ${t('maint.days')}`);
+    return `<div style="margin-bottom:10px"><div>${label}: ${u.join(' · ')} <span style="color:${col[it.status]};font-size:12px">● ${t('maint.'+it.status)}</span></div>
+      <div class=bar><i style="width:${Math.min(100,it.pct)}%;background:${col[it.status]}"></i></div>
+      <button onclick="resetMaint('${esc(it.key)}')">${btn}</button></div>`};
+  $('#maint').innerHTML=`<div style="background:var(--card);padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border)">`+
+   m.components.map(c=>row(t('maint.'+c.key),c,t(c.key==='imu'?'maint.reset_imu':'maint.reset'))).join('')+
+   `<h5 style="margin:6px 0">${t('maint.bats')}</h5>`+(m.batteries.map(b=>row(esc(b.sn),b,t('maint.reset'))).join('')||'–')+`</div>`;
+}
+async function resetMaint(k){if(confirm(t('maint.confirm'))){await api('/maintenance/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});loadMaint()}}
 async function resetProps(){if(confirm(t('stats.props_confirm'))){await api('/props/reset',{method:'POST'});loadStats()}}
 
 /* ---------- locais favoritos e missões pré-voo ---------- */
