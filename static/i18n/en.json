@@ -286,6 +286,8 @@
   "media.del_disk_title": "Permanently deletes checked files from disk and gallery",
   "media.detect_ai": "🤖 Detect objects (AI)",
   "media.report_ai": "📋 AI Report",
+  "media.reveal": "Open folder",
+  "media.reveal_title": "Opens the file manager with this media selected",
   "media.sem_title": "✨ Semantic Search (CLIP)",
   "media.sem_ph": "Describe what you're looking for (e.g. sunset beach, boat, roof, lagoon)…",
   "media.sem_btn": "Visual search",

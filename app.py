@@ -1,5 +1,5 @@
 """Drone Manager (DJI Mini 3) - app web local.  Rodar: uvicorn app:app --reload"""
-import os, re, json, csv, io, time, html, ctypes, ctypes.util, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
+import os, sys, re, json, csv, io, time, html, ctypes, ctypes.util, shutil, sqlite3, hashlib, subprocess, zipfile, tempfile, threading, urllib.request, urllib.parse
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS media(id INTEGER PRIMARY KEY, path TEXT UNIQUE, kind 
 CREATE TABLE IF NOT EXISTS spots(id INTEGER PRIMARY KEY, name TEXT, lat REAL, lon REAL, notes TEXT);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS flight_checklists(flight_id INTEGER PRIMARY KEY, pre TEXT, post TEXT, updated TEXT);
+CREATE TABLE IF NOT EXISTS video_keyframes(id INTEGER PRIMARY KEY AUTOINCREMENT, media_id INTEGER NOT NULL, t REAL NOT NULL, clip_emb BLOB NOT NULL, UNIQUE(media_id, t));
+CREATE INDEX IF NOT EXISTS idx_vkf_media ON video_keyframes(media_id);
 """
 
 # ---------- Motor Espacial GIS: Nível 1 (SQLite R-Tree + B-Tree) & Nível 2 (SpatiaLite / GEOS / PROJ) ----------
@@ -2584,6 +2586,31 @@ def media_delete_batch(b: MediaDeleteBatchIn):
             errors.append(f"#{mid}: {e}")
     return {"ok": True, "deleted": deleted, "disk_deleted": disk_deleted, "errors": errors}
 
+@app.post("/api/media/{mid}/reveal")
+def reveal_media(mid: int):
+    m = get_media(mid)
+    p = Path(m["path"])
+    if not p.exists():
+        raise HTTPException(404, "Arquivo de mídia indisponível (disco desconectado?).")
+    if not _allowed_media_path(p):
+        raise HTTPException(403, "Caminho de mídia não permitido.")
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(p)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"ok": True}
+    exp = shutil.which("explorer.exe")
+    if sys.platform.startswith("win") or exp:
+        wp = to_win(str(p))
+        if shutil.which("wslpath"):
+            r = subprocess.run(["wslpath", "-w", str(p)], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip():
+                wp = r.stdout.strip()
+        subprocess.Popen([exp or "explorer.exe", f"/select,{wp}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"ok": True}
+    if shutil.which("xdg-open"):
+        subprocess.Popen(["xdg-open", str(p.parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"ok": True}
+    raise HTTPException(501, "Gerenciador de arquivos não disponível neste ambiente.")
+
 @app.get("/api/media/{mid}/file")
 def media_file(mid: int):
     p = Path(get_media(mid)["path"])
@@ -2693,32 +2720,76 @@ def _yolo_infer_rgb640(sess, rgb_640, orig_w: int, orig_h: int, scale: float, px
     dets.sort(key=lambda d: d["conf"], reverse=True)
     return dets
 
-def _detect_photo_path(sess, p: Path, conf_thr: float):
+def _infer_pil_640(sess, im, conf_thr: float, ox: int = 0, oy: int = 0, fw: int = 0, fh: int = 0):
     import numpy as np
+    from PIL import Image
+    ow, oh = im.size
+    scale = min(640.0 / ow, 640.0 / oh)
+    nw, nh = max(1, int(round(ow * scale))), max(1, int(round(oh * scale)))
+    resized = im.resize((nw, nh), Image.Resampling.BILINEAR)
+    canvas = Image.new("RGB", (640, 640), (114, 114, 114))
+    px, py = (640 - nw) // 2, (640 - nh) // 2
+    canvas.paste(resized, (px, py))
+    dets = _yolo_infer_rgb640(sess, np.asarray(canvas), ow, oh, scale, px, py, conf_thr)
+    if fw and fh:
+        for d in dets:
+            b = d["box"]
+            d["box"] = [round((ox + b[0] * ow) / fw, 4), round((oy + b[1] * oh) / fh, 4),
+                        round((ox + b[2] * ow) / fw, 4), round((oy + b[3] * oh) / fh, 4)]
+    return dets
+
+def _merge_dets_nms(dets: list[dict], iou_thr: float = 0.45) -> list[dict]:
+    import numpy as np
+    if len(dets) <= 1:
+        return dets
+    out = []
+    by_cls = {}
+    for d in dets:
+        by_cls.setdefault(d["cls"], []).append(d)
+    for arr in by_cls.values():
+        boxes = np.array([d["box"] for d in arr], dtype=np.float32)
+        scores = np.array([d["conf"] for d in arr], dtype=np.float32)
+        for idx in _nms_np(boxes, scores, iou_thr=iou_thr):
+            out.append(arr[idx])
+    out.sort(key=lambda d: d["conf"], reverse=True)
+    return out
+
+def _detect_photo_path(sess, p: Path, conf_thr: float, high_res: bool = False):
     from PIL import Image, ImageOps
     with Image.open(p) as raw:
         im = ImageOps.exif_transpose(raw).convert("RGB")
         ow, oh = im.size
-        scale = min(640.0 / ow, 640.0 / oh)
-        nw, nh = max(1, int(round(ow * scale))), max(1, int(round(oh * scale)))
-        resized = im.resize((nw, nh), Image.Resampling.BILINEAR)
-        canvas = Image.new("RGB", (640, 640), (114, 114, 114))
-        px, py = (640 - nw) // 2, (640 - nh) // 2
-        canvas.paste(resized, (px, py))
-        arr = np.asarray(canvas)
-    return _yolo_infer_rgb640(sess, arr, ow, oh, scale, px, py, conf_thr)
+        dets = _infer_pil_640(sess, im, conf_thr)
+        if high_res and max(ow, oh) >= 1000:
+            grid = 3 if max(ow, oh) >= 2200 else 2
+            ov = 0.20
+            tw = int(round(ow / (grid - (grid - 1) * ov)))
+            th = int(round(oh / (grid - (grid - 1) * ov)))
+            sx = max(1, int(round(tw * (1.0 - ov))))
+            sy = max(1, int(round(th * (1.0 - ov))))
+            for r in range(grid):
+                for c_i in range(grid):
+                    x1 = min(max(0, ow - tw), c_i * sx)
+                    y1 = min(max(0, oh - th), r * sy)
+                    x2, y2 = min(ow, x1 + tw), min(oh, y1 + th)
+                    dets.extend(_infer_pil_640(sess, im.crop((x1, y1, x2, y2)), conf_thr, x1, y1, ow, oh))
+            dets = _merge_dets_nms(dets, iou_thr=0.45)
+    return dets
 
-def _detect_video_stream(sess, p: Path, ow: int, oh: int, conf_thr: float, step_s: float = 2.0):
+def _detect_video_stream(sess, p: Path, ow: int, oh: int, conf_thr: float, step_s: float = 2.0, high_res: bool = False):
     """Lê frames via pipe FFmpeg em streaming (sem arquivos temporários e sem carregar o vídeo na RAM)."""
     import numpy as np
+    from PIL import Image
     step_s = max(0.5, min(30.0, float(step_s)))
     ow, oh = max(1, ow or 1920), max(1, oh or 1080)
+    rw, rh = (1280, 720) if high_res else (640, 640)
     scale = min(640.0 / ow, 640.0 / oh)
     nw, nh = max(1, int(round(ow * scale))), max(1, int(round(oh * scale)))
     px, py = (640 - nw) / 2.0, (640 - nh) / 2.0
-    vf = f"fps=1/{step_s},scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2:color=0x727272"
+    vf = (f"fps=1/{step_s},scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0x727272"
+          if high_res else f"fps=1/{step_s},scale=640:640:force_original_aspect_ratio=decrease,pad=640:640:(ow-iw)/2:(oh-ih)/2:color=0x727272")
     cmd = ["ffmpeg", "-nostdin", "-loglevel", "fatal", "-i", str(p), "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
-    frame_bytes = 640 * 640 * 3
+    frame_bytes = rw * rh * 3
     max_frames = 240
     items = []
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -2728,11 +2799,18 @@ def _detect_video_stream(sess, p: Path, ow: int, oh: int, conf_thr: float, step_
             raw = proc.stdout.read(frame_bytes)
             if len(raw) < frame_bytes:
                 break
-            arr = np.frombuffer(raw, dtype=np.uint8).reshape((640, 640, 3))
+            arr = np.frombuffer(raw, dtype=np.uint8).reshape((rh, rw, 3))
             t_sec = round(idx * step_s, 1)
-            for d in _yolo_infer_rgb640(sess, arr, ow, oh, scale, px, py, conf_thr):
-                d["t"] = t_sec
-                items.append(d)
+            if high_res:
+                im = Image.fromarray(arr)
+                fdets = _infer_pil_640(sess, im, conf_thr)
+                for qx, qy in ((0, 0), (540, 0), (0, 260), (540, 260)):
+                    fdets.extend(_infer_pil_640(sess, im.crop((qx, qy, qx + 740, qy + 460)), conf_thr, qx, qy, rw, rh))
+                for d in _merge_dets_nms(fdets, iou_thr=0.45):
+                    d["t"] = t_sec; items.append(d)
+            else:
+                for d in _yolo_infer_rgb640(sess, arr, ow, oh, scale, px, py, conf_thr):
+                    d["t"] = t_sec; items.append(d)
             idx += 1
     finally:
         try:
@@ -2779,7 +2857,7 @@ def _resolve_video_gps(m: dict):
         return None, None
     return lookup
 
-def run_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0):
+def run_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0, high_res: int = 0):
     m = get_media(mid)
     p = Path(m["path"])
     if not p.is_file():
@@ -2787,14 +2865,14 @@ def run_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0):
     conf = max(0.15, min(0.90, float(conf)))
     sess = _get_yolo()
     if m["kind"] == "photo":
-        items = _detect_photo_path(sess, p, conf)
+        items = _detect_photo_path(sess, p, conf, high_res=bool(high_res))
         la = round(float(m["lat"]), 6) if valid_gps(m.get("lat"), m.get("lon")) else None
         lo = round(float(m["lon"]), 6) if valid_gps(m.get("lat"), m.get("lon")) else None
         for d in items:
             if la is not None:
                 d["lat"], d["lon"] = la, lo
     else:
-        items = _detect_video_stream(sess, p, m.get("w") or 1920, m.get("h") or 1080, conf, step_s)
+        items = _detect_video_stream(sess, p, m.get("w") or 1920, m.get("h") or 1080, conf, step_s, high_res=bool(high_res))
         gps_at = _resolve_video_gps(m)
         for d in items:
             la, lo = gps_at(d.get("t", 0))
@@ -2816,6 +2894,7 @@ def run_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0):
     det_obj = {
         "model": "yolo11s-visdrone",
         "conf": conf,
+        "high_res": bool(high_res),
         "scanned_at": datetime.now().isoformat(timespec="seconds"),
         "summary": summary,
         "items": items[:400],
@@ -2827,14 +2906,15 @@ def run_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0):
     return get_media(mid)
 
 @app.post("/api/media/{mid}/detect")
-def api_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0):
-    return run_detect_media(mid, conf=conf, step_s=step_s)
+def api_detect_media(mid: int, conf: float = 0.40, step_s: float = 2.0, high_res: int = 0):
+    return run_detect_media(mid, conf=conf, step_s=step_s, high_res=high_res)
 
 class DetectBatchIn(BaseModel):
     ids: Optional[list[int]] = None
     flight_id: Optional[int] = None
     conf: float = 0.40
     step_s: float = 2.0
+    high_res: int = 0
 
 @app.post("/api/detect/batch")
 def api_detect_batch(b: DetectBatchIn):
@@ -2852,7 +2932,7 @@ def api_detect_batch(b: DetectBatchIn):
     processed, total_objects, classes, errors = 0, 0, {}, []
     for (mid,) in rows:
         try:
-            res = run_detect_media(mid, conf=b.conf, step_s=b.step_s)
+            res = run_detect_media(mid, conf=b.conf, step_s=b.step_s, high_res=b.high_res)
             processed += 1
             sm = (res.get("detections") or {}).get("summary") or {}
             for k, v in sm.items():
@@ -3114,70 +3194,213 @@ def _clip_embed_image(img_path: Path) -> bytes:
     if n > 0: emb /= n
     return emb.tobytes()
 
+_SEM_LOCK = threading.Lock()
+_SEM_STOP = threading.Event()
+_SEM_PROC = None
+_SEM_JOB: dict = {"running": False, "stopping": False, "stopped": False, "kind": "", "done": 0, "total": 0,
+                  "pct": 0.0, "indexed": 0, "skipped": 0, "detail": "", "errors": [], "error": ""}
+
+def _extract_video_keyframes(video_path: Path, step_s: float = 5.0, max_frames: int = 120,
+                             done_base: int = 0, total_items: int = 1) -> list[tuple[float, bytes]]:
+    global _SEM_PROC
+    step_s = max(1.0, min(60.0, float(step_s)))
+    out = []
+    with tempfile.TemporaryDirectory() as td:
+        pat = str(Path(td) / "kf_%04d.jpg")
+        cmd = ["ffmpeg", "-nostdin", "-y", "-skip_frame", "nokey", "-i", str(video_path),
+               "-vf", f"fps=1/{step_s},scale=320:-2", "-frames:v", str(int(max_frames)), "-q:v", "4", pat]
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        with _SEM_LOCK: _SEM_PROC = proc
+        t0 = time.time()
+        try:
+            while proc.poll() is None:
+                if _SEM_STOP.is_set():
+                    proc.terminate()
+                    break
+                if time.time() - t0 > 180:
+                    proc.kill()
+                    raise RuntimeError("ffmpeg timeout")
+                nf = len(list(Path(td).glob("kf_*.jpg")))
+                with _SEM_LOCK:
+                    _SEM_JOB["detail"] = f"{video_path.name}: extraindo frames ({nf})…"
+                    _SEM_JOB["pct"] = round(min(99.9, (done_base + min(0.45, nf / 80)) / max(1, total_items) * 100), 1)
+                time.sleep(0.35)
+        finally:
+            with _SEM_LOCK: _SEM_PROC = None
+        if _SEM_STOP.is_set():
+            return []
+        err_b = proc.stderr.read() if proc.stderr else b""
+        frames = sorted(Path(td).glob("kf_*.jpg"))
+        if proc.returncode != 0 and not frames:
+            raise RuntimeError(err_b.decode("utf-8", "ignore")[-200:] or "ffmpeg falhou")
+        nf = len(frames)
+        for i, f in enumerate(frames):
+            if _SEM_STOP.is_set():
+                return []
+            out.append((round(i * step_s, 1), _clip_embed_image(f)))
+            with _SEM_LOCK:
+                _SEM_JOB["detail"] = f"{video_path.name}: frame {i+1}/{nf}"
+                _SEM_JOB["pct"] = round(min(99.9, (done_base + 0.45 + 0.55 * (i + 1) / max(1, nf)) / max(1, total_items) * 100), 1)
+    return out
+
 @app.get("/api/media/semantic-status")
 def semantic_status():
     with db() as c:
         tot = c.execute("SELECT COUNT(*) FROM media WHERE kind='photo'").fetchone()[0]
         idx = c.execute("SELECT COUNT(*) FROM media WHERE kind='photo' AND clip_emb IS NOT NULL").fetchone()[0]
+        tot_v = c.execute("SELECT COUNT(*) FROM media WHERE kind='video'").fetchone()[0]
+        idx_v = c.execute("SELECT COUNT(DISTINCT media_id) FROM video_keyframes").fetchone()[0]
+        tot_kf = c.execute("SELECT COUNT(*) FROM video_keyframes").fetchone()[0]
     ready = CLIP_VIS_ONNX.is_file() and CLIP_TXT_ONNX.is_file() and CLIP_TOK_JSON.is_file()
-    return {"total_photos": tot, "indexed_photos": idx, "model_ready": ready}
+    with _SEM_LOCK: job = dict(_SEM_JOB)
+    return {"total_photos": tot, "indexed_photos": idx, "total_videos": tot_v, "indexed_videos": idx_v,
+            "total_keyframes": tot_kf, "model_ready": ready, "job": job}
+
+def _run_semantic_index(limit: int = 300, force: int = 0, kind: str = "all", step_s: float = 5.0):
+    _SEM_STOP.clear()
+    prows, vrows = [], []
+    if kind in ("all", "photo"):
+        with db() as c:
+            cond = "" if force else "AND clip_emb IS NULL"
+            prows = c.execute(f"SELECT id, path FROM media WHERE kind='photo' {cond} ORDER BY taken DESC LIMIT ?", (limit,)).fetchall()
+    if kind in ("all", "video"):
+        with db() as c:
+            cond = "" if force else "AND id NOT IN (SELECT DISTINCT media_id FROM video_keyframes)"
+            vrows = c.execute(f"SELECT id, path FROM media WHERE kind='video' {cond} ORDER BY taken DESC LIMIT ?", (min(limit, 100),)).fetchall()
+    total = len(prows) + len(vrows)
+    with _SEM_LOCK:
+        _SEM_JOB.update({"running": True, "stopping": False, "stopped": False, "kind": kind,
+                        "done": 0, "total": total, "pct": 0.0, "indexed": 0, "skipped": 0, "detail": "", "errors": [], "error": ""})
+    indexed, skipped, errors, done = 0, 0, [], 0
+    try:
+        for mid, raw_p in prows:
+            if _SEM_STOP.is_set(): break
+            th = THUMBS / f"{mid}.jpg"
+            src = th if th.is_file() else Path(raw_p)
+            if not src.is_file():
+                skipped += 1
+            else:
+                try:
+                    blob = _clip_embed_image(src)
+                    with db() as c: c.execute("UPDATE media SET clip_emb=? WHERE id=?", (blob, mid))
+                    indexed += 1
+                except Exception as e:
+                    errors.append(f"#{mid}: {e}")
+            done += 1
+            with _SEM_LOCK:
+                _SEM_JOB.update({"done": done, "indexed": indexed, "skipped": skipped,
+                                "pct": round(done / max(1, total) * 100, 1), "detail": Path(raw_p).name, "errors": errors[:10]})
+        for mid, raw_p in vrows:
+            if _SEM_STOP.is_set(): break
+            p = Path(raw_p)
+            if not p.is_file():
+                skipped += 1
+            else:
+                try:
+                    kfs = _extract_video_keyframes(p, step_s=step_s, done_base=done, total_items=total)
+                    if _SEM_STOP.is_set(): break
+                    if not kfs:
+                        skipped += 1
+                    else:
+                        with db() as c:
+                            if force: c.execute("DELETE FROM video_keyframes WHERE media_id=?", (mid,))
+                            c.executemany("INSERT OR REPLACE INTO video_keyframes(media_id,t,clip_emb) VALUES(?,?,?)",
+                                          [(mid, t, b) for t, b in kfs])
+                        indexed += 1
+                except Exception as e:
+                    errors.append(f"#{mid}: {e}")
+            done += 1
+            with _SEM_LOCK:
+                _SEM_JOB.update({"done": done, "indexed": indexed, "skipped": skipped,
+                                "pct": round(done / max(1, total) * 100, 1), "detail": p.name, "errors": errors[:10]})
+    except Exception as e:
+        with _SEM_LOCK: _SEM_JOB["error"] = str(e)
+    finally:
+        with _SEM_LOCK:
+            _SEM_JOB["stopped"] = _SEM_STOP.is_set()
+            _SEM_JOB["stopping"] = False
+            _SEM_JOB["running"] = False
+    return {"indexed": indexed, "skipped": skipped, "errors": errors[:10]}
+
+@app.post("/api/media/semantic-stop")
+def semantic_stop():
+    _SEM_STOP.set()
+    with _SEM_LOCK:
+        _SEM_JOB["stopping"] = True
+        p = _SEM_PROC
+    if p is not None:
+        try: p.terminate()
+        except Exception: pass
+    return {"ok": True}
 
 @app.post("/api/media/semantic-index")
-def semantic_index(limit: int = 300, force: int = 0):
+def semantic_index(limit: int = 300, force: int = 0, kind: str = "all", step_s: float = 5.0, bg: int = 0):
     limit = max(1, min(2000, int(limit)))
-    with db() as c:
-        cond = "" if force else "AND clip_emb IS NULL"
-        rows = c.execute(f"SELECT id, path FROM media WHERE kind='photo' {cond} ORDER BY taken DESC LIMIT ?", (limit,)).fetchall()
-    indexed, skipped, errors = 0, 0, []
-    for mid, raw_p in rows:
-        th = THUMBS / f"{mid}.jpg"
-        p = Path(raw_p)
-        src = th if th.is_file() else p
-        if not src.is_file():
-            skipped += 1
-            continue
-        try:
-            blob = _clip_embed_image(src)
-            with db() as c:
-                c.execute("UPDATE media SET clip_emb=? WHERE id=?", (blob, mid))
-            indexed += 1
-        except Exception as e:
-            errors.append(f"#{mid}: {e}")
-    st = semantic_status()
-    return {"ok": True, "indexed": indexed, "skipped": skipped, "errors": errors[:10], **st}
+    if bg:
+        with _SEM_LOCK:
+            if _SEM_JOB["running"]:
+                return {"ok": True, "already_running": True, **semantic_status()}
+            _SEM_STOP.clear()
+            _SEM_JOB.update({"running": True, "stopping": False, "stopped": False, "kind": kind,
+                            "done": 0, "total": 0, "pct": 0.0, "indexed": 0, "skipped": 0, "detail": "", "errors": [], "error": ""})
+        threading.Thread(target=_run_semantic_index, args=(limit, force, kind, step_s), daemon=True).start()
+        return {"ok": True, "started": True, **semantic_status()}
+    res = _run_semantic_index(limit, force, kind, step_s)
+    return {"ok": True, **res, **semantic_status()}
 
 @app.get("/api/media/semantic-search")
-def semantic_search(q: str, limit: int = 60, min_score: float = 0.17):
+def semantic_search(q: str, limit: int = 60, min_score: float = 0.17, kind: str = ""):
     import numpy as np
     q = (q or "").strip()
     if not q:
         raise HTTPException(400, "Informe o texto da busca visual.")
     limit = max(1, min(200, int(limit)))
     with db() as c:
-        rows = c.execute(
+        prows = c.execute(
             "SELECT m.*, f.place AS place FROM media m LEFT JOIN flights f ON f.id=m.flight_id "
             "WHERE m.kind='photo' AND m.clip_emb IS NOT NULL"
-        ).fetchall()
-    if not rows:
-        return {"query": q, "en_query": _clip_pt_to_en(q), "items": [], "indexed_photos": 0}
+        ).fetchall() if kind in ("", "photo") else []
+        vrows = c.execute(
+            "SELECT k.media_id, k.t, k.clip_emb AS kf_emb, m.*, f.place AS place FROM video_keyframes k "
+            "JOIN media m ON m.id=k.media_id LEFT JOIN flights f ON f.id=m.flight_id WHERE m.kind='video'"
+        ).fetchall() if kind in ("", "video") else []
+    idx_v = len({r["media_id"] for r in vrows})
+    if not prows and not vrows:
+        return {"query": q, "en_query": _clip_pt_to_en(q), "items": [], "indexed_photos": 0, "indexed_videos": 0}
     q_vec, en_q = _clip_embed_text(q)
-    mat = np.vstack([np.frombuffer(r["clip_emb"], dtype=np.float32) for r in rows])
-    scores = mat @ q_vec
-    order = np.argsort(-scores)
+    cands = []
+    if prows:
+        mat = np.vstack([np.frombuffer(r["clip_emb"], dtype=np.float32) for r in prows])
+        scores = mat @ q_vec
+        for i, sc in enumerate(scores):
+            cands.append((float(sc), prows[i], None))
+    if vrows:
+        vmat = np.vstack([np.frombuffer(r["kf_emb"], dtype=np.float32) for r in vrows])
+        vscores = vmat @ q_vec
+        best_v = {}
+        for i, sc in enumerate(vscores):
+            mid = vrows[i]["media_id"]
+            fsc = float(sc)
+            if mid not in best_v or fsc > best_v[mid][0]:
+                best_v[mid] = (fsc, vrows[i], float(vrows[i]["t"]))
+        cands.extend(best_v.values())
+    cands.sort(key=lambda x: -x[0])
     items = []
-    for idx in order:
-        sc = float(scores[idx])
+    for sc, row, mt_sec in cands:
         if sc < min_score and len(items) >= 8:
             break
         if sc < 0.10:
             break
-        d = _enrich_media(dict(rows[idx]))
+        d = _enrich_media(dict(row))
+        d.pop("kf_emb", None); d.pop("media_id", None); d.pop("t", None)
         d["offline"] = not Path(d["path"]).is_file()
         d["score"] = round(sc, 4)
+        if mt_sec is not None:
+            d["match_t"] = mt_sec
         items.append(d)
         if len(items) >= limit:
             break
-    return {"query": q, "en_query": en_q, "items": items, "indexed_photos": len(rows)}
+    return {"query": q, "en_query": en_q, "items": items, "indexed_photos": len(prows), "indexed_videos": idx_v}
 
 @app.get("/api/media/{mid}/thumb")
 def media_thumb(mid: int):

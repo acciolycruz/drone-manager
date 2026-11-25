@@ -286,6 +286,8 @@
   "media.del_disk_title": "Apaga permanentemente os arquivos marcados do HD e da galeria",
   "media.detect_ai": "🤖 Detectar objetos (IA)",
   "media.report_ai": "📋 Relatório IA",
+  "media.reveal": "Abrir pasta",
+  "media.reveal_title": "Abre a pasta no gerenciador de arquivos com a mídia selecionada",
   "media.sem_title": "✨ Busca Semântica (CLIP)",
   "media.sem_ph": "Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…",
   "media.sem_btn": "Buscar visualmente",

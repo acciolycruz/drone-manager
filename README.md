@@ -207,9 +207,9 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 - **Favorite Places, Address Search & SD Card Importer:**
   - Right-click the map to save **Favorite Places** (managed in **Places**) and search addresses via **Geocoding (Nominatim)**.
   - **Smart SD Card Importer:** Detects mounted SD cards/drives, filters out already-imported files via SHA-1, groups media into `YYYY-MM-DD_Place` folders, copies files + `.SRT`, and runs a scan.
-- **Aerial Object Detection (`YOLO11s VisDrone ONNX`):** Runs locally via `onnxruntime`, detects 10 aerial classes (pedestrian, car, van, truck, bus, motorcycle, bicycle, etc.), applies `ia:*` tags, and generates filterable HTML/JSON reports.
-- **Local Semantic Photo Search (`CLIP ViT-B/32 ONNX`):** Indexes photos locally into `512`-dim embeddings in SQLite (`clip_emb`) for offline natural-language visual search with similarity scores.
-- **Smart Gallery, Temporal Comparison & 360° Viewer (`Pannellum`):** Filters for **Portrait `9:16`**, **Landscape**, **360° Panoramas**, and **4K**, interactive 360° viewer, **Before / After Temporal Split-View Comparison** between 2 selected photos or nearby same-GPS/angle shots (`/api/media/{id}/nearby`), and safe removal from gallery or permanent disk deletion.
+- **Aerial Object Detection (`YOLO11s VisDrone ONNX`):** Runs locally via `onnxruntime`, detects 10 aerial classes (pedestrian, car, van, truck, bus, motorcycle, bicycle, etc.) with configurable confidence (`25% / 40% / 55%`) and optional **High-Precision Tiles (SAHI)** mode (`2×2` / `3×3` overlapping crops for small distant targets), applies `ia:*` tags, and generates filterable HTML/JSON reports.
+- **Local Semantic Photo & Video Search (`CLIP ViT-B/32 ONNX`):** Indexes photos (`clip_emb`) and video keyframes (`video_keyframes`, every 5s via `ffmpeg`) locally into `512`-dim embeddings in SQLite with real-time progress bar and **`STOP`** cancellation, enabling offline natural-language visual search with similarity scores and direct jump to the matched video timestamp.
+- **Smart Gallery, Temporal Comparison & 360° Viewer (`Pannellum`):** Filters for **Portrait `9:16`**, **Landscape**, **360° Panoramas**, and **4K**, displays original filenames on cards and modals, includes an **"Open folder"** button (`POST /api/media/{mid}/reveal` — highlights the file in Windows Explorer/Finder/Linux file manager), interactive 360° viewer, **Before / After Temporal Split-View Comparison** between 2 selected photos or nearby same-GPS/angle shots (`/api/media/{id}/nearby`), and safe removal from gallery or permanent disk deletion.
 - **Local-First Security:**
   - Bound to `127.0.0.1`, protected with `TrustedHostMiddleware`, strict `Origin`/`Referer` + `Sec-Fetch-Site: cross-site` CSRF checks on mutating requests, `Content-Security-Policy` (CSP), `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, CDN SRI (`SHA-384`) hashes, CSV Injection & XSS sanitization, case-insensitive blocking of sensitive Windows directories in WSL2, and SQLite **WAL** mode.
 - **Multilingual UI (i18n), Imperial Units & Light/Dark Theme:**
@@ -237,13 +237,14 @@ Run a backup directly from the web UI (**Settings** → **💾 Backup Now**) or 
 | `GET/POST/DELETE` | `/api/missions`, `POST /elevation`, `POST /{mid}/airspace-check` & `GET /kml\|gpx\|geojson\|kmz` | Pre-flight mission planner (waypoints, DEM terrain profile, battery/VLOS estimates, DECEA/FAA check, KMZ WPML/KML/GPX/GeoJSON export). |
 | `GET` | `/api/weather/forecast?lat=...&lon=...&days=3` | Hourly flight window forecast (Open-Meteo altitude winds, gusts, rain, visibility + NOAA Kp index). |
 | `GET/PATCH` | `/api/media` & `/api/media/{mid}` | Lists/filters photos & videos (`portrait`, `landscape`, `pano`, `4k`, tags, GPS radius) or updates favorite/tags/flight link/sync offset. |
+| `POST` | `/api/media/{mid}/reveal` | Opens the OS file manager (Explorer/Finder/Linux) with the media file selected. |
 | `GET` | `/api/media/{mid}/nearby` | Lists photos near a base photo's GPS coordinate (`radius_m`), sorted by distance and heading (`Δyaw`). |
 | `DELETE` / `POST` | `/api/media/{mid}?disk=0\|1` & `/api/media/delete-batch` | Removes media from the gallery/DB only or permanently deletes files from disk (path-validated). |
 | `GET` | `/api/media/{mid}/srt` | Returns second-by-second `.SRT` telemetry track for a video. |
 | `GET` | `/api/media/{mid}/hud-video` | Renders and downloads an `.mp4` clip with burned-in telemetry HUD via `ffmpeg`. |
 | `POST/GET` | `/api/flights/{fid}/merge-videos`, `/merge-status/{job}` & `/merge-download/{tok}` | Losslessly merges selected flight `.mp4` clips (`ffmpeg -c copy`) in background with status polling and streaming download or local saving. |
-| `POST` | `/api/media/{mid}/detect` & `/api/detect/batch` | Runs aerial object detection (YOLO11s VisDrone ONNX) on a single item or batch. |
-| `GET/POST` | `/api/media/semantic-status`, `/semantic-index`, `/semantic-search` | Local photo indexing and offline visual semantic search via CLIP ViT-B/32 ONNX. |
+| `POST` | `/api/media/{mid}/detect` & `/api/detect/batch` | Runs aerial object detection (YOLO11s VisDrone ONNX) with configurable `conf` and `high_res` (SAHI tiling) on a single item or batch. |
+| `GET/POST` | `/api/media/semantic-status`, `/semantic-index`, `/semantic-stop`, `/semantic-search` | Background photo/video CLIP indexing (with live progress and cancellation) and offline visual semantic search. |
 | `GET` | `/api/detections/report` | Generates consolidated object detection report (HTML or JSON). |
 | `GET` | `/api/export/photos` | Exports selected photos as a `.zip` archive (ready for photogrammetry / OpenDroneMap). |
 | `GET` | `/api/stats`, `/api/battery-health` & `POST /api/props/reset` | General statistics, aircraft fleet, battery health diagnostics, and propeller counter reset. |

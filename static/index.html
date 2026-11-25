@@ -1307,6 +1307,8 @@ input[type=range] {
       <button onclick="deleteSelectedMedia(false)" title="Remove os itens marcados apenas da galeria (mantém os arquivos no HD)" data-i18n="media.del_gallery" data-i18n-title="media.del_gallery_title">🗑 Remover da galeria</button>
       <button onclick="deleteSelectedMedia(true)" style="color:#f87171;border-color:rgba(239,68,68,.45)" title="Apaga permanentemente os arquivos marcados do HD e da galeria" data-i18n="media.del_disk" data-i18n-title="media.del_disk_title">⚠️ Apagar do HD</button>
       <button id="bdet-batch" onclick="detectBatchMedia()" data-i18n="media.detect_ai">🤖 Detectar objetos (IA)</button>
+      <select id="det-conf" title="Sensibilidade da detecção YOLO"><option value="0.25">Conf. 25% (sensível)</option><option value="0.40" selected>Conf. 40% (padrão)</option><option value="0.55">Conf. 55% (preciso)</option></select>
+      <label title="Divide fotos 4K em blocos (Tiles/SAHI) para detectar pessoas e objetos pequenos a distância"><input id="det-hr" type="checkbox"> 🎯 Alta precisão (Tiles)</label>
       <a id="a-detrep" href="/api/detections/report" target="_blank" rel="noopener noreferrer" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--fg);text-decoration:none;font-size:13px" data-i18n="media.report_ai">📋 Relatório IA</a>
       <span id="mcount" style="color:var(--mut)"></span>
     </div>
@@ -1315,8 +1317,10 @@ input[type=range] {
       <input id="msem" placeholder="Descreva o que procura (ex.: praia pôr do sol, barco, telhado, lagoa)…" data-i18n-ph="media.sem_ph" onkeydown="if(event.key==='Enter')runSemanticSearch()" style="min-width:260px;flex:1">
       <button class="on" onclick="runSemanticSearch()" data-i18n="media.sem_btn">Buscar visualmente</button>
       <button id="bsem-idx" onclick="indexSemanticPhotos()" title="Indexa fotos localmente com CLIP ONNX (~150 MB na 1ª execução)" data-i18n="media.sem_idx" data-i18n-title="media.sem_idx_title">🧠 Indexar fotos</button>
+      <button id="bsem-stop" class="hide" onclick="stopSemanticIndex()" style="background:#ef4444;color:#fff;border-color:#ef4444">⏹ STOP</button>
       <button id="bsem-clr" class="hide" onclick="clearSemanticSearch()" data-i18n="media.sem_clr">✕ Limpar</button>
       <span id="semstat" style="font-size:12px;color:var(--mut)"></span>
+      <div id="semprog" class="hide" style="width:100%;margin-top:4px"><div class="bar" style="margin:0"><i id="semprog-bar" style="width:0%"></i></div></div>
     </div>
     <div id="mgrid" class="grid"></div>
   </section>
@@ -3089,12 +3093,12 @@ function mediaBadges(m){
   return b.length?`<div class="bdg">${b.join('')}</div>`:'';
 }
 const mediaCard=m=>{
-  const mt=m.meta||{},ex=[];
+  const mt=m.meta||{},ex=[],fn=(m.path||'').split(/[\\/]/).pop()||'';
   if(mt.iso)ex.push('ISO '+mt.iso);
   if(mt.shutter)ex.push(mt.shutter);
   if(mt.fnum)ex.push('f/'+mt.fnum);
   return `<div class=it><input type=checkbox onchange="tog(${m.id},this.checked)" ${sel.has(m.id)?'checked':''}>${mediaBadges(m)}
-  <img loading=lazy src="/api/media/${m.id}/thumb" onclick="openMedia(${m.id})" alt=""${m.offline?' style="opacity:.45" title="Disco ou pasta desconectada"':''}><div class=m>${m.score!=null?`<span style="background:rgba(0,210,255,.18);color:var(--acc-cyan);padding:1px 5px;border-radius:4px;font-size:11px;font-weight:600">✨ ${(m.score*100).toFixed(0)}%</span> `:''}${m.fav?'★':'☆'} ${m.kind=='video'?'Vídeo':'Foto'} ${fmt.d(m.taken)}${m.w&&m.h?` · <small>${m.w}×${m.h}</small>`:''}${ex.length?`<br><span style="color:var(--acc-cyan)">${esc(ex.join(' · '))}</span>`:''}<br>${esc((m.tags||'').replaceAll(',',' · '))}</div></div>`;
+  <img loading=lazy src="/api/media/${m.id}/thumb" onclick="openMedia(${m.id},${m.match_t!=null?Number(m.match_t):'null'})" alt="${esc(fn)}" title="${esc(m.path||fn)}"${m.offline?' style="opacity:.45"':''}><div class=m>${m.score!=null?`<span style="background:rgba(0,210,255,.18);color:var(--acc-cyan);padding:1px 5px;border-radius:4px;font-size:11px;font-weight:600">✨ ${(m.score*100).toFixed(0)}%${m.match_t!=null?' · ⏱ '+fmt.t(m.match_t):''}</span> `:''}${m.fav?'★':'☆'} <b title="${esc(m.path||fn)}">${esc(fn)}</b><br><small style="color:var(--mut)">${m.kind=='video'?'Vídeo':'Foto'} ${fmt.d(m.taken)}${m.w&&m.h?` · ${m.w}×${m.h}`:''}</small>${ex.length?`<br><span style="color:var(--acc-cyan)">${esc(ex.join(' · '))}</span>`:''}<br>${esc((m.tags||'').replaceAll(',',' · '))}</div></div>`;
 };
 function tog(id,on){on?sel.add(id):sel.delete(id)}
 function exportSel(){if(!sel.size)return alert('Marque as fotos que quer exportar.');location='/api/export/photos?ids='+[...sel]}
@@ -3454,25 +3458,61 @@ async function submitOdmJob(){
     err.textContent='⚠ '+msg;err.classList.remove('hide');
   }finally{btn.disabled=false}
 }
+let SEM_POLL=null;
+function _renderSemProg(s){
+  const pw=$('#semprog'),pb=$('#semprog-bar'),st=$('#semstat'),b=$('#bsem-idx'),sb=$('#bsem-stop'),j=s&&s.job;
+  if(!j||!j.running){if(pw)pw.classList.add('hide');if(sb)sb.classList.add('hide');return false}
+  const pct=j.pct!=null?j.pct:(j.total>0?Math.round(j.done/j.total*100):0);
+  if(pw)pw.classList.remove('hide');
+  if(sb){sb.classList.remove('hide');sb.disabled=!!j.stopping;sb.textContent=j.stopping?'⏹ Parando…':'⏹ STOP'}
+  if(pb)pb.style.width=pct+'%';
+  if(b){b.disabled=true;b.textContent=`🧠 Indexando… ${Math.round(pct)}%`}
+  if(st)st.textContent=j.total?`${j.done}/${j.total} (${pct.toFixed?pct.toFixed(0):pct}%) — ${j.indexed} indexado(s)${j.detail?' · '+j.detail:''}`:'Preparando modelo CLIP…';
+  return true;
+}
+function _pollSemJob(isV){
+  if(SEM_POLL)return;
+  SEM_POLL=setInterval(async()=>{
+    try{
+      const s=await api('/media/semantic-status');
+      if(!_renderSemProg(s)){
+        clearInterval(SEM_POLL);SEM_POLL=null;
+        const j=s.job||{},idx=isV?s.indexed_videos:s.indexed_photos,tot=isV?s.total_videos:s.total_photos;
+        toast(j.stopped?`⏹ Indexação interrompida (${j.indexed||0} indexado(s))`:`✓ ${j.indexed||0} ${isV?'vídeo(s)':'foto(s)'} indexado(s) (${idx}/${tot})`);
+        const st=$('#semstat');
+        if(st)st.textContent=(j.stopped?'Interrompido · ':'')+`${idx}/${tot} indexados`+(isV&&s.total_keyframes?` (${s.total_keyframes} keyframes)`:'');
+        refreshSemanticStatus();
+      }
+    }catch(e){clearInterval(SEM_POLL);SEM_POLL=null;refreshSemanticStatus()}
+  },700);
+}
+async function stopSemanticIndex(){
+  const sb=$('#bsem-stop');if(sb){sb.disabled=true;sb.textContent='⏹ Parando…'}
+  try{await api('/media/semantic-stop',{method:'POST'})}catch(e){}
+}
 async function refreshSemanticStatus(){
-  const b=$('#bsem-idx');if(!b||kind!=='photo')return;
+  const b=$('#bsem-idx');if(!b)return;
   try{
     const s=await api('/media/semantic-status');
-    b.textContent=`🧠 Indexar fotos (${s.indexed_photos}/${s.total_photos})`;
-    b.disabled=s.total_photos>0&&s.indexed_photos>=s.total_photos;
+    if(_renderSemProg(s)){_pollSemJob(kind==='video');return}
+    const isV=kind==='video',idx=isV?s.indexed_videos:s.indexed_photos,tot=isV?s.total_videos:s.total_photos;
+    b.textContent=`🧠 Indexar ${isV?'vídeos':'fotos'} (${idx}/${tot})`;
+    b.disabled=tot>0&&idx>=tot;
   }catch(e){}
 }
 async function indexSemanticPhotos(){
-  const b=$('#bsem-idx'),st=$('#semstat');
-  if(b){b.disabled=true;b.textContent='🧠 Indexando…'}
-  if(st)st.textContent='Gerando embeddings locais (na 1ª vez baixa o modelo CLIP ~150 MB)…';
+  const b=$('#bsem-idx'),st=$('#semstat'),pw=$('#semprog'),pb=$('#semprog-bar'),isV=kind==='video';
+  if(b){b.disabled=true;b.textContent='🧠 Indexando… 0%'}
+  if(pw)pw.classList.remove('hide');
+  if(pb)pb.style.width='0%';
+  if(st)st.textContent=isV?'Extraindo keyframes (5s) e gerando embeddings locais (CLIP)…':'Gerando embeddings locais (na 1ª vez baixa o modelo CLIP ~150 MB)…';
   try{
-    const r=await api('/media/semantic-index?limit=300',{method:'POST'});
-    toast(`✓ ${r.indexed} foto(s) indexada(s) (${r.indexed_photos}/${r.total_photos})`);
-    if(st)st.textContent=`${r.indexed_photos}/${r.total_photos} indexadas`;
-    refreshSemanticStatus();
+    const r=await api(`/media/semantic-index?bg=1&kind=${isV?'video':'photo'}&limit=${isV?20:300}`,{method:'POST'});
+    _renderSemProg(r);
+    _pollSemJob(isV);
   }catch(e){
-    alert('Falha ao indexar fotos: '+e.message);
+    alert('Falha ao indexar: '+e.message);
+    if(pw)pw.classList.add('hide');
     if(st)st.textContent='';
     refreshSemanticStatus();
   }
@@ -3480,19 +3520,21 @@ async function indexSemanticPhotos(){
 async function runSemanticSearch(){
   const q=($('#msem')&&$('#msem').value||'').trim();
   if(!q)return loadMedia();
-  const st=$('#semstat'),clr=$('#bsem-clr');
+  const st=$('#semstat'),clr=$('#bsem-clr'),isV=kind==='video';
   if(st)st.textContent='Buscando visualmente…';
   try{
-    const r=await api('/media/semantic-search?q='+encodeURIComponent(q));
-    if(!r.indexed_photos){
-      if(st)st.textContent='Nenhuma foto indexada ainda. Clique em "Indexar fotos".';
-      $('#mgrid').innerHTML='<p style="color:var(--mut)">Nenhuma foto indexada ainda. Clique em <b>🧠 Indexar fotos</b> acima para gerar os embeddings offline.</p>';
+    const r=await api(`/media/semantic-search?kind=${encodeURIComponent(kind)}&q=${encodeURIComponent(q)}`);
+    const idxCnt=isV?r.indexed_videos:r.indexed_photos;
+    if(!idxCnt){
+      const msg=isV?'Nenhum vídeo indexado ainda. Clique em "Indexar vídeos".':'Nenhuma foto indexada ainda. Clique em "Indexar fotos".';
+      if(st)st.textContent=msg;
+      $('#mgrid').innerHTML=`<p style="color:var(--mut)">${msg}</p>`;
       $('#mcount').textContent='0 itens';
       return;
     }
     if(clr)clr.classList.remove('hide');
-    if(st)st.textContent=`${r.items.length} resultado(s) de ${r.indexed_photos} indexadas (prompt: "${r.en_query}")`;
-    $('#mgrid').innerHTML=r.items.map(mediaCard).join('')||'Nenhuma foto correspondeu à busca visual.';
+    if(st)st.textContent=`${r.items.length} resultado(s) de ${idxCnt} ${isV?'vídeos':'fotos'} (prompt: "${r.en_query}")`;
+    $('#mgrid').innerHTML=r.items.map(mediaCard).join('')||'Nenhum resultado correspondeu à busca visual.';
     $('#mcount').textContent=r.items.length+' itens (busca visual)';
   }catch(e){
     alert('Erro na busca semântica: '+e.message);
@@ -3507,7 +3549,7 @@ function clearSemanticSearch(){
 }
 async function loadMedia(k){
   kind=typeof k=='string'?k:kind;
-  const sb=$('#sembar');if(sb)sb.classList.toggle('hide',kind!=='photo');
+  const sb=$('#sembar');if(sb)sb.classList.toggle('hide',kind!=='photo'&&kind!=='video');
   if($('#bsem-clr'))$('#bsem-clr').classList.add('hide');
   if($('#semstat'))$('#semstat').textContent='';
   const p=new URLSearchParams({kind,q:$('#mq').value,orient:$('#mor')?$('#mor').value:'',fav:$('#mf').checked?1:0,unlinked:$('#mu').checked?1:0,date_from:$('#md').value,near:$('#mn').value,bbox:ACTIVE_BBOX||''});
@@ -3516,7 +3558,7 @@ async function loadMedia(k){
   let ms=[];try{ms=await api('/media?'+p)}catch(e){toast('Erro ao carregar mídias');$('#mgrid').innerHTML='<div style="color:var(--danger-fg);padding:16px">Erro ao carregar mídias. <button onclick="loadMedia()">↻</button></div>';return}ms=ms.filter(NLM);
   $('#mgrid').innerHTML=ms.map(mediaCard).join('')||(hasFilt?esc(t('flights.none_filtered')):'Nada por aqui. Coloque arquivos em data/media e clique em Escanear pastas.');
   $('#mcount').textContent=ms.length+' itens';
-  if(kind==='photo')refreshSemanticStatus();
+  refreshSemanticStatus();
 }
 let curM;
 function loadPannellum(){
@@ -3564,10 +3606,12 @@ function drawDetBoxes(m){
 }
 function toggleDetBoxes(){SHOW_BOXES=!SHOW_BOXES;if(curM)drawDetBoxes(curM);const b=$('#btogbox');if(b)b.textContent=SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}
 function jumpVid(t){const v=$('#mvid');if(v){v.currentTime=+t||0;v.play()}}
+async function revealM(id){try{await api('/media/'+id+'/reveal',{method:'POST'})}catch(e){alert('Não foi possível abrir a pasta: '+e.message)}}
 async function detectM(id){
-  const b=$('#bdet-one');if(b){b.disabled=true;b.textContent='⏳ Analisando (IA)...'}
+  const b=$('#bdet-one'),cf=$('#mdet-conf')?.value||0.40,hr=$('#mdet-hr')?.checked?1:0;
+  if(b){b.disabled=true;b.textContent='⏳ Analisando (IA)...'}
   try{
-    const m=await api('/media/'+id+'/detect',{method:'POST'});
+    const m=await api(`/media/${id}/detect?conf=${cf}&high_res=${hr}`,{method:'POST'});
     toast('✓ Detecção concluída!');
     await openMedia(id);
     if(!$('#midia').classList.contains('hide'))loadMedia();
@@ -3575,11 +3619,11 @@ async function detectM(id){
   }catch(e){alert('Erro na detecção: '+e.message);if(b){b.disabled=false;b.textContent='🤖 Detectar objetos'}}
 }
 async function detectBatchMedia(){
-  const b=$('#bdet-batch'),ids=sel.size?[...sel]:null;
+  const b=$('#bdet-batch'),ids=sel.size?[...sel]:null,cf=Number($('#det-conf')?.value||0.40),hr=$('#det-hr')?.checked?1:0;
   if(!ids&&!confirm('Analisar até 50 mídias ainda sem detecção com IA (YOLO)?'))return;
   if(b){b.disabled=true;b.textContent='⏳ Analisando...'}
   try{
-    const r=await api('/detect/batch',J('POST',{ids}));
+    const r=await api('/detect/batch',J('POST',{ids,conf:cf,high_res:hr}));
     toast(`🤖 ${r.processed} mídias analisadas · ${r.total_objects} objetos encontrados`);
     loadMedia();
   }catch(e){alert('Erro na detecção em lote: '+e.message)}
@@ -3608,9 +3652,10 @@ function detSummaryHtml(m){
   }).join(' ');
   return `<div class="row" style="margin:0;gap:6px;max-width:92vw"><span style="color:var(--acc-cyan);font-size:12px">🤖 Avistamentos no vídeo:</span>${chips}</div>`;
 }
-async function openMedia(id){
-  const m=curM=await api('/media/'+id),mt=m.meta||{};
+async function openMedia(id,seekT=null){
+  const m=curM=await api('/media/'+id),mt=m.meta||{},fn=(m.path||'').split(/[\\/]/).pop()||'';
   const ex=[];
+  if(fn)ex.push(fn);
   if(m.w&&m.h)ex.push(`${m.w}×${m.h}${m.orient==='portrait'?' (Vertical 9:16)':m.orient==='pano'?' (Panorama 360°)':''}`);
   if(mt.model)ex.push(mt.model);
   if(mt.iso)ex.push('ISO '+mt.iso);
@@ -3628,8 +3673,11 @@ async function openMedia(id){
    <div id="mcoord" class="row hide" style="background:var(--card);border:1px solid var(--acc);padding:7px 12px;border-radius:8px;margin:2px 0"></div>
    <div class=row><button onclick="favM()">${m.fav?'★ Desfavoritar':'☆ Favoritar'}</button><button onclick="tagsM()">Editar tags</button>
     <button id="bdet-one" onclick="detectM(${id})">${m.detections?'🤖 Reanalisar (IA)':'🤖 Detectar objetos'}</button>
+    <select id="mdet-conf" title="Sensibilidade YOLO"><option value="0.25"${m.detections?.conf===0.25?' selected':''}>25%</option><option value="0.40"${!m.detections||m.detections.conf===0.4?' selected':''}>40%</option><option value="0.55"${m.detections?.conf===0.55?' selected':''}>55%</option></select>
+    <label style="color:#ccc;font-size:12px" title="Recortes em alta resolução (Tiles/SAHI)"><input id="mdet-hr" type="checkbox"${m.detections?.high_res?' checked':''}> 🎯 Tiles</label>
     ${m.kind=='photo'&&hasDets?`<button id="btogbox" onclick="toggleDetBoxes()">${SHOW_BOXES?'👁 Ocultar caixas':'👁 Mostrar caixas'}</button>`:''}
     <button onclick="grabModalCoord(${id})">📍 Extrair coordenada${m.kind=='video'?' deste frame':''}</button>
+    <button onclick="revealM(${id})" title="${esc(t('media.reveal_title'))}">📂 ${t('media.reveal')}</button>
     ${m.kind=='photo'?`<button onclick="openPano360('/api/media/${id}/file')">🌐 Ver em 360°</button>`:`<button onclick="exportHudVideo(${id})">🎬 Exportar clipe com HUD (MP4)</button>`}
     ${m.kind=='photo'&&m.lat!=null&&m.lon!=null?`<button onclick="openCompareAuto(${id})">◫ ${t('media.compare_gps')}</button>`:''}
     ${m.flight_id?`<button onclick="closeM();openFlight(${m.flight_id})">Ver voo</button>`:''}
@@ -3638,6 +3686,7 @@ async function openMedia(id){
     <button onclick="closeM()">Fechar</button></div><div class=row id="mlink" style="color:#ccc;margin:0">Voo: <select id="mflight"></select><button onclick="linkM()">Aplicar</button></div>
     <div style="color:#ccc">${esc(m.tags||'sem tags')}</div>`;
   $('#modal').classList.remove('hide');fillFlightSel(m);
+  if(m.kind==='video'&&seekT!=null){const v=$('#mvid');if(v)v.addEventListener('loadedmetadata',()=>{try{v.currentTime=Math.max(0,Number(seekT)||0)}catch(e){}},{once:true})}
   if(m.orient==='pano')openPano360(`/api/media/${id}/file`);
 }
 function closeM(){if(PANO){try{PANO.destroy()}catch(e){}PANO=null}$('#modal').classList.add('hide');$('#modal').innerHTML='';CMP=null}

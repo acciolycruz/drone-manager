@@ -286,6 +286,8 @@
   "media.del_disk_title": "Borra permanentemente los archivos marcados del disco y de la galería",
   "media.detect_ai": "🤖 Detectar objetos (IA)",
   "media.report_ai": "📋 Informe IA",
+  "media.reveal": "Abrir carpeta",
+  "media.reveal_title": "Abre la carpeta en el explorador con el archivo seleccionado",
   "media.sem_title": "✨ Búsqueda Semántica (CLIP)",
   "media.sem_ph": "Describe lo que buscas (ej.: playa atardecer, barco, tejado, laguna)…",
   "media.sem_btn": "Buscar visualmente",

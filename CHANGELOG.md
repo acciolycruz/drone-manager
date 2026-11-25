@@ -9,6 +9,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versio
 - **Component maintenance** tracking and alerts in Statistics for motors, gimbal, IMU/compass calibration, and estimated battery cycles (`/api/maintenance`, `/api/maintenance/reset`).
 - **Pilot profile** (name, SISANT, ANAC, RETA, SARPAS, registration, phone) and configurable **pre/post-flight checklist** template in Settings (`/api/pilot`, `/api/checklist/template`).
 - **Per-flight checklist** in flight details (`/api/flights/{fid}/checklist`), automatically printed in HTML/PDF flight reports along with the pilot profile.
+- **Video semantic search (CLIP keyframes):** indexes `.mp4`/`.mov` keyframes every 5s (`video_keyframes`) with a live progress bar and **`STOP`** button (`/api/media/semantic-stop`), so visual text queries match video scenes and jump directly to the matched timestamp.
+- **High-Precision YOLO detection (Tiles / SAHI) & confidence selector:** adds `25% / 40% / 55%` sensitivity and overlapping tile inference (`2×2` / `3×3` on photos, 4 quadrants on videos) for small distant people and objects.
+- **Open folder & original filenames:** adds an **"Open folder"** button in the media modal (`/api/media/{mid}/reveal`) to reveal the file in the OS file manager, and displays original filenames on gallery cards and modals.
 
 ## [1.0.0] - 2026-11-24
 
